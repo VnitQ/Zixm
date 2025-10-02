@@ -1165,7 +1165,112 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
 
   unsigned BuiltinID = UseDecl->getBuiltinID(/*ConsiderWrappers=*/true);
 
-  if (!BuiltinID)
+  // Some libc I/O functions are intentionally not Clang builtins:
+  //   * "read", "write", "readlink", "readlinkat", and "getcwd" are common
+  //     identifiers (or names that appear in asm-label wrappers); declaring
+  //     them as builtins triggers -Wincompatible-library-redeclaration on
+  //     harmless local declarations (an error under -Werror).
+  //   * pread/pwrite prototypes use off_t, whose width is platform- and
+  //     macro-dependent (notably _FILE_OFFSET_BITS); a fixed builtin signature
+  //     would clash with the system header on some targets.
+  // Recognize them by name, but only after checking the full POSIX prototype
+  // so that an unrelated function happening to share the name is not
+  // diagnosed as if it were the libc function.
+  enum class LibCDispatch {
+    None,
+    Read,
+    Write,
+    PRead,
+    PWrite,
+    ReadLink,
+    ReadLinkAt,
+    GetCWD,
+  };
+  LibCDispatch LibC = LibCDispatch::None;
+  StringRef LibCName;
+  if (!BuiltinID && FD->isExternC() && FD->getIdentifier() &&
+      !FD->isVariadic()) {
+    ASTContext &Ctx = getASTContext();
+    QualType IntTy = Ctx.IntTy;
+    QualType SizeTy = Ctx.getSizeType();
+    unsigned SizeWidth = Ctx.getTypeSize(SizeTy);
+    QualType VoidPtrTy = Ctx.VoidPtrTy;
+    QualType ConstVoidPtrTy = Ctx.getPointerType(Ctx.VoidTy.withConst());
+    QualType CharPtrTy = Ctx.getPointerType(Ctx.CharTy);
+    QualType ConstCharPtrTy = Ctx.getPointerType(Ctx.CharTy.withConst());
+
+    auto Same = [&](QualType A, QualType B) {
+      return Ctx.hasSameUnqualifiedType(A, B);
+    };
+    // ssize_t is not canonicalized to a single Clang type: glibc declares it
+    // as `long` while other libcs (and Clang's getIntTypeForBitwidth for
+    // size_t-width) pick `int` on ILP32 targets. Both are valid ssize_t
+    // implementations as long as they are signed integers of size_t's width.
+    // Match structurally rather than by canonical-type equality so the gate
+    // is tolerant of either libc choice.
+    auto IsSSizeT = [&](QualType T) {
+      return T->isSignedIntegerType() && Ctx.getTypeSize(T) == SizeWidth;
+    };
+    auto P = [&](unsigned I) { return FD->getParamDecl(I)->getType(); };
+    QualType Ret = FD->getReturnType();
+    StringRef Name = FD->getIdentifier()->getName();
+    unsigned NumArgs = TheCall->getNumArgs();
+
+    if (FD->getNumParams() == 2 && NumArgs == 2) {
+      // char *getcwd(char *, size_t)
+      if (Name == "getcwd" && Same(Ret, CharPtrTy) && Same(P(0), CharPtrTy) &&
+          Same(P(1), SizeTy)) {
+        LibC = LibCDispatch::GetCWD;
+        LibCName = Name;
+      }
+    } else if (FD->getNumParams() == 3 && NumArgs == 3 && IsSSizeT(Ret)) {
+      if (Name == "read" && Same(P(0), IntTy) && Same(P(1), VoidPtrTy) &&
+          Same(P(2), SizeTy)) {
+        LibC = LibCDispatch::Read;
+        LibCName = Name;
+      } else if (Name == "write" && Same(P(0), IntTy) &&
+                 Same(P(1), ConstVoidPtrTy) && Same(P(2), SizeTy)) {
+        LibC = LibCDispatch::Write;
+        LibCName = Name;
+      } else if (Name == "readlink" && Same(P(0), ConstCharPtrTy) &&
+                 Same(P(1), CharPtrTy) && Same(P(2), SizeTy)) {
+        LibC = LibCDispatch::ReadLink;
+        LibCName = Name;
+      }
+    } else if (FD->getNumParams() == 4 && NumArgs == 4 && IsSSizeT(Ret)) {
+      // pread/pwrite take off_t (platform-dependent width, but at least as
+      // wide as size_t in practice); pread64/pwrite64 take off64_t which is
+      // always 64-bit signed. Require a signed integer of the appropriate
+      // width so unrelated declarations (e.g. taking int on a 64-bit target)
+      // do not get matched.
+      QualType Off = P(3);
+      bool OffOK = Off->isSignedIntegerType();
+      if (OffOK) {
+        unsigned OffWidth = Ctx.getTypeSize(Off);
+        if (Name == "pread64" || Name == "pwrite64")
+          OffOK = OffWidth == 64;
+        else
+          OffOK = OffWidth >= SizeWidth;
+      }
+      if ((Name == "pread" || Name == "pread64") && OffOK &&
+          Same(P(0), IntTy) && Same(P(1), VoidPtrTy) && Same(P(2), SizeTy)) {
+        LibC = LibCDispatch::PRead;
+        LibCName = Name;
+      } else if ((Name == "pwrite" || Name == "pwrite64") && OffOK &&
+                 Same(P(0), IntTy) && Same(P(1), ConstVoidPtrTy) &&
+                 Same(P(2), SizeTy)) {
+        LibC = LibCDispatch::PWrite;
+        LibCName = Name;
+      } else if (Name == "readlinkat" && Same(P(0), IntTy) &&
+                 Same(P(1), ConstCharPtrTy) && Same(P(2), CharPtrTy) &&
+                 Same(P(3), SizeTy)) {
+        LibC = LibCDispatch::ReadLinkAt;
+        LibCName = Name;
+      }
+    }
+  }
+
+  if (!BuiltinID && LibC == LibCDispatch::None)
     return;
 
   const TargetInfo &TI = getASTContext().getTargetInfo();
@@ -1253,8 +1358,19 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
   std::optional<llvm::APSInt> DestinationSize;
   unsigned DiagID = 0;
   bool IsChkVariant = false;
+  bool IsTriggered = false;
 
-  auto GetFunctionName = [&]() {
+  auto CompareSizeSourceToDest = [&]() {
+    return SourceSize && DestinationSize
+               ? std::optional<int>{llvm::APSInt::compareValues(
+                     *SourceSize, *DestinationSize)}
+               : std::nullopt;
+  };
+
+  auto GetFunctionName = [&]() -> std::string {
+    if (LibC != LibCDispatch::None)
+      return LibCName.str();
+
     std::string FunctionNameStr =
         getASTContext().BuiltinInfo.getName(BuiltinID);
     llvm::StringRef FunctionName = FunctionNameStr;
@@ -1270,6 +1386,58 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     return FunctionName.str();
   };
 
+  if (LibC == LibCDispatch::Read) {
+    // read: ssize_t(int fd, void buf[.count], size_t count);
+    // Up to count(2) bytes are written into buf(1).
+    DiagID = diag::warn_fortify_source_size_mismatch;
+    SourceSize = ComputeExplicitObjectSizeArgument(2);
+    DestinationSize = ComputeSizeArgument(1);
+    IsTriggered = CompareSizeSourceToDest() > 0;
+  } else if (LibC == LibCDispatch::Write) {
+    // write: ssize_t(int, const void buf[.count], size_t count);
+    // Up to count(2) bytes are read from buf(1).
+    DiagID = diag::warn_fortify_destination_size_mismatch;
+    SourceSize = ComputeSizeArgument(1);
+    DestinationSize = ComputeExplicitObjectSizeArgument(2);
+    IsTriggered = CompareSizeSourceToDest() < 0;
+  } else if (LibC == LibCDispatch::PRead) {
+    // pread/pread64: ssize_t(int fd, void buf[.count], size_t count, off_t);
+    // Up to count(2) bytes are written into buf(1).
+    DiagID = diag::warn_fortify_source_size_mismatch;
+    SourceSize = ComputeExplicitObjectSizeArgument(2);
+    DestinationSize = ComputeSizeArgument(1);
+    IsTriggered = CompareSizeSourceToDest() > 0;
+  } else if (LibC == LibCDispatch::PWrite) {
+    // pwrite/pwrite64: ssize_t(int, const void buf[.count], size_t count, off_t);
+    // Up to count(2) bytes are read from buf(1).
+    DiagID = diag::warn_fortify_destination_size_mismatch;
+    SourceSize = ComputeSizeArgument(1);
+    DestinationSize = ComputeExplicitObjectSizeArgument(2);
+    IsTriggered = CompareSizeSourceToDest() < 0;
+  } else if (LibC == LibCDispatch::ReadLink) {
+    // readlink:
+    //   ssize_t(const char *restrict, char buf[.bufsize], size_t bufsize);
+    // Up to bufsize(2) bytes are written into buf(1).
+    DiagID = diag::warn_fortify_source_size_mismatch;
+    SourceSize = ComputeExplicitObjectSizeArgument(2);
+    DestinationSize = ComputeSizeArgument(1);
+    IsTriggered = CompareSizeSourceToDest() > 0;
+  } else if (LibC == LibCDispatch::ReadLinkAt) {
+    // readlinkat:
+    //   ssize_t(int, const char *restrict, char buf[.bufsize], size_t bufsize);
+    // Up to bufsize(3) bytes are written into buf(2).
+    DiagID = diag::warn_fortify_source_size_mismatch;
+    SourceSize = ComputeExplicitObjectSizeArgument(3);
+    DestinationSize = ComputeSizeArgument(2);
+    IsTriggered = CompareSizeSourceToDest() > 0;
+  } else if (LibC == LibCDispatch::GetCWD) {
+    // char *getcwd(char buf[.size], size_t size);
+    // Up to size(1) bytes are written into buf(0).
+    DiagID = diag::warn_fortify_source_size_mismatch;
+    SourceSize = ComputeExplicitObjectSizeArgument(1);
+    DestinationSize = ComputeSizeArgument(0);
+    IsTriggered = CompareSizeSourceToDest() > 0;
+  } else
   switch (BuiltinID) {
   default:
     return;
@@ -1282,6 +1450,7 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     DiagID = diag::warn_fortify_strlen_overflow;
     SourceSize = ComputeStrLenArgument(1);
     DestinationSize = ComputeSizeArgument(0);
+    IsTriggered = CompareSizeSourceToDest() > 0;
     break;
   }
 
@@ -1292,6 +1461,7 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     SourceSize = ComputeStrLenArgument(1);
     DestinationSize = ComputeExplicitObjectSizeArgument(2);
     IsChkVariant = true;
+    IsTriggered = CompareSizeSourceToDest() > 0;
     break;
   }
 
@@ -1362,11 +1532,13 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
         } else {
           DestinationSize = ComputeSizeArgument(0);
         }
+        IsTriggered = CompareSizeSourceToDest() > 0;
         break;
       }
     }
     return;
   }
+
   case Builtin::BI__builtin___memcpy_chk:
   case Builtin::BI__builtin___memmove_chk:
   case Builtin::BI__builtin___memset_chk:
@@ -1382,6 +1554,7 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     DestinationSize =
         ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
     IsChkVariant = true;
+    IsTriggered = CompareSizeSourceToDest() > 0;
     break;
   }
 
@@ -1391,6 +1564,7 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     SourceSize = ComputeExplicitObjectSizeArgument(1);
     DestinationSize = ComputeExplicitObjectSizeArgument(3);
     IsChkVariant = true;
+    IsTriggered = CompareSizeSourceToDest() > 0;
     break;
   }
 
@@ -1408,6 +1582,7 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     DiagID = diag::warn_fortify_source_size_mismatch;
     SourceSize = ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
     DestinationSize = ComputeSizeArgument(0);
+    IsTriggered = CompareSizeSourceToDest() > 0;
     break;
   }
 
@@ -1424,6 +1599,7 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     DiagID = diag::warn_fortify_source_overflow;
     SourceSize = ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
     DestinationSize = ComputeSizeArgument(0);
+    IsTriggered = CompareSizeSourceToDest() > 0;
     break;
   }
   case Builtin::BIbcopy:
@@ -1431,8 +1607,10 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     DiagID = diag::warn_fortify_source_overflow;
     SourceSize = ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
     DestinationSize = ComputeSizeArgument(1);
+    IsTriggered = CompareSizeSourceToDest() > 0;
     break;
   }
+
   case Builtin::BIsnprintf:
   case Builtin::BI__builtin_snprintf:
   case Builtin::BIvsnprintf:
@@ -1472,11 +1650,12 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     const Expr *Dest = TheCall->getArg(0)->IgnoreCasts();
     IdentifierInfo *FnInfo = FD->getIdentifier();
     CheckSizeofMemaccessArgument(LenArg, Dest, FnInfo);
+    IsTriggered = CompareSizeSourceToDest() > 0;
+    break;
   }
   }
 
-  if (!SourceSize || !DestinationSize ||
-      llvm::APSInt::compareValues(*SourceSize, *DestinationSize) <= 0)
+  if (!IsTriggered)
     return;
 
   std::string FunctionName = GetFunctionName();

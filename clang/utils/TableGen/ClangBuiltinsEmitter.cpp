@@ -371,6 +371,7 @@ private:
                                .Case("short", "s")
                                .Case("sigjmp_buf", "SJ")
                                .Case("size_t", "z")
+                               .Case("ssize_t", "Sz")
                                .Case("ucontext_t", "K")
                                .Case("uint32_t", "UZi")
                                .Case("uint64_t", "UWi")
