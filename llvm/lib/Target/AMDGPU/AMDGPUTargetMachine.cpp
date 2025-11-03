@@ -665,7 +665,6 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAMDGPUTarget() {
   initializeAMDGPUPrepareAGPRAllocLegacyPass(*PR);
   initializeGCNDPPCombineLegacyPass(*PR);
   initializeSILowerI1CopiesLegacyPass(*PR);
-  initializeSISAbs16FixupLegacyPass(*PR);
   initializeAMDGPUGlobalISelDivergenceLoweringPass(*PR);
   initializeAMDGPURegBankSelectPass(*PR);
   initializeAMDGPURegBankLegalizePass(*PR);
@@ -1650,7 +1649,6 @@ bool GCNPassConfig::addInstSelector() {
   AMDGPUPassConfig::addInstSelector();
   addPass(&SIFixSGPRCopiesLegacyID);
   addPass(createSILowerI1CopiesLegacyPass());
-  addPass(createSISAbs16FixupLegacyPass());
   return false;
 }
 
@@ -2414,7 +2412,6 @@ Error AMDGPUCodeGenPassBuilder::addInstSelector(AddMachinePass &addPass) const {
   addPass(AMDGPUISelDAGToDAGPass(TM));
   addPass(SIFixSGPRCopiesPass());
   addPass(SILowerI1CopiesPass());
-  addPass(SISAbs16FixupPass());
   return Error::success();
 }
 
