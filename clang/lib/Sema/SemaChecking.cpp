@@ -1147,6 +1147,103 @@ static bool ProcessFormatStringLiteral(const Expr *FormatExpr,
   return false;
 }
 
+namespace {
+// Some libc I/O functions are intentionally not Clang builtins:
+//   * "read", "write", "readlink", "readlinkat", and "getcwd" are common
+//     identifiers (or names that appear in asm-label wrappers); declaring
+//     them as builtins triggers -Wincompatible-library-redeclaration on
+//     harmless local declarations (an error under -Werror).
+//   * pread/pwrite prototypes use off_t, whose width is platform- and
+//     macro-dependent (notably _FILE_OFFSET_BITS); a fixed builtin signature
+//     would clash with the system header on some targets.
+// They are recognized here by name, but only after the caller verifies the
+// full POSIX prototype so an unrelated function happening to share the name
+// is not diagnosed as if it were the libc function.
+struct LibcFuncDesc {
+  StringRef Name;
+  QualType Return;
+  SmallVector<QualType, 4> Params;
+  std::optional<unsigned> SourceSizeIdx; // __bos buffer; reads from
+  std::optional<unsigned> MaxOpSizeIdx;  // count arg (constant-evaluated)
+  std::optional<unsigned> DestSizeIdx;   // __bos buffer; writes to
+};
+} // namespace
+
+static std::optional<LibcFuncDesc> lookupLibCFunctionDesc(ASTContext &Ctx,
+                                                          StringRef Name) {
+  QualType IntTy = Ctx.IntTy;
+  QualType SizeTy = Ctx.getSizeType();
+  QualType VoidPtrTy = Ctx.VoidPtrTy;
+  QualType ConstVoidPtrTy = Ctx.getPointerType(Ctx.VoidTy.withConst());
+  QualType CharPtrTy = Ctx.getPointerType(Ctx.CharTy);
+  QualType ConstCharPtrTy = Ctx.getPointerType(Ctx.CharTy.withConst());
+  // ssize_t / off_t / off64_t aren't single Clang types (ssize_t differs
+  // across libcs, off_t depends on _FILE_OFFSET_BITS, off64_t is always
+  // 64-bit). The name match has already pinned us to POSIX intent, so the
+  // caller's slot-match treats any integer-typed slot as compatible with any
+  // integer-typed argument; these aliases just keep the table readable.
+  QualType SSizeTy = IntTy;
+  QualType OffTy = IntTy;
+  QualType Off64Ty = IntTy;
+
+  auto Table = std::make_unique<llvm::DenseMap<StringRef, LibcFuncDesc>>();
+  Table->insert_range(std::initializer_list<std::pair<StringRef, LibcFuncDesc>>{
+      {"getcwd",
+       {"getcwd", CharPtrTy, {CharPtrTy, SizeTy}, std::nullopt, 1, 0}},
+      {"read",
+       {"read", SSizeTy, {IntTy, VoidPtrTy, SizeTy}, std::nullopt, 2, 1}},
+      {"write",
+       {"write", SSizeTy, {IntTy, ConstVoidPtrTy, SizeTy}, 1, 2, std::nullopt}},
+      {"readlink",
+       {"readlink",
+        SSizeTy,
+        {ConstCharPtrTy, CharPtrTy, SizeTy},
+        std::nullopt,
+        2,
+        1}},
+      {"readlinkat",
+       {"readlinkat",
+        SSizeTy,
+        {IntTy, ConstCharPtrTy, CharPtrTy, SizeTy},
+        std::nullopt,
+        3,
+        2}},
+      {"pread",
+       {"pread",
+        SSizeTy,
+        {IntTy, VoidPtrTy, SizeTy, OffTy},
+        std::nullopt,
+        2,
+        1}},
+      {"pread64",
+       {"pread64",
+        SSizeTy,
+        {IntTy, VoidPtrTy, SizeTy, Off64Ty},
+        std::nullopt,
+        2,
+        1}},
+      {"pwrite",
+       {"pwrite",
+        SSizeTy,
+        {IntTy, ConstVoidPtrTy, SizeTy, OffTy},
+        1,
+        2,
+        std::nullopt}},
+      {"pwrite64",
+       {"pwrite64",
+        SSizeTy,
+        {IntTy, ConstVoidPtrTy, SizeTy, Off64Ty},
+        1,
+        2,
+        std::nullopt}},
+  });
+
+  auto It = Table->find(Name);
+  if (It == Table->end())
+    return std::nullopt;
+  return It->second;
+}
+
 void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
                                                CallExpr *TheCall) {
   if (TheCall->isValueDependent() || TheCall->isTypeDependent() ||
@@ -1165,112 +1262,32 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
 
   unsigned BuiltinID = UseDecl->getBuiltinID(/*ConsiderWrappers=*/true);
 
-  // Some libc I/O functions are intentionally not Clang builtins:
-  //   * "read", "write", "readlink", "readlinkat", and "getcwd" are common
-  //     identifiers (or names that appear in asm-label wrappers); declaring
-  //     them as builtins triggers -Wincompatible-library-redeclaration on
-  //     harmless local declarations (an error under -Werror).
-  //   * pread/pwrite prototypes use off_t, whose width is platform- and
-  //     macro-dependent (notably _FILE_OFFSET_BITS); a fixed builtin signature
-  //     would clash with the system header on some targets.
-  // Recognize them by name, but only after checking the full POSIX prototype
-  // so that an unrelated function happening to share the name is not
-  // diagnosed as if it were the libc function.
-  enum class LibCDispatch {
-    None,
-    Read,
-    Write,
-    PRead,
-    PWrite,
-    ReadLink,
-    ReadLinkAt,
-    GetCWD,
-  };
-  LibCDispatch LibC = LibCDispatch::None;
-  StringRef LibCName;
+  std::optional<LibcFuncDesc> LibCMatch;
   if (!BuiltinID && FD->isExternC() && FD->getIdentifier() &&
       !FD->isVariadic()) {
     ASTContext &Ctx = getASTContext();
-    QualType IntTy = Ctx.IntTy;
-    QualType SizeTy = Ctx.getSizeType();
-    unsigned SizeWidth = Ctx.getTypeSize(SizeTy);
-    QualType VoidPtrTy = Ctx.VoidPtrTy;
-    QualType ConstVoidPtrTy = Ctx.getPointerType(Ctx.VoidTy.withConst());
-    QualType CharPtrTy = Ctx.getPointerType(Ctx.CharTy);
-    QualType ConstCharPtrTy = Ctx.getPointerType(Ctx.CharTy.withConst());
-
-    auto Same = [&](QualType A, QualType B) {
-      return Ctx.hasSameUnqualifiedType(A, B);
+    // Same unqualified type, or both integer types: accepts libc typedef
+    // divergence (ssize_t/off_t/off64_t) while still rejecting pointer or
+    // aggregate mismatches.
+    auto MatchSlot = [&](QualType Expected, QualType Actual) {
+      if (Ctx.hasSameUnqualifiedType(Expected, Actual))
+        return true;
+      return Expected->isIntegerType() && Actual->isIntegerType();
     };
-    // ssize_t is not canonicalized to a single Clang type: glibc declares it
-    // as `long` while other libcs (and Clang's getIntTypeForBitwidth for
-    // size_t-width) pick `int` on ILP32 targets. Both are valid ssize_t
-    // implementations as long as they are signed integers of size_t's width.
-    // Match structurally rather than by canonical-type equality so the gate
-    // is tolerant of either libc choice.
-    auto IsSSizeT = [&](QualType T) {
-      return T->isSignedIntegerType() && Ctx.getTypeSize(T) == SizeWidth;
-    };
-    auto P = [&](unsigned I) { return FD->getParamDecl(I)->getType(); };
-    QualType Ret = FD->getReturnType();
-    StringRef Name = FD->getIdentifier()->getName();
-    unsigned NumArgs = TheCall->getNumArgs();
 
-    if (FD->getNumParams() == 2 && NumArgs == 2) {
-      // char *getcwd(char *, size_t)
-      if (Name == "getcwd" && Same(Ret, CharPtrTy) && Same(P(0), CharPtrTy) &&
-          Same(P(1), SizeTy)) {
-        LibC = LibCDispatch::GetCWD;
-        LibCName = Name;
-      }
-    } else if (FD->getNumParams() == 3 && NumArgs == 3 && IsSSizeT(Ret)) {
-      if (Name == "read" && Same(P(0), IntTy) && Same(P(1), VoidPtrTy) &&
-          Same(P(2), SizeTy)) {
-        LibC = LibCDispatch::Read;
-        LibCName = Name;
-      } else if (Name == "write" && Same(P(0), IntTy) &&
-                 Same(P(1), ConstVoidPtrTy) && Same(P(2), SizeTy)) {
-        LibC = LibCDispatch::Write;
-        LibCName = Name;
-      } else if (Name == "readlink" && Same(P(0), ConstCharPtrTy) &&
-                 Same(P(1), CharPtrTy) && Same(P(2), SizeTy)) {
-        LibC = LibCDispatch::ReadLink;
-        LibCName = Name;
-      }
-    } else if (FD->getNumParams() == 4 && NumArgs == 4 && IsSSizeT(Ret)) {
-      // pread/pwrite take off_t (platform-dependent width, but at least as
-      // wide as size_t in practice); pread64/pwrite64 take off64_t which is
-      // always 64-bit signed. Require a signed integer of the appropriate
-      // width so unrelated declarations (e.g. taking int on a 64-bit target)
-      // do not get matched.
-      QualType Off = P(3);
-      bool OffOK = Off->isSignedIntegerType();
-      if (OffOK) {
-        unsigned OffWidth = Ctx.getTypeSize(Off);
-        if (Name == "pread64" || Name == "pwrite64")
-          OffOK = OffWidth == 64;
-        else
-          OffOK = OffWidth >= SizeWidth;
-      }
-      if ((Name == "pread" || Name == "pread64") && OffOK &&
-          Same(P(0), IntTy) && Same(P(1), VoidPtrTy) && Same(P(2), SizeTy)) {
-        LibC = LibCDispatch::PRead;
-        LibCName = Name;
-      } else if ((Name == "pwrite" || Name == "pwrite64") && OffOK &&
-                 Same(P(0), IntTy) && Same(P(1), ConstVoidPtrTy) &&
-                 Same(P(2), SizeTy)) {
-        LibC = LibCDispatch::PWrite;
-        LibCName = Name;
-      } else if (Name == "readlinkat" && Same(P(0), IntTy) &&
-                 Same(P(1), ConstCharPtrTy) && Same(P(2), CharPtrTy) &&
-                 Same(P(3), SizeTy)) {
-        LibC = LibCDispatch::ReadLinkAt;
-        LibCName = Name;
-      }
+    if (auto Desc =
+            lookupLibCFunctionDesc(Ctx, FD->getIdentifier()->getName())) {
+      bool Matches = FD->getNumParams() == Desc->Params.size() &&
+                     TheCall->getNumArgs() == Desc->Params.size() &&
+                     MatchSlot(Desc->Return, FD->getReturnType());
+      for (unsigned I = 0; Matches && I < Desc->Params.size(); ++I)
+        Matches = MatchSlot(Desc->Params[I], FD->getParamDecl(I)->getType());
+      if (Matches)
+        LibCMatch = std::move(*Desc);
     }
   }
 
-  if (!BuiltinID && LibC == LibCDispatch::None)
+  if (!BuiltinID && !LibCMatch)
     return;
 
   const TargetInfo &TI = getASTContext().getTargetInfo();
@@ -1354,22 +1371,24 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     return std::nullopt;
   };
 
+  // Size of the memory read from
   std::optional<llvm::APSInt> SourceSize;
+  // Size of the memory written to
   std::optional<llvm::APSInt> DestinationSize;
-  unsigned DiagID = 0;
-  bool IsChkVariant = false;
-  bool IsTriggered = false;
+  // Maximum operation size for detecting possible out of bounds access
+  std::optional<llvm::APSInt> MaxOperationSize;
+  // Minimum operation size for detecting definite out of bounds access
+  std::optional<llvm::APSInt> MinOperationSize;
 
-  auto CompareSizeSourceToDest = [&]() {
-    return SourceSize && DestinationSize
-               ? std::optional<int>{llvm::APSInt::compareValues(
-                     *SourceSize, *DestinationSize)}
-               : std::nullopt;
-  };
+  unsigned DiagOverflowID = diag::warn_fortify_source_overflow;
+  unsigned DiagMayOverflowID = diag::warn_fortify_source_size_mismatch;
+  unsigned DiagOverReadID = diag::warn_fortify_destination_over_read;
+  unsigned DiagMayOverReadID = diag::warn_fortify_destination_size_mismatch;
+  bool IsChkVariant = false;
 
   auto GetFunctionName = [&]() -> std::string {
-    if (LibC != LibCDispatch::None)
-      return LibCName.str();
+    if (LibCMatch)
+      return LibCMatch->Name.str();
 
     std::string FunctionNameStr =
         getASTContext().BuiltinInfo.getName(BuiltinID);
@@ -1386,287 +1405,297 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
     return FunctionName.str();
   };
 
-  if (LibC == LibCDispatch::Read) {
-    // read: ssize_t(int fd, void buf[.count], size_t count);
-    // Up to count(2) bytes are written into buf(1).
-    DiagID = diag::warn_fortify_source_size_mismatch;
-    SourceSize = ComputeExplicitObjectSizeArgument(2);
-    DestinationSize = ComputeSizeArgument(1);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-  } else if (LibC == LibCDispatch::Write) {
-    // write: ssize_t(int, const void buf[.count], size_t count);
-    // Up to count(2) bytes are read from buf(1).
-    DiagID = diag::warn_fortify_destination_size_mismatch;
-    SourceSize = ComputeSizeArgument(1);
-    DestinationSize = ComputeExplicitObjectSizeArgument(2);
-    IsTriggered = CompareSizeSourceToDest() < 0;
-  } else if (LibC == LibCDispatch::PRead) {
-    // pread/pread64: ssize_t(int fd, void buf[.count], size_t count, off_t);
-    // Up to count(2) bytes are written into buf(1).
-    DiagID = diag::warn_fortify_source_size_mismatch;
-    SourceSize = ComputeExplicitObjectSizeArgument(2);
-    DestinationSize = ComputeSizeArgument(1);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-  } else if (LibC == LibCDispatch::PWrite) {
-    // pwrite/pwrite64: ssize_t(int, const void buf[.count], size_t count, off_t);
-    // Up to count(2) bytes are read from buf(1).
-    DiagID = diag::warn_fortify_destination_size_mismatch;
-    SourceSize = ComputeSizeArgument(1);
-    DestinationSize = ComputeExplicitObjectSizeArgument(2);
-    IsTriggered = CompareSizeSourceToDest() < 0;
-  } else if (LibC == LibCDispatch::ReadLink) {
-    // readlink:
-    //   ssize_t(const char *restrict, char buf[.bufsize], size_t bufsize);
-    // Up to bufsize(2) bytes are written into buf(1).
-    DiagID = diag::warn_fortify_source_size_mismatch;
-    SourceSize = ComputeExplicitObjectSizeArgument(2);
-    DestinationSize = ComputeSizeArgument(1);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-  } else if (LibC == LibCDispatch::ReadLinkAt) {
-    // readlinkat:
-    //   ssize_t(int, const char *restrict, char buf[.bufsize], size_t bufsize);
-    // Up to bufsize(3) bytes are written into buf(2).
-    DiagID = diag::warn_fortify_source_size_mismatch;
-    SourceSize = ComputeExplicitObjectSizeArgument(3);
-    DestinationSize = ComputeSizeArgument(2);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-  } else if (LibC == LibCDispatch::GetCWD) {
-    // char *getcwd(char buf[.size], size_t size);
-    // Up to size(1) bytes are written into buf(0).
-    DiagID = diag::warn_fortify_source_size_mismatch;
-    SourceSize = ComputeExplicitObjectSizeArgument(1);
-    DestinationSize = ComputeSizeArgument(0);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-  } else
-  switch (BuiltinID) {
-  default:
-    return;
-  case Builtin::BI__builtin_strcat:
-  case Builtin::BIstrcat:
-  case Builtin::BI__builtin_stpcpy:
-  case Builtin::BIstpcpy:
-  case Builtin::BI__builtin_strcpy:
-  case Builtin::BIstrcpy: {
-    DiagID = diag::warn_fortify_strlen_overflow;
-    SourceSize = ComputeStrLenArgument(1);
-    DestinationSize = ComputeSizeArgument(0);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-    break;
-  }
-
-  case Builtin::BI__builtin___strcat_chk:
-  case Builtin::BI__builtin___stpcpy_chk:
-  case Builtin::BI__builtin___strcpy_chk: {
-    DiagID = diag::warn_fortify_strlen_overflow;
-    SourceSize = ComputeStrLenArgument(1);
-    DestinationSize = ComputeExplicitObjectSizeArgument(2);
-    IsChkVariant = true;
-    IsTriggered = CompareSizeSourceToDest() > 0;
-    break;
-  }
-
-  case Builtin::BIscanf:
-  case Builtin::BIfscanf:
-  case Builtin::BIsscanf: {
-    unsigned FormatIndex = 1;
-    unsigned DataIndex = 2;
-    if (BuiltinID == Builtin::BIscanf) {
-      FormatIndex = 0;
-      DataIndex = 1;
-    }
-
-    const auto *FormatExpr =
-        TheCall->getArg(FormatIndex)->IgnoreParenImpCasts();
-
-    StringRef FormatStrRef;
-    size_t StrLen;
-    if (!ProcessFormatStringLiteral(FormatExpr, FormatStrRef, StrLen, Context))
+  if (LibCMatch) {
+    // All recognized libc I/O functions feed at most one buffer slot (read- or
+    // write-direction) plus a constant-evaluated count slot into the fortify
+    // checks; the per-function descriptor records which argument indices play
+    // each role.
+    if (auto Idx = LibCMatch->SourceSizeIdx)
+      SourceSize = ComputeSizeArgument(*Idx);
+    if (auto Idx = LibCMatch->MaxOpSizeIdx)
+      MaxOperationSize = ComputeExplicitObjectSizeArgument(*Idx);
+    if (auto Idx = LibCMatch->DestSizeIdx)
+      DestinationSize = ComputeSizeArgument(*Idx);
+  } else {
+    switch (BuiltinID) {
+    default:
       return;
-
-    auto Diagnose = [&](unsigned ArgIndex, unsigned DestSize,
-                        unsigned SourceSize) {
-      DiagID = diag::warn_fortify_scanf_overflow;
-      unsigned Index = ArgIndex + DataIndex;
-      std::string FunctionName = GetFunctionName();
-      DiagRuntimeBehavior(TheCall->getArg(Index)->getBeginLoc(), TheCall,
-                          PDiag(DiagID) << FunctionName << (Index + 1)
-                                        << DestSize << SourceSize);
-    };
-
-    auto ShiftedComputeSizeArgument = [&](unsigned Index) {
-      return ComputeSizeArgument(Index + DataIndex);
-    };
-    ScanfDiagnosticFormatHandler H(ShiftedComputeSizeArgument, Diagnose);
-    const char *FormatBytes = FormatStrRef.data();
-    analyze_format_string::ParseScanfString(H, FormatBytes,
-                                            FormatBytes + StrLen, getLangOpts(),
-                                            Context.getTargetInfo());
-
-    // Unlike the other cases, in this one we have already issued the diagnostic
-    // here, so no need to continue (because unlike the other cases, here the
-    // diagnostic refers to the argument number).
-    return;
-  }
-
-  case Builtin::BIsprintf:
-  case Builtin::BI__builtin___sprintf_chk: {
-    size_t FormatIndex = BuiltinID == Builtin::BIsprintf ? 1 : 3;
-    auto *FormatExpr = TheCall->getArg(FormatIndex)->IgnoreParenImpCasts();
-
-    StringRef FormatStrRef;
-    size_t StrLen;
-    if (ProcessFormatStringLiteral(FormatExpr, FormatStrRef, StrLen, Context)) {
-      EstimateSizeFormatHandler H(FormatStrRef);
-      const char *FormatBytes = FormatStrRef.data();
-      if (!analyze_format_string::ParsePrintfString(
-              H, FormatBytes, FormatBytes + StrLen, getLangOpts(),
-              Context.getTargetInfo(), false)) {
-        DiagID = H.isKernelCompatible()
-                     ? diag::warn_format_overflow
-                     : diag::warn_format_overflow_non_kprintf;
-        SourceSize = llvm::APSInt::getUnsigned(H.getSizeLowerBound())
-                         .extOrTrunc(SizeTypeWidth);
-        if (BuiltinID == Builtin::BI__builtin___sprintf_chk) {
-          DestinationSize = ComputeExplicitObjectSizeArgument(2);
-          IsChkVariant = true;
-        } else {
-          DestinationSize = ComputeSizeArgument(0);
-        }
-        IsTriggered = CompareSizeSourceToDest() > 0;
-        break;
-      }
+    case Builtin::BI__builtin_strcat:
+    case Builtin::BIstrcat:
+    case Builtin::BI__builtin_stpcpy:
+    case Builtin::BIstpcpy:
+    case Builtin::BI__builtin_strcpy:
+    case Builtin::BIstrcpy: {
+      DiagOverflowID = diag::warn_fortify_strlen_overflow;
+      MinOperationSize = ComputeStrLenArgument(1);
+      DestinationSize = ComputeSizeArgument(0);
+      break;
     }
-    return;
-  }
 
-  case Builtin::BI__builtin___memcpy_chk:
-  case Builtin::BI__builtin___memmove_chk:
-  case Builtin::BI__builtin___memset_chk:
-  case Builtin::BI__builtin___strlcat_chk:
-  case Builtin::BI__builtin___strlcpy_chk:
-  case Builtin::BI__builtin___strncat_chk:
-  case Builtin::BI__builtin___strncpy_chk:
-  case Builtin::BI__builtin___stpncpy_chk:
-  case Builtin::BI__builtin___memccpy_chk:
-  case Builtin::BI__builtin___mempcpy_chk: {
-    DiagID = diag::warn_builtin_chk_overflow;
-    SourceSize = ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 2);
-    DestinationSize =
-        ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
-    IsChkVariant = true;
-    IsTriggered = CompareSizeSourceToDest() > 0;
-    break;
-  }
+    case Builtin::BI__builtin___strcat_chk:
+    case Builtin::BI__builtin___stpcpy_chk:
+    case Builtin::BI__builtin___strcpy_chk: {
+      DiagOverflowID = diag::warn_fortify_strlen_overflow;
+      MinOperationSize = ComputeStrLenArgument(1);
+      DestinationSize = ComputeExplicitObjectSizeArgument(2);
+      IsChkVariant = true;
+      break;
+    }
 
-  case Builtin::BI__builtin___snprintf_chk:
-  case Builtin::BI__builtin___vsnprintf_chk: {
-    DiagID = diag::warn_builtin_chk_overflow;
-    SourceSize = ComputeExplicitObjectSizeArgument(1);
-    DestinationSize = ComputeExplicitObjectSizeArgument(3);
-    IsChkVariant = true;
-    IsTriggered = CompareSizeSourceToDest() > 0;
-    break;
-  }
+    case Builtin::BIscanf:
+    case Builtin::BIfscanf:
+    case Builtin::BIsscanf: {
+      unsigned FormatIndex = 1;
+      unsigned DataIndex = 2;
+      if (BuiltinID == Builtin::BIscanf) {
+        FormatIndex = 0;
+        DataIndex = 1;
+      }
 
-  case Builtin::BIstrncat:
-  case Builtin::BI__builtin_strncat:
-  case Builtin::BIstrncpy:
-  case Builtin::BI__builtin_strncpy:
-  case Builtin::BIstpncpy:
-  case Builtin::BI__builtin_stpncpy: {
-    // Whether these functions overflow depends on the runtime strlen of the
-    // string, not just the buffer size, so emitting the "always overflow"
-    // diagnostic isn't quite right. We should still diagnose passing a buffer
-    // size larger than the destination buffer though; this is a runtime abort
-    // in _FORTIFY_SOURCE mode, and is quite suspicious otherwise.
-    DiagID = diag::warn_fortify_source_size_mismatch;
-    SourceSize = ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
-    DestinationSize = ComputeSizeArgument(0);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-    break;
-  }
+      const auto *FormatExpr =
+          TheCall->getArg(FormatIndex)->IgnoreParenImpCasts();
 
-  case Builtin::BIbzero:
-  case Builtin::BI__builtin_bzero:
-  case Builtin::BImemcpy:
-  case Builtin::BI__builtin_memcpy:
-  case Builtin::BImemmove:
-  case Builtin::BI__builtin_memmove:
-  case Builtin::BImemset:
-  case Builtin::BI__builtin_memset:
-  case Builtin::BImempcpy:
-  case Builtin::BI__builtin_mempcpy: {
-    DiagID = diag::warn_fortify_source_overflow;
-    SourceSize = ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
-    DestinationSize = ComputeSizeArgument(0);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-    break;
-  }
-  case Builtin::BIbcopy:
-  case Builtin::BI__builtin_bcopy: {
-    DiagID = diag::warn_fortify_source_overflow;
-    SourceSize = ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
-    DestinationSize = ComputeSizeArgument(1);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-    break;
-  }
+      StringRef FormatStrRef;
+      size_t StrLen;
+      if (!ProcessFormatStringLiteral(FormatExpr, FormatStrRef, StrLen,
+                                      Context))
+        return;
 
-  case Builtin::BIsnprintf:
-  case Builtin::BI__builtin_snprintf:
-  case Builtin::BIvsnprintf:
-  case Builtin::BI__builtin_vsnprintf: {
-    DiagID = diag::warn_fortify_source_size_mismatch;
-    SourceSize = ComputeExplicitObjectSizeArgument(1);
-    const auto *FormatExpr = TheCall->getArg(2)->IgnoreParenImpCasts();
-    StringRef FormatStrRef;
-    size_t StrLen;
-    if (SourceSize &&
-        ProcessFormatStringLiteral(FormatExpr, FormatStrRef, StrLen, Context)) {
-      EstimateSizeFormatHandler H(FormatStrRef);
+      auto Diagnose = [&](unsigned ArgIndex, unsigned DestSize,
+                          unsigned SourceSize) {
+        unsigned Index = ArgIndex + DataIndex;
+        std::string FunctionName = GetFunctionName();
+        DiagRuntimeBehavior(TheCall->getArg(Index)->getBeginLoc(), TheCall,
+                            PDiag(diag::warn_fortify_scanf_overflow)
+                                << FunctionName << (Index + 1) << DestSize
+                                << SourceSize);
+      };
+
+      auto ShiftedComputeSizeArgument = [&](unsigned Index) {
+        return ComputeSizeArgument(Index + DataIndex);
+      };
+      ScanfDiagnosticFormatHandler H(ShiftedComputeSizeArgument, Diagnose);
       const char *FormatBytes = FormatStrRef.data();
-      if (!analyze_format_string::ParsePrintfString(
-              H, FormatBytes, FormatBytes + StrLen, getLangOpts(),
-              Context.getTargetInfo(), /*isFreeBSDKPrintf=*/false)) {
-        llvm::APSInt FormatSize =
-            llvm::APSInt::getUnsigned(H.getSizeLowerBound())
-                .extOrTrunc(SizeTypeWidth);
-        if (FormatSize > *SourceSize && *SourceSize != 0) {
-          unsigned TruncationDiagID =
-              H.isKernelCompatible() ? diag::warn_format_truncation
-                                     : diag::warn_format_truncation_non_kprintf;
-          SmallString<16> SpecifiedSizeStr;
-          SmallString<16> FormatSizeStr;
-          SourceSize->toString(SpecifiedSizeStr, /*Radix=*/10);
-          FormatSize.toString(FormatSizeStr, /*Radix=*/10);
-          DiagRuntimeBehavior(TheCall->getBeginLoc(), TheCall,
-                              PDiag(TruncationDiagID)
-                                  << GetFunctionName() << SpecifiedSizeStr
-                                  << FormatSizeStr);
+      analyze_format_string::ParseScanfString(
+          H, FormatBytes, FormatBytes + StrLen, getLangOpts(),
+          Context.getTargetInfo());
+
+      // Unlike the other cases, in this one we have already issued the
+      // diagnostic here, so no need to continue (because unlike the other
+      // cases, here the diagnostic refers to the argument number).
+      return;
+    }
+
+    case Builtin::BIsprintf:
+    case Builtin::BI__builtin___sprintf_chk: {
+      size_t FormatIndex = BuiltinID == Builtin::BIsprintf ? 1 : 3;
+      auto *FormatExpr = TheCall->getArg(FormatIndex)->IgnoreParenImpCasts();
+
+      StringRef FormatStrRef;
+      size_t StrLen;
+      if (ProcessFormatStringLiteral(FormatExpr, FormatStrRef, StrLen,
+                                     Context)) {
+        EstimateSizeFormatHandler H(FormatStrRef);
+        const char *FormatBytes = FormatStrRef.data();
+        if (!analyze_format_string::ParsePrintfString(
+                H, FormatBytes, FormatBytes + StrLen, getLangOpts(),
+                Context.getTargetInfo(), false)) {
+          DiagOverflowID = H.isKernelCompatible()
+                               ? diag::warn_format_overflow
+                               : diag::warn_format_overflow_non_kprintf;
+          MinOperationSize = llvm::APSInt::getUnsigned(H.getSizeLowerBound())
+                                 .extOrTrunc(SizeTypeWidth);
+          if (BuiltinID == Builtin::BI__builtin___sprintf_chk) {
+            DestinationSize = ComputeExplicitObjectSizeArgument(2);
+            IsChkVariant = true;
+          } else {
+            DestinationSize = ComputeSizeArgument(0);
+          }
+          break;
         }
       }
+      return;
     }
-    DestinationSize = ComputeSizeArgument(0);
-    const Expr *LenArg = TheCall->getArg(1)->IgnoreCasts();
-    const Expr *Dest = TheCall->getArg(0)->IgnoreCasts();
-    IdentifierInfo *FnInfo = FD->getIdentifier();
-    CheckSizeofMemaccessArgument(LenArg, Dest, FnInfo);
-    IsTriggered = CompareSizeSourceToDest() > 0;
-    break;
-  }
-  }
 
-  if (!IsTriggered)
-    return;
+    case Builtin::BI__builtin___memcpy_chk:
+    case Builtin::BI__builtin___memmove_chk:
+    case Builtin::BI__builtin___mempcpy_chk:
+    case Builtin::BI__builtin___memccpy_chk: {
+      // The source buffer is the second argument; the operation reads up to
+      // the user-supplied length from it.
+      DiagOverflowID = diag::warn_builtin_chk_overflow;
+      MinOperationSize =
+          ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 2);
+      SourceSize = ComputeSizeArgument(1);
+      DestinationSize =
+          ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
+      IsChkVariant = true;
+      break;
+    }
+
+    case Builtin::BI__builtin___memset_chk:
+    case Builtin::BI__builtin___strlcat_chk:
+    case Builtin::BI__builtin___strlcpy_chk:
+    case Builtin::BI__builtin___strncat_chk:
+    case Builtin::BI__builtin___strncpy_chk:
+    case Builtin::BI__builtin___stpncpy_chk: {
+      DiagOverflowID = diag::warn_builtin_chk_overflow;
+      MinOperationSize =
+          ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 2);
+      DestinationSize =
+          ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
+      IsChkVariant = true;
+      break;
+    }
+
+    case Builtin::BI__builtin___snprintf_chk:
+    case Builtin::BI__builtin___vsnprintf_chk: {
+      DiagOverflowID = diag::warn_builtin_chk_overflow;
+      MinOperationSize = ComputeExplicitObjectSizeArgument(1);
+      DestinationSize = ComputeExplicitObjectSizeArgument(3);
+      IsChkVariant = true;
+      break;
+    }
+
+    case Builtin::BIstrncat:
+    case Builtin::BI__builtin_strncat:
+    case Builtin::BIstrncpy:
+    case Builtin::BI__builtin_strncpy:
+    case Builtin::BIstpncpy:
+    case Builtin::BI__builtin_stpncpy: {
+      // Whether these functions overflow depends on the runtime strlen of the
+      // string, not just the buffer size, so emitting the "always overflow"
+      // diagnostic isn't quite right. We should still diagnose passing a buffer
+      // size larger than the destination buffer though; this is a runtime abort
+      // in _FORTIFY_SOURCE mode, and is quite suspicious otherwise.
+      MaxOperationSize =
+          ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
+      DestinationSize = ComputeSizeArgument(0);
+      break;
+    }
+
+    case Builtin::BImemset:
+    case Builtin::BI__builtin_memset:
+    case Builtin::BIbzero:
+    case Builtin::BI__builtin_bzero: {
+      MinOperationSize = MaxOperationSize =
+          ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
+      DestinationSize = ComputeSizeArgument(0);
+      break;
+    }
+
+    case Builtin::BImemcpy:
+    case Builtin::BI__builtin_memcpy:
+    case Builtin::BImemmove:
+    case Builtin::BI__builtin_memmove:
+    case Builtin::BImempcpy:
+    case Builtin::BI__builtin_mempcpy: {
+      MinOperationSize = MaxOperationSize =
+          ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
+      DestinationSize = ComputeSizeArgument(0);
+      SourceSize = ComputeSizeArgument(1);
+      break;
+    }
+    case Builtin::BIbcopy:
+    case Builtin::BI__builtin_bcopy: {
+      MinOperationSize = MaxOperationSize =
+          ComputeExplicitObjectSizeArgument(TheCall->getNumArgs() - 1);
+      SourceSize = ComputeSizeArgument(0);
+      DestinationSize = ComputeSizeArgument(1);
+      break;
+    }
+
+    case Builtin::BIsnprintf:
+    case Builtin::BI__builtin_snprintf:
+    case Builtin::BIvsnprintf:
+    case Builtin::BI__builtin_vsnprintf: {
+      MaxOperationSize = ComputeExplicitObjectSizeArgument(1);
+      const auto *FormatExpr = TheCall->getArg(2)->IgnoreParenImpCasts();
+      StringRef FormatStrRef;
+      size_t StrLen;
+      if (MaxOperationSize && ProcessFormatStringLiteral(
+                                  FormatExpr, FormatStrRef, StrLen, Context)) {
+        EstimateSizeFormatHandler H(FormatStrRef);
+        const char *FormatBytes = FormatStrRef.data();
+        if (!analyze_format_string::ParsePrintfString(
+                H, FormatBytes, FormatBytes + StrLen, getLangOpts(),
+                Context.getTargetInfo(), /*isFreeBSDKPrintf=*/false)) {
+          llvm::APSInt FormatSize =
+              llvm::APSInt::getUnsigned(H.getSizeLowerBound())
+                  .extOrTrunc(SizeTypeWidth);
+          if (FormatSize > *MaxOperationSize && *MaxOperationSize != 0) {
+            unsigned TruncationDiagID =
+                H.isKernelCompatible()
+                    ? diag::warn_format_truncation
+                    : diag::warn_format_truncation_non_kprintf;
+            SmallString<16> SpecifiedSizeStr;
+            SmallString<16> FormatSizeStr;
+            MaxOperationSize->toString(SpecifiedSizeStr, /*Radix=*/10);
+            FormatSize.toString(FormatSizeStr, /*Radix=*/10);
+            DiagRuntimeBehavior(TheCall->getBeginLoc(), TheCall,
+                                PDiag(TruncationDiagID)
+                                    << GetFunctionName() << SpecifiedSizeStr
+                                    << FormatSizeStr);
+          }
+        }
+      }
+      DestinationSize = ComputeSizeArgument(0);
+      const Expr *LenArg = TheCall->getArg(1)->IgnoreCasts();
+      const Expr *Dest = TheCall->getArg(0)->IgnoreCasts();
+      IdentifierInfo *FnInfo = FD->getIdentifier();
+      CheckSizeofMemaccessArgument(LenArg, Dest, FnInfo);
+      break;
+    }
+    }
+  }
 
   std::string FunctionName = GetFunctionName();
+  SmallString<16> MaxOpStr;
+  SmallString<16> MinOpStr;
 
-  SmallString<16> DestinationStr;
-  SmallString<16> SourceStr;
-  DestinationSize->toString(DestinationStr, /*Radix=*/10);
-  SourceSize->toString(SourceStr, /*Radix=*/10);
-  DiagRuntimeBehavior(TheCall->getBeginLoc(), TheCall,
-                      PDiag(DiagID)
-                          << FunctionName << DestinationStr << SourceStr);
+  if (MinOperationSize)
+    MinOperationSize->toString(MinOpStr, /*Radix=*/10);
+  if (MaxOperationSize)
+    MaxOperationSize->toString(MaxOpStr, /*Radix=*/10);
+
+  if (DestinationSize) {
+    SmallString<16> DestinationStr;
+    DestinationSize->toString(DestinationStr, /*Radix=*/10);
+    // Check for definite overflow
+    if (MinOperationSize &&
+        llvm::APSInt::compareValues(*MinOperationSize, *DestinationSize) > 0) {
+      DiagRuntimeBehavior(TheCall->getBeginLoc(), TheCall,
+                          PDiag(DiagOverflowID)
+                              << FunctionName << DestinationStr << MinOpStr);
+    }
+    // Check for possible overflow
+    else if (MaxOperationSize && llvm::APSInt::compareValues(
+                                     *MaxOperationSize, *DestinationSize) > 0) {
+      DiagRuntimeBehavior(TheCall->getBeginLoc(), TheCall,
+                          PDiag(DiagMayOverflowID)
+                              << FunctionName << DestinationStr << MaxOpStr);
+    }
+  }
+
+  if (SourceSize) {
+    SmallString<16> SourceStr;
+    SourceSize->toString(SourceStr, /*Radix=*/10);
+    // Check for definite over-read
+    if (MinOperationSize &&
+        llvm::APSInt::compareValues(*MinOperationSize, *SourceSize) > 0) {
+      DiagRuntimeBehavior(TheCall->getBeginLoc(), TheCall,
+                          PDiag(DiagOverReadID)
+                              << FunctionName << SourceStr << MinOpStr);
+
+    }
+    // Check for possible over-read
+    else if (MaxOperationSize &&
+             llvm::APSInt::compareValues(*MaxOperationSize, *SourceSize) > 0) {
+      DiagRuntimeBehavior(TheCall->getBeginLoc(), TheCall,
+                          PDiag(DiagMayOverReadID)
+                              << FunctionName << SourceStr << MaxOpStr);
+    }
+  }
 }
 
 static bool BuiltinSEHScopeCheck(Sema &SemaRef, CallExpr *TheCall,

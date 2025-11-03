@@ -44,19 +44,20 @@ void test_getcwd_wrong_param(void) {
   getcwd(42, 8);
 }
 
-// pread64 with int offset on x86_64: off64_t is required to be 64-bit signed,
-// so int (32-bit on x86_64) is not POSIX pread64.
-ssize_t pread64(int, void *, size_t, int);
+// pread64 with 'char *' buffer instead of POSIX 'void *'. Newlib-style
+// syscall stubs commonly use this shape; the pointer-type mismatch trips
+// the prototype gate.
+int pread64(int, char *, size_t, long long);
 
-void test_pread64_narrow_offset(void) {
+void test_pread64_newlib_buffer(void) {
   char b[4];
   pread64(0, b, 8, 0);
 }
 
-// pwrite64 with int offset: same as above.
-ssize_t pwrite64(int, const void *, size_t, int);
+// pwrite64 with 'const char *' instead of POSIX 'const void *': same shape.
+int pwrite64(int, const char *, size_t, long long);
 
-void test_pwrite64_narrow_offset(void) {
+void test_pwrite64_newlib_buffer(void) {
   char b[4];
   pwrite64(0, b, 8, 0);
 }
