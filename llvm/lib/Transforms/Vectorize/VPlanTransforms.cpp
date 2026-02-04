@@ -1849,7 +1849,7 @@ static void narrowToSingleScalarRecipes(VPlan &Plan) {
            vp_depth_first_deep(Plan.getEntry()))) {
     for (VPRecipeBase &R : make_early_inc_range(reverse(*VPBB))) {
       if (!isa<VPWidenRecipe, VPWidenGEPRecipe, VPReplicateRecipe,
-               VPWidenIntrinsicRecipe>(&R))
+               VPWidenIntrinsicRecipe, VPWidenCastRecipe>(&R))
         continue;
       auto *RepR = dyn_cast<VPReplicateRecipe>(&R);
       if (RepR && (RepR->isSingleScalar() || RepR->isPredicated()))
@@ -1927,10 +1927,18 @@ static void narrowToSingleScalarRecipes(VPlan &Plan) {
           }))
         continue;
 
-      auto *Clone = new VPReplicateRecipe(
-          RepOrWidenR->getUnderlyingInstr(), RepOrWidenR->operands(),
-          true /*IsSingleScalar*/, nullptr, *RepOrWidenR);
-      Clone->insertBefore(RepOrWidenR);
+      VPSingleDefRecipe *Clone;
+      if (auto *CastR = dyn_cast<VPWidenCastRecipe>(RepOrWidenR)) {
+        Clone = VPBuilder(CastR).createScalarCast(
+            CastR->getOpcode(), CastR->getOperand(0), CastR->getResultType(),
+            cast_or_null<Instruction>(CastR->getUnderlyingValue()),
+            CastR->getDebugLoc(), *CastR, *CastR);
+      } else {
+        Clone = new VPReplicateRecipe(
+            RepOrWidenR->getUnderlyingInstr(), RepOrWidenR->operands(),
+            true /*IsSingleScalar*/, nullptr, *RepOrWidenR);
+        Clone->insertBefore(RepOrWidenR);
+      }
       RepOrWidenR->replaceAllUsesWith(Clone);
       if (isDeadRecipe(*RepOrWidenR))
         RepOrWidenR->eraseFromParent();
