@@ -102,6 +102,7 @@ public:
 
   /// Mutates a local variable.
   template <typename T> void setLocal(unsigned Offset, const T &Value) {
+    // assert(localInlineDesc(Offset)->Desc->isPrimitive());
     localRef<T>(Offset) = Value;
     localInlineDesc(Offset)->IsInitialized = true;
   }

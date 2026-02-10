@@ -13,15 +13,21 @@
 #ifndef LLVM_CLANG_AST_INTERP_INTERPSTATE_H
 #define LLVM_CLANG_AST_INTERP_INTERPSTATE_H
 
+#include "Boolean.h"
 #include "Context.h"
 #include "DynamicAllocator.h"
 #include "Floating.h"
 #include "Function.h"
+#include "Integral.h"
+#include "IntegralAP.h"
 #include "InterpFrame.h"
 #include "InterpStack.h"
+#include "MemberPointer.h"
+#include "Pointer.h"
 #include "State.h"
 
 namespace clang {
+class CXXThrowExpr;
 namespace interp {
 class Context;
 class SourceMapper;
@@ -30,6 +36,15 @@ struct StdAllocatorCaller {
   const Expr *Call = nullptr;
   QualType AllocType;
   explicit operator bool() { return Call; }
+};
+
+struct ThrowValue {
+  const Type *Ty;
+  const CXXThrowExpr *ThrowSite;
+  AnyPrimType Value;
+  Pointer Ptr;
+  PrimType T;
+  bool Caught;
 };
 
 /// Interpreter context.
@@ -140,6 +155,7 @@ private:
   mutable std::optional<llvm::BumpPtrAllocator> Allocator;
 
 public:
+  size_t ThrowTrapStackSize = 0;
   /// Reference to the module containing all bytecode.
   Program &P;
   /// Temporary stack.
@@ -161,6 +177,8 @@ public:
   const bool InfiniteSteps = false;
   /// ID identifying this evaluation.
   const unsigned EvalID;
+
+  std::optional<ThrowValue> ThrownValue = std::nullopt;
 
   /// Things needed to do speculative execution.
   SmallVectorImpl<PartialDiagnosticAt> *PrevDiags = nullptr;
