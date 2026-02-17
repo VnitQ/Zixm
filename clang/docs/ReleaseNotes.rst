@@ -216,9 +216,10 @@ Deprecated Compiler Flags
 
 Modified Compiler Flags
 -----------------------
-- The `-mno-outline` and `-moutline` compiler flags are now allowed on RISC-V and X86, which both support the machine outliner.
-- The `-mno-outline` flag will now add the `nooutline` IR attribute, so that
-  `-mno-outline` and `-moutline` objects can be mixed correctly during LTO.
+- ``-ftrivial-auto-var-init=zero`` and ``-ftrivial-auto-var-init=pattern`` now
+  correctly initialize variables whose declaration is bypassed by ``goto`` or
+  ``switch`` statements. Previously, such variables were silently left
+  uninitialized.
 
 Removed Compiler Flags
 ----------------------
