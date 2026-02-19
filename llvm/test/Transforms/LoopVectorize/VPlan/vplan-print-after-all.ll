@@ -15,6 +15,9 @@
 ; CHECK: VPlan for loop in 'foo' after VPlanTransforms::createLoopRegions
 ; CHECK: VPlan for loop in 'foo' after VPlanTransforms::introduceMasksAndLinearize
 ; CHECK: VPlan for loop in 'foo' after VPlanTransforms::createInLoopReductionRecipes
+; CHECK: VPlan for loop in 'foo' after lowerMemoryIdioms
+; CHECK: VPlan for loop in 'foo' after scalarizeMemOpsWithIrregularTypes
+; CHECK: VPlan for loop in 'foo' after delegateMemOpWideningToLegacyCM
 ; CHECK: VPlan for loop in 'foo' after VPlanTransforms::makeMemOpWideningDecisions
 ; CHECK: VPlan for loop in 'foo' after VPlanTransforms::makeScalarizationDecisions
 ; CHECK: VPlan for loop in 'foo' after VPlanTransforms::makeCallWideningDecisions
