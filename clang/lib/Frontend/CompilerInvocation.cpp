@@ -3149,6 +3149,11 @@ static bool ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
 
   if (Args.hasArg(OPT_clangir_disable_verifier))
     Opts.ClangIRDisableCIRVerifier = true;
+  if (Args.hasArg(OPT_fclangir_lib_opt) || Args.hasArg(OPT_fclangir_lib_opt_EQ))
+    llvm::outs() << "Enabling ClangIR library optimizations.\n";
+  else
+    llvm::outs() << "ClangIR library optimizations are disabled by default. Use "
+                    "-fclangir-lib-opt to enable them.\n";
 
   if (Args.hasArg(OPT_fclangir_lib_opt) || Args.hasArg(OPT_fclangir_lib_opt_EQ))
     Opts.ClangIRLibOptEnabled = true;
