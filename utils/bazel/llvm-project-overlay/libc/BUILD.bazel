@@ -8098,8 +8098,6 @@ libc_math_function(
     ],
 )
 
-
-
 libc_math_function(name = "remainder")
 
 libc_math_function(name = "remainderf")
