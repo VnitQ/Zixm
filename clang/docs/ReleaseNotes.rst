@@ -583,6 +583,10 @@ libclang
 - Visit switch initializer statements (https://bugs.kde.org/show_bug.cgi?id=415537#c2)
 - Fix crash in clang_getBinaryOperatorKindSpelling and clang_getUnaryOperatorKindSpelling
 - The clang_Module_getASTFile API is deprecated and now always returns nullptr
+- Added ``clang_Cursor_getNumTemplateParameters``, ``clang_Cursor_getTemplateParameter``,
+  ``clang_Cursor_isTemplateParameterPack``, and ``clang_Cursor_getTemplateArgumentIntegralType``.
+- Fixed ``clang_Cursor_getNumTemplateArguments`` and related APIs to work with
+  ``CXCursor_CXXMethod`` cursors and to correctly allow indexing into parameter pack arguments.
 
 Code Completion
 ---------------
@@ -623,6 +627,8 @@ Python Binding Changes
   so it can be used the same as ``CodeCompletionResults.results``.
 - Added a new helper method ``get_clang_version`` to the class ``Config`` to
   read the version string of the libclang in use.
+- Added ``Cursor.get_num_template_parameters``, ``Cursor.get_template_parameter``,
+  ``Cursor.is_template_parameter_pack``, and ``Cursor.get_template_argument_integral_type``.
 
 OpenMP Support
 --------------
