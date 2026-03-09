@@ -3253,13 +3253,13 @@ def clangir_disable_verifier : Flag<["-"], "clangir-disable-verifier">,
   HelpText<"ClangIR: Disable MLIR module verifier">,
   MarshallingInfoFlag<FrontendOpts<"ClangIRDisableCIRVerifier">>;
 
-def fclangir_lib_opt_EQ : Joined<["-"], "fclangir-lib-opt=">,
+def clangir_lib_opt_EQ : Joined<["-"], "clangir-lib-opt=">,
   Visibility<[ClangOption, CC1Option]>, Group<f_Group>, Values<"all">,
   HelpText<"Enable C/C++ library based optimizations (with options)">,
   MarshallingInfoString<FrontendOpts<"clangIRLibOptOptions">>;
-def fclangir_lib_opt : Flag<["-"], "fclangir-lib-opt">,
+def clangir_lib_opt : Flag<["-"], "clangir-lib-opt">,
   Visibility<[ClangOption, CC1Option]>, Group<f_Group>,
-  Alias<fclangir_lib_opt_EQ>, AliasArgs<["all"]>,
+  Alias<clangir_lib_opt_EQ>, AliasArgs<["all"]>,
   HelpText<"Enable C/C++ library based optimizations">;
 defm clangir : BoolFOption<"clangir",
   FrontendOpts<"UseClangIRPipeline">, DefaultFalse,

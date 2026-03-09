@@ -26,27 +26,14 @@ mlir::LogicalResult runCIRToCIRPasses(mlir::ModuleOp theModule,
 
   llvm::TimeTraceScope scope("CIR To CIR Passes");
 
-  // TODO(CIR): Make this actually propagate errors correctly. This is stubbed
-  // in to get rebases going.
-
-  auto errorHandler = [](const llvm::Twine &) -> mlir::LogicalResult {
-    return mlir::LogicalResult::failure();
-  };
-
   mlir::PassManager pm(&mlirContext);
   pm.addPass(mlir::createCIRCanonicalizePass());
 
   if (enableCIRSimplify)
     pm.addPass(mlir::createCIRSimplifyPass());
 
-  if (enableLibOpt) {
-    auto libOptPass = mlir::createLibOptPass();
-    if (libOptPass->initializeOptions(libOptOptions, errorHandler).failed()) {
-      return mlir::failure();
-    }
-
-    pm.addPass(std::move(libOptPass));
-  }
+  if (enableLibOpt)
+    pm.addPass(mlir::createLibOptPass());
 
   pm.addPass(mlir::createTargetLoweringPass());
   pm.addPass(mlir::createCXXABILoweringPass());
