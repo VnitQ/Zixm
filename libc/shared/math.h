@@ -64,6 +64,7 @@
 #include "math/ceilf16.h"
 #include "math/ceill.h"
 #include "math/cos.h"
+#include "math/cosbf16.h"
 #include "math/cosf.h"
 #include "math/cosf16.h"
 #include "math/coshf.h"
