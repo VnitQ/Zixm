@@ -588,6 +588,8 @@ void HLSLExternalSemaSource::defineHLSLTypesWithForwardDeclarations() {
         .addByteAddressBufferLoadMethods()
         .addByteAddressBufferStoreMethods()
         .addGetDimensionsMethodForBuffer()
+        .addInterlockedMethodsForBuffer()
+        .addInterlocked64MethodsForBuffer()
         .completeDefinition();
   });
   Decl = BuiltinTypeDeclBuilder(*SemaPtr, HLSLNamespace,
