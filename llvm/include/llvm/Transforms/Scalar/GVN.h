@@ -385,6 +385,7 @@ private:
 
   // Other helper routines.
   bool processInstruction(Instruction *I);
+  bool foldScalarMulToVectorExtract(Instruction *I);
   bool processBlock(BasicBlock *BB);
   void dump(DenseMap<uint32_t, Value *> &Map) const;
   bool iterateOnFunction(Function &F);
