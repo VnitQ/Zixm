@@ -15,7 +15,6 @@
 #include "AVR.h"
 #include "AVRInstrInfo.h"
 #include "AVRMachineFunctionInfo.h"
-#include "AVRTargetMachine.h"
 #include "MCTargetDesc/AVRMCTargetDesc.h"
 
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -94,7 +93,13 @@ void AVRFrameLowering::emitPrologue(MachineFunction &MF,
   }
 
   const MachineFrameInfo &MFI = MF.getFrameInfo();
-  unsigned FrameSize = MFI.getStackSize() - AFI->getCalleeSavedFrameSize();
+  unsigned FrameSize;
+
+  if (STI.getRegisterInfo()->hasStackRealignment(MF)) {
+    FrameSize = MFI.getStackSize() - getOffsetOfLocalArea();
+  } else {
+    FrameSize = MFI.getStackSize() - AFI->getCalleeSavedFrameSize();
+  }
 
   // Skip the callee-saved push instructions.
   while (
@@ -103,14 +108,15 @@ void AVRFrameLowering::emitPrologue(MachineFunction &MF,
     ++MBBI;
   }
 
-  // Update Y with the new base value.
-  BuildMI(MBB, MBBI, DL, TII.get(AVR::SPREAD), AVR::R29R28)
+  // Update FramePtr with the new base value.
+  BuildMI(MBB, MBBI, DL, TII.get(AVR::SPREAD), AVR::FPReg)
       .addReg(AVR::SP)
       .setMIFlag(MachineInstr::FrameSetup);
 
   // Mark the FramePtr as live-in in every block except the entry.
   for (MachineBasicBlock &MBBJ : llvm::drop_begin(MF)) {
-    MBBJ.addLiveIn(AVR::R29R28);
+    MBBJ.addLiveIn(AVR::FPReg);
+    MBBJ.addLiveIn(AVR::SPReg); // TODO should be conditional
   }
 
   if (!FrameSize) {
@@ -121,17 +127,34 @@ void AVRFrameLowering::emitPrologue(MachineFunction &MF,
   unsigned Opcode = (isUInt<6>(FrameSize) && STI.hasADDSUBIW()) ? AVR::SBIWRdK
                                                                 : AVR::SUBIWRdK;
 
-  MachineInstr *MI = BuildMI(MBB, MBBI, DL, TII.get(Opcode), AVR::R29R28)
-                         .addReg(AVR::R29R28, RegState::Kill)
+  MachineInstr *MI = BuildMI(MBB, MBBI, DL, TII.get(Opcode), AVR::FPReg)
+                         .addReg(AVR::FPReg, RegState::Kill)
                          .addImm(FrameSize)
                          .setMIFlag(MachineInstr::FrameSetup);
+
   // The SREG implicit def is dead.
   MI->getOperand(3).setIsDead();
 
-  // Write back R29R28 to SP and temporarily disable interrupts.
+  // Write back FP to SP and temporarily disable interrupts.
   BuildMI(MBB, MBBI, DL, TII.get(AVR::SPWRITE), AVR::SP)
-      .addReg(AVR::R29R28)
+      .addReg(AVR::FPReg)
       .setMIFlag(MachineInstr::FrameSetup);
+
+  if (STI.getRegisterInfo()->hasStackRealignment(MF)) {
+    uint64_t Align = (int)MFI.getMaxAlign().value();
+
+    TII.copyPhysReg(MBB, MBBI, DL, AVR::SPReg, AVR::FPReg, false, false, false);
+
+    BuildMI(MBB, MBBI, DL, TII.get(AVR::SUBIWRdK), AVR::SPReg)
+        .addReg(AVR::SPReg)
+        .addImm(-Align)
+        .setMIFlag(MachineInstr::FrameSetup);
+
+    BuildMI(MBB, MBBI, DL, TII.get(AVR::ANDIWRdK), AVR::SPReg)
+        .addReg(AVR::SPReg)
+        .addImm(-Align)
+        .setMIFlag(MachineInstr::FrameSetup);
+  }
 }
 
 static void restoreStatusRegister(MachineFunction &MF, MachineBasicBlock &MBB) {
@@ -174,9 +197,16 @@ void AVRFrameLowering::emitEpilogue(MachineFunction &MF,
 
   DebugLoc DL = MBBI->getDebugLoc();
   const MachineFrameInfo &MFI = MF.getFrameInfo();
-  unsigned FrameSize = MFI.getStackSize() - AFI->getCalleeSavedFrameSize();
   const AVRSubtarget &STI = MF.getSubtarget<AVRSubtarget>();
   const AVRInstrInfo &TII = *STI.getInstrInfo();
+
+  unsigned FrameSize;
+
+  if (STI.getRegisterInfo()->hasStackRealignment(MF)) {
+    FrameSize = MFI.getStackSize() - getOffsetOfLocalArea();
+  } else {
+    FrameSize = MFI.getStackSize() - AFI->getCalleeSavedFrameSize();
+  }
 
   // Early exit if there is no need to restore the frame pointer.
   if (!FrameSize && !MF.getFrameInfo().hasVarSizedObjects()) {
@@ -208,18 +238,54 @@ void AVRFrameLowering::emitEpilogue(MachineFunction &MF,
     }
 
     // Restore the frame pointer by doing FP += <size>.
-    MachineInstr *MI = BuildMI(MBB, MBBI, DL, TII.get(Opcode), AVR::R29R28)
-                           .addReg(AVR::R29R28, RegState::Kill)
+    MachineInstr *MI = BuildMI(MBB, MBBI, DL, TII.get(Opcode), AVR::FPReg)
+                           .addReg(AVR::FPReg, RegState::Kill)
                            .addImm(FrameSize);
+
     // The SREG implicit def is dead.
     MI->getOperand(3).setIsDead();
   }
 
-  // Write back R29R28 to SP and temporarily disable interrupts.
+  // Write back FP to SP and temporarily disable interrupts.
   BuildMI(MBB, MBBI, DL, TII.get(AVR::SPWRITE), AVR::SP)
-      .addReg(AVR::R29R28, RegState::Kill);
+      .addReg(AVR::FPReg, RegState::Kill);
 
   restoreStatusRegister(MF, MBB);
+}
+
+StackOffset AVRFrameLowering::getFrameIndexReference(const MachineFunction &MF,
+                                                     int FI,
+                                                     Register &FrameReg) const {
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  const TargetRegisterInfo *RI = MF.getSubtarget().getRegisterInfo();
+
+  assert(MFI.getStackID(FI) == TargetStackID::Default && "Unsupported stack");
+
+  int Offset;
+
+  if (RI->hasStackRealignment(MF) && !MFI.isFixedObjectIndex(FI)) {
+    FrameReg = AVR::SPReg;
+
+    Offset = MFI.getObjectOffset(FI) + MFI.getOffsetAdjustment() +
+             MFI.getStackSize() - getOffsetOfLocalArea();
+  } else {
+    FrameReg = AVR::FPReg;
+
+    Offset = MFI.getObjectOffset(FI) + MFI.getOffsetAdjustment() +
+             MFI.getStackSize() - getOffsetOfLocalArea() + 1;
+
+    if (RI->hasStackRealignment(MF)) {
+      const AVRMachineFunctionInfo *AFI = MF.getInfo<AVRMachineFunctionInfo>();
+
+      // TODO feels suspicious, like we're offsetting something that should in
+      //      fact be accounted for elsewhere
+      Offset += 2 + AFI->getCalleeSavedFrameSize();
+    }
+  }
+
+  assert(Offset >= 0);
+
+  return StackOffset::getFixed(Offset);
 }
 
 // Return true if the specified function should have a dedicated frame
@@ -232,10 +298,11 @@ void AVRFrameLowering::emitEpilogue(MachineFunction &MF,
 // Notice that strictly this is not a frame pointer because it contains SP after
 // frame allocation instead of having the original SP in function entry.
 bool AVRFrameLowering::hasFPImpl(const MachineFunction &MF) const {
+  const TargetRegisterInfo *RegInfo = MF.getSubtarget().getRegisterInfo();
   const AVRMachineFunctionInfo *FuncInfo = MF.getInfo<AVRMachineFunctionInfo>();
 
   return (FuncInfo->getHasSpills() || FuncInfo->getHasAllocas() ||
-          FuncInfo->getHasStackArgs() ||
+          FuncInfo->getHasStackArgs() || RegInfo->hasStackRealignment(MF) ||
           MF.getFrameInfo().hasVarSizedObjects());
 }
 
@@ -419,12 +486,17 @@ void AVRFrameLowering::determineCalleeSaves(MachineFunction &MF,
                                             RegScavenger *RS) const {
   TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
 
-  // If we have a frame pointer, the Y register needs to be saved as well.
   if (hasFP(MF)) {
-    SavedRegs.set(AVR::R29);
-    SavedRegs.set(AVR::R28);
+    SavedRegs.set(AVR::FPRegHi);
+    SavedRegs.set(AVR::FPRegLo);
+
+    if (MF.getSubtarget().getRegisterInfo()->hasStackRealignment(MF)) {
+      SavedRegs.set(AVR::SPRegHi);
+      SavedRegs.set(AVR::SPRegLo);
+    }
   }
 }
+
 /// The frame analyzer pass.
 ///
 /// Scans the function for allocas and used arguments
