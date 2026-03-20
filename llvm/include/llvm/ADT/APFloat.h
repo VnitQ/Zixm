@@ -999,6 +999,7 @@ class HexFloat final {
   void assign(const HexFloat &);
   void copySignificand(const HexFloat &);
   void freeSignificand();
+  void cohereLowSignAndExponent();
 
   opStatus convertToSignExtendedInteger(MutableArrayRef<integerPart> Input,
                                         unsigned int Width, bool IsSigned,
