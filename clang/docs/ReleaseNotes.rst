@@ -228,6 +228,10 @@ Attribute Changes in Clang
   sound because any writer must hold all capabilities, so holding any one
   prevents concurrent writes.
 
+- Added the ``null_terminated`` attribute, which can be applied to function
+  parameters of pointer or array type (of scalar type) to indicate that the
+  function expects a null-terminated buffer.
+
 Improvements to Clang's diagnostics
 -----------------------------------
 - Added ``-Wlifetime-safety`` to enable lifetime safety analysis,
@@ -535,6 +539,13 @@ Static Analyzer
     - New checkers and features
     - Improvements
     - Moved checkers
+
+New checkers or options
+^^^^^^^^^^^^^^^^^^^^^^^
+
+- Introduced the ``alpha.core.NullTerminated`` checker to detect arrays missing
+  a null terminator passed as a parameter marked with the ``null_terminated``
+  attribute.
 
 .. _release-notes-sanitizers:
 
