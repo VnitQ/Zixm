@@ -998,7 +998,7 @@ static const SCEV *getStrideFromAddRec(const SCEVAddRecExpr *AR, const Loop *Lp,
 
   // Check the step is loop invariant.
   if (!AR->isAffine())
-    return nullptr;
+    return BadStride("Step is varying");
 
   const SCEV *Step = AR->getStepRecurrence(*PSE.getSE());
 
