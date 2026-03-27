@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TRANSFORMS_INSTRUMENTATION_ESCAPEANALYSIS_H
-#define LLVM_TRANSFORMS_INSTRUMENTATION_ESCAPEANALYSIS_H
+#ifndef LLVM_ANALYSIS_ESCAPEANALYSIS_H
+#define LLVM_ANALYSIS_ESCAPEANALYSIS_H
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -23,6 +23,7 @@
 #include "llvm/Analysis/MemorySSA.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/PassManager.h"
+#include "llvm/Support/Compiler.h"
 
 namespace llvm {
 /// Find underlying base objects for a pointer possibly produced by loads.
@@ -56,16 +57,15 @@ namespace llvm {
 ///  - `MaxSteps` is a per-query safety valve limiting the combined number of
 ///    processed worklist nodes. When exceeded, the analysis bails out and
 ///    sets `*IsComplete == false`.
-void getUnderlyingObjectsThroughLoads(const Value *Ptr, MemorySSA *MSSA,
-                                      SmallPtrSetImpl<const Value *> &Result,
-                                      const TargetLibraryInfo *TLI = nullptr,
-                                      LoopInfo *LI = nullptr,
-                                      bool *IsComplete = nullptr,
-                                      unsigned MaxSteps = 10000);
+LLVM_ABI void getUnderlyingObjectsThroughLoads(
+    const Value *Ptr, MemorySSA *MSSA, SmallPtrSetImpl<const Value *> &Result,
+    const TargetLibraryInfo *TLI = nullptr, LoopInfo *LI = nullptr,
+    bool *IsComplete = nullptr, unsigned MaxSteps = 10000);
 
 /// Detect heap allocations. Complements isAllocationFn() by checking
 /// library functions directly when attributes might be missing.
-bool isHeapAllocation(const CallBase *CB, const TargetLibraryInfo &TLI);
+LLVM_ABI bool isHeapAllocation(const CallBase *CB,
+                               const TargetLibraryInfo &TLI);
 
 /// EscapeAnalysisInfo - This class implements the actual backward dataflow
 /// analysis for a function; queries are per allocation site.
@@ -82,7 +82,7 @@ struct EscapeAnalysisInfo {
     TLI = &FAM.getResult<TargetLibraryAnalysis>(F);
     MSSA = &FAM.getResult<MemorySSAAnalysis>(F).getMSSA();
     LI = &FAM.getResult<LoopAnalysis>(F);
-  };
+  }
   ~EscapeAnalysisInfo() = default;
 
   /// Return true if \p Alloc may escape the function.
@@ -91,13 +91,13 @@ struct EscapeAnalysisInfo {
   ///                allocation.
   /// \returns true if the allocation escapes or if \p Alloc is not an
   /// allocation site.
-  bool isEscaping(const Value &Alloc);
+  LLVM_ABI bool isEscaping(const Value &Alloc);
 
   /// Print escape information for all allocations in the function
-  void print(raw_ostream &OS);
+  LLVM_ABI void print(raw_ostream &OS);
 
-  bool invalidate(Function &F, const PreservedAnalyses &PA,
-                  FunctionAnalysisManager::Invalidator &Inv);
+  LLVM_ABI bool invalidate(Function &Fn, const PreservedAnalyses &PA,
+                           FunctionAnalysisManager::Invalidator &Inv);
 
 private:
   Function &F;
@@ -114,8 +114,9 @@ private:
   class EscapeCaptureTracker : public CaptureTracker {
   public:
     EscapeCaptureTracker(EscapeAnalysisInfo &EAI,
-                         const SmallPtrSet<const Value *, 32> &ProcessingSet)
-        : EAI(EAI), ProcessingSet(ProcessingSet) {}
+                         const SmallPtrSet<const Value *, 32> &ProcessingSet,
+                         bool &SawCycle)
+        : EAI(EAI), ProcessingSet(ProcessingSet), SawCycle(SawCycle) {}
 
     void tooManyUses() override { Escaped = true; }
     bool shouldExplore(const Use *U) override;
@@ -125,6 +126,7 @@ private:
   private:
     EscapeAnalysisInfo &EAI;
     SmallPtrSet<const Value *, 32> ProcessingSet;
+    bool &SawCycle;
     bool Escaped = false;
 
     /// Analyze if storing to destination causes escape
@@ -157,8 +159,14 @@ private:
   };
 
   /// Solve escape for a single allocation site using backward dataflow.
+  ///
+  /// If \p SawCycle is provided, it is set when the query encounters a
+  /// backedge into the current \p ProcessingSet. This does not by itself mean
+  /// the object escapes; it only marks a negative result as provisional so it
+  /// is not memoized before the whole local SCC is resolved.
   bool solveEscapeFor(const Value &Ptr,
-                      SmallPtrSet<const Value *, 32> &ProcessingSet);
+                      SmallPtrSet<const Value *, 32> &ProcessingSet,
+                      bool *SawCycle = nullptr);
 
   /// Helper function to detect allocation sites (malloc/new-like)
   /// Returns true if V is an Alloca or a call to a known heap alloc function.
@@ -188,4 +196,4 @@ public:
 
 } // end namespace llvm
 
-#endif // LLVM_TRANSFORMS_INSTRUMENTATION_ESCAPEANALYSIS_H
+#endif // LLVM_ANALYSIS_ESCAPEANALYSIS_H

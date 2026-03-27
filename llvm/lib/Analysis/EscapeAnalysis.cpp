@@ -14,7 +14,6 @@
 #include "llvm/Analysis/EscapeAnalysis.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/MemorySSA.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -39,10 +38,10 @@ static cl::opt<unsigned> WorklistLimit(
 
 // getUnderlyingObjects(..., MaxLookup = 0) is assumed to mean "unbounded".
 // If upstream changes semantics, this must be revisited.
-static const unsigned VTMaxLookup = 0;
+static constexpr unsigned VTMaxLookup = 0;
 
 //===----------------------------------------------------------------------===//
-// MemorySSA-related utils
+// File-local MemorySSA utilities
 //===----------------------------------------------------------------------===//
 
 namespace llvm {
@@ -62,8 +61,8 @@ static void appendIncomingMAs(const MemoryPhi *MPhi,
                               SmallVectorImpl<MemoryAccess *> &MAWorkList,
                               MemoryLocation Loc, MemorySSAWalker *Walker,
                               bool &IsComplete) {
-  for (unsigned i = 0, N = MPhi->getNumIncomingValues(); i != N; ++i) {
-    MemoryAccess *InMA = MPhi->getIncomingValue(i);
+  for (unsigned Idx = 0, N = MPhi->getNumIncomingValues(); Idx != N; ++Idx) {
+    MemoryAccess *InMA = MPhi->getIncomingValue(Idx);
     MemoryAccess *EdgeCl = Walker->getClobberingMemoryAccess(InMA, Loc);
     if (!EdgeCl) {
       IsComplete = false;
@@ -141,8 +140,10 @@ static bool tryValueTracking(const Value *V, LoopInfo *LI,
 }
 
 bool isHeapAllocation(const CallBase *CB, const TargetLibraryInfo &TLI) {
-  // Try standard path first (works for C++ new and modern IR with allockind)
-  if (isAllocationFn(CB, &TLI) || isNewLikeFn(CB, &TLI))
+  // Try the standard path first. In current MemoryBuiltins, isAllocationFn()
+  // already recognizes operator new/new[] and alloc/realloc-style functions,
+  // including modern IR annotated with allockind.
+  if (isAllocationFn(CB, &TLI))
     return true;
 
   // Fallback: check directly via TLI for malloc/calloc/etc
@@ -196,8 +197,7 @@ void getUnderlyingObjectsThroughLoads(const Value *Ptr, MemorySSA *MSSA,
     return;
   }
 
-  auto addTerminal = [&](const Value *Term,
-                         bool MarkIncompleteIfNotBase = true) {
+  auto addTerminal = [&](const Value *Term) {
     if (!Term || !Term->getType()->isPointerTy())
       return;
     bool IsBase = isa<AllocaInst>(Term) || isa<Argument>(Term) ||
@@ -210,7 +210,7 @@ void getUnderlyingObjectsThroughLoads(const Value *Ptr, MemorySSA *MSSA,
     LLVM_DEBUG(dbgs() << "Mark terminal: " << *Term
                       << " IsBase=" << (IsBase ? "yes" : "no") << "\n");
     Result.insert(Term);
-    if (IsComplete && !IsBase && MarkIncompleteIfNotBase) {
+    if (IsComplete && !IsBase) {
       *IsComplete = false;
       LLVM_DEBUG(dbgs() << "Marking incomplete due to non-base\n");
     }
@@ -365,14 +365,14 @@ bool EscapeAnalysisInfo::EscapeCaptureTracker::doesStoreDestEscape(
     // If storing to another local allocation, recursively check if it escapes
     if (const auto *Alloca = dyn_cast<AllocaInst>(Base)) {
       // Recurse to decide whether the target alloca itself escapes.
-      if (EAI.solveEscapeFor(*Alloca, ProcessingSet)) {
+      if (EAI.solveEscapeFor(*Alloca, ProcessingSet, &SawCycle)) {
         LLVM_DEBUG(dbgs() << "  Stored to escaping alloca, escapes\n");
         return true;
       }
     } else if (const auto *CB = dyn_cast<CallBase>(Base)) {
       // Store to malloc/new call result (heap allocation).
       if (isHeapAllocation(CB, *EAI.TLI)) {
-        if (EAI.solveEscapeFor(*CB, ProcessingSet)) {
+        if (EAI.solveEscapeFor(*CB, ProcessingSet, &SawCycle)) {
           LLVM_DEBUG(dbgs() << "  Stored into escaping heap alloc, escapes\n");
           return true; // Stored into escaping heap allocation — escapes.
         }
@@ -545,7 +545,7 @@ bool EscapeAnalysisInfo::EscapeCaptureTracker::doesStoredPointerEscapeViaLoads(
       return true;
     if (!Load->getType()->isPointerTy())
       continue; // Loading non-pointer cannot cause escape
-    if (EAI.solveEscapeFor(*Load, ProcessingSet)) {
+    if (EAI.solveEscapeFor(*Load, ProcessingSet, &SawCycle)) {
       LLVM_DEBUG(dbgs() << "  -> escapes via load\n");
       return true;
     }
@@ -600,18 +600,16 @@ EscapeAnalysisInfo::EscapeCaptureTracker::captured(const Use *U,
     return ContinueIgnoringReturn;
   }
 
-  // Default: if CaptureTracking still indicates capture, treat as escape.
-  if (capturesAnything(CI.UseCC)) {
-    LLVM_DEBUG(dbgs() << "  Captured by: " << *I << "\n");
-    Escaped = true;
-    return Stop;
-  }
-
-  llvm_unreachable("Unhandled case in EscapeCaptureTracker::captured");
+  // After the capturesNothing and isPassthrough early-returns above, UseCC
+  // captures something — treat as escape.
+  LLVM_DEBUG(dbgs() << "  Captured by: " << *I << "\n");
+  Escaped = true;
+  return Stop;
 }
 
 bool EscapeAnalysisInfo::solveEscapeFor(
-    const Value &Ptr, SmallPtrSet<const Value *, 32> &ProcessingSet) {
+    const Value &Ptr, SmallPtrSet<const Value *, 32> &ProcessingSet,
+    bool *SawCycle) {
   LLVM_DEBUG(dbgs() << "Solving escape for "
                     << (Ptr.hasName() ? Ptr.getName() : "Load") << "\n");
   if (const auto CacheIt = Cache.find(&Ptr); CacheIt != Cache.end()) {
@@ -622,21 +620,36 @@ bool EscapeAnalysisInfo::solveEscapeFor(
 
   if (ProcessingSet.contains(&Ptr)) { // Cycle
     LLVM_DEBUG(dbgs() << "  Cycle detected for " << Ptr.getName()
-                      << ", assume escapes\n");
-    return true;
+                      << ", defer to enclosing SCC\n");
+    if (SawCycle)
+      *SawCycle = true;
+    return false;
   }
   ProcessingSet.insert(&Ptr);
 
-  EscapeCaptureTracker Tracker(*this, ProcessingSet);
+  // Recursive queries performed by EscapeCaptureTracker write into
+  // LocalSawCycle through the bool reference passed to the tracker.
+  // A 'false' result that depended on an in-progress cycle is provisional and
+  // must not be memoized, otherwise peers in the same local SCC could observe
+  // an early cached 'no-escape' result before the SCC is fully resolved.
+  bool LocalSawCycle = false;
+
+  EscapeCaptureTracker Tracker(*this, ProcessingSet, LocalSawCycle);
 
   // Use the CaptureTracking infrastructure to analyze the allocation
   PointerMayBeCaptured(&Ptr, &Tracker, /*MaxUsesToExplore=*/WorklistLimit);
-  Cache[&Ptr] = Tracker.hasEscaped();
+  const bool Escaped = Tracker.hasEscaped();
+  if (Escaped || !LocalSawCycle)
+    Cache[&Ptr] = Escaped;
+  ProcessingSet.erase(&Ptr);
+
+  if (SawCycle)
+    *SawCycle |= LocalSawCycle;
 
   LLVM_DEBUG(dbgs() << "  Result: "
-                    << (Tracker.hasEscaped() ? "escaped" : "not escaped")
+                    << (Escaped ? "escaped" : "not escaped")
                     << "\n");
-  return Tracker.hasEscaped();
+  return Escaped;
 }
 
 //===----------------------------------------------------------------------===//
@@ -676,7 +689,6 @@ void EscapeAnalysisInfo::print(raw_ostream &OS) {
   unsigned UnnamedCount = 0;
 
   for (Instruction &I : instructions(F)) {
-    LLVM_DEBUG(OS << "\nI: " << I << "\n");
     if (!isAllocationSite(&I))
       continue;
 
@@ -701,21 +713,24 @@ void EscapeAnalysisInfo::print(raw_ostream &OS) {
   OS << "\n";
 }
 
-bool EscapeAnalysisInfo::invalidate(Function &F, const PreservedAnalyses &PA,
+bool EscapeAnalysisInfo::invalidate(Function &Fn, const PreservedAnalyses &PA,
                                     FunctionAnalysisManager::Invalidator &Inv) {
-  if (auto PAC = PA.getChecker<EscapeAnalysis>();
-      PAC.preserved() || PAC.preservedSet<AllAnalysesOn<Function>>())
-    return false;
-
-  if (Inv.invalidate<MemorySSAAnalysis>(F, PA) ||
-      Inv.invalidate<LoopAnalysis>(F, PA) ||
-      Inv.invalidate<TargetLibraryAnalysis>(F, PA)) {
+  auto Invalidate = [&]() {
     Cache.clear();
     MSSA = nullptr;
     LI = nullptr;
     TLI = nullptr;
     return true;
-  }
+  };
+
+  auto PAC = PA.getChecker<EscapeAnalysis>();
+  if (!(PAC.preserved() || PAC.preservedSet<AllAnalysesOn<Function>>()))
+    return Invalidate();
+
+  if (Inv.invalidate<MemorySSAAnalysis>(Fn, PA) ||
+      Inv.invalidate<LoopAnalysis>(Fn, PA) ||
+      Inv.invalidate<TargetLibraryAnalysis>(Fn, PA))
+    return Invalidate();
 
   return false;
 }

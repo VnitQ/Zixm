@@ -2,14 +2,13 @@
 
 ; NOTE:
 ; - The printer emits:
-;   "EscapeAnalysis for function: <func>"
+;   "Printing analysis 'Escape Analysis' for function '<func>':"
 ;   "<alloc-name> escapes: yes|no" per allocation site (alloca/malloc-like).
-;   "EA: none" if no allocations in the function.
+;   "none" if no allocations in the function.
 ; - Names are taken from SSA. We avoid relying on "unnamed#N" in tests.
 
 target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64-S128"
 
-@G = global ptr null
 @GPtr = dso_local global ptr null, align 8
 @GPtrPtr = dso_local global ptr null, align 8
 @GPtrPtrPtr = dso_local global ptr null, align 8
@@ -17,10 +16,10 @@ target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f3
 
 %S = type { ptr, ptr }
 @GS = dso_local global %S zeroinitializer, align 8
-@GArr = dso_local global [2 x %S] zeroinitializer, align 8
 
 declare noalias ptr @malloc(i64)
 declare noalias ptr @external(ptr)
+declare void @might_throw()
 
 ; ============================================================================ ;
 ; Basics and locals
@@ -83,6 +82,28 @@ define void @double_ptr_local_ok() sanitize_thread {
   store ptr %p, ptr %pp
   store i32 1, ptr %x
   %lv = load i32, ptr %x
+  ret void
+}
+
+; Purely local pointer cycles do not escape on their own.
+define void @local_self_cycle_no_escape() {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'local_self_cycle_no_escape':
+; CHECK: a escapes: no
+entry:
+  %a = alloca ptr, align 8
+  store ptr %a, ptr %a, align 8
+  ret void
+}
+
+define void @local_mutual_cycle_no_escape() {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'local_mutual_cycle_no_escape':
+; CHECK: a escapes: no
+; CHECK: b escapes: no
+entry:
+  %a = alloca ptr, align 8
+  %b = alloca ptr, align 8
+  store ptr %a, ptr %b, align 8
+  store ptr %b, ptr %a, align 8
   ret void
 }
 
@@ -195,7 +216,7 @@ define void @store_to_global_escape() {
   %a = alloca i8, align 1
   %b = alloca i8, align 1
   %c = alloca i8, align 1
-  store ptr %a, ptr @G
+  store ptr %a, ptr @GPtr
   store ptr %b, ptr @GAlias
   %f0 = getelementptr inbounds %S, ptr @GS, i64 0, i32 0
   store ptr %c, ptr %f0, align 8
@@ -232,7 +253,7 @@ define void @cycle_allocas_escape() {
   %b = alloca ptr, align 8
   store ptr %a, ptr %b
   store ptr %b, ptr %a
-  store ptr %a, ptr @G
+  store ptr %a, ptr @GPtr
   ret void
 }
 
@@ -603,7 +624,9 @@ entry:
 ; Atomics and volatile
 ; ============================================================================ ;
 
-; Atomic store of pointer -> treated as escape
+; Non-simple (atomic or volatile) store of pointer -> treated as escape because
+; !Store->isSimple() short-circuits the destination check. Both atomic and
+; volatile stores hit this same branch; one representative case is sufficient.
 define void @atomic_store_escape() {
 ; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'atomic_store_escape':
 ; CHECK: a escapes: yes
@@ -630,8 +653,8 @@ define void @volatile_store_escape() {
 ; ============================================================================ ;
 
 ; PtrToInt cast -> escape
-define void @worklist_limit_bailout() {
-; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'worklist_limit_bailout':
+define void @ptrtoint_escape() {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'ptrtoint_escape':
 ; CHECK: a escapes: yes
   %a = alloca i8, align 1
   %c1 = icmp ne ptr %a, null
@@ -838,6 +861,202 @@ entry:
   %base3 = load ptr, ptr %arr3, align 8
   call void @memintr_like_func(ptr align 8 %base3)
 
+  ret void
+}
+
+; ============================================================================ ;
+; Indirect calls and invoke
+; ============================================================================ ;
+
+; Passing alloca to an indirect call (unknown callee) -> escape
+define void @indirect_call_ptr_arg_escape(ptr %fn) {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'indirect_call_ptr_arg_escape':
+; CHECK: a escapes: yes
+  %a = alloca i32, align 4
+  call void %fn(ptr %a)
+  ret void
+}
+
+; invoke: alloca passed as argument -> escape
+define void @invoke_ptr_arg_escape(ptr %fn) personality ptr null {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'invoke_ptr_arg_escape':
+; CHECK: a escapes: yes
+entry:
+  %a = alloca i32, align 4
+  invoke void %fn(ptr %a)
+    to label %cont unwind label %lpad
+cont:
+  ret void
+lpad:
+  %lp = landingpad { ptr, i32 }
+    cleanup
+  ret void
+}
+
+; ============================================================================ ;
+; Atomic instructions
+; ============================================================================ ;
+
+; cmpxchg writing alloca address into global -> escape
+define void @cmpxchg_ptr_escape() {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'cmpxchg_ptr_escape':
+; CHECK: a escapes: yes
+  %a = alloca i32, align 4
+  %old = cmpxchg ptr @GPtr, ptr null, ptr %a seq_cst seq_cst
+  ret void
+}
+
+; ============================================================================ ;
+; memcpy / memintrinsic: source address is nocapture -> no address escape
+; (Note: memcpy copies *bytes*, not pointer values from an alloca's memory;
+;  the analysis conservatively leaves byte-copy escape tracking to downstream
+;  passes that understand the memory model.)
+; ============================================================================ ;
+
+declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly,
+                                    ptr noalias nocapture readonly, i64, i1)
+
+; memcpy from local src: src is passed as nocapture readonly -> no address escape.
+define void @memcpy_local_src_global_dst_no_addr_escape() {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'memcpy_local_src_global_dst_no_addr_escape':
+; CHECK: src escapes: no
+  %src = alloca [16 x i8], align 1
+  call void @llvm.memcpy.p0.p0.i64(ptr @GPtr, ptr %src, i64 16, i1 false)
+  ret void
+}
+
+; ============================================================================ ;
+; MemoryPhi paths – cases where MemorySSA's join nodes are the deciding factor
+; ============================================================================ ;
+
+; IR-level phi joins two allocas; phi result stored to global → both escape.
+; (No MemorySSA needed here; CaptureTracking handles phi passthrough.)
+define void @phi_two_allocas_escape(i1 %c) {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'phi_two_allocas_escape':
+; CHECK: a escapes: yes
+; CHECK: b escapes: yes
+entry:
+  %a = alloca i32, align 4
+  %b = alloca i32, align 4
+  br i1 %c, label %t, label %f
+t:
+  br label %merge
+f:
+  br label %merge
+merge:
+  %v = phi ptr [%a, %t], [%b, %f]
+  store ptr %v, ptr @GPtr, align 8
+  ret void
+}
+
+; IR-level phi: one arm is the alloca, other is null. Result stored to global → escape.
+define void @phi_alloca_null_escape(i1 %c) {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'phi_alloca_null_escape':
+; CHECK: a escapes: yes
+entry:
+  %a = alloca i32, align 4
+  br i1 %c, label %t, label %f
+t:
+  br label %merge
+f:
+  br label %merge
+merge:
+  %v = phi ptr [%a, %t], [null, %f]
+  store ptr %v, ptr @GPtr, align 8
+  ret void
+}
+
+; MemoryPhi in getUnderlyingObjectsThroughLoads (store-destination side):
+; t-branch stores a LOCAL pointer into slot %p;
+; f-branch stores the ADDRESS of a global (@GPtr) into slot %p.
+; The load from %p sees a MemoryPhi → underlying objects = {%q, @GPtr}.
+; Since @GPtr is external, storing %x through the loaded dest causes escape.
+define void @loaded_dest_memphi_one_global_escape(i1 %c) {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'loaded_dest_memphi_one_global_escape':
+; CHECK: x escapes: yes
+; CHECK: p escapes: no
+; CHECK: q escapes: no
+entry:
+  %x = alloca i8, align 1
+  %p = alloca ptr, align 8
+  %q = alloca ptr, align 8
+  br i1 %c, label %t, label %f
+t:
+  store ptr %q, ptr %p, align 8
+  br label %m
+f:
+  store ptr @GPtr, ptr %p, align 8
+  br label %m
+m:
+  %l = load ptr, ptr %p, align 8
+  store ptr %x, ptr %l, align 8
+  ret void
+}
+
+; MemoryPhi in findStoreReadersAndExports (forward walk, stored-value side):
+; Store %x into %p (startDef). One arm conditionally overwrites %p with null.
+; Exit load sees MemoryPhi({startDef, nullStore}) and the loaded value is stored
+; to global → %x escapes (it may be the value read by the exit load).
+define void @conditional_overwrite_store_escape(i1 %c) {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'conditional_overwrite_store_escape':
+; CHECK: x escapes: yes
+; CHECK: p escapes: no
+entry:
+  %x = alloca i32, align 4
+  %p = alloca ptr, align 8
+  store ptr %x, ptr %p, align 8
+  br i1 %c, label %t, label %exit
+t:
+  store ptr null, ptr %p, align 8
+  br label %exit
+exit:
+  %v = load ptr, ptr %p, align 8
+  store ptr %v, ptr @GPtr, align 8
+  ret void
+}
+
+; Same MemoryPhi structure, but loaded value is only used in a comparison.
+; No pointer escapes.
+define void @conditional_overwrite_store_no_escape(i1 %c) {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'conditional_overwrite_store_no_escape':
+; CHECK: x escapes: no
+; CHECK: p escapes: no
+entry:
+  %x = alloca i32, align 4
+  %p = alloca ptr, align 8
+  store ptr %x, ptr %p, align 8
+  br i1 %c, label %t, label %exit
+t:
+  store ptr null, ptr %p, align 8
+  br label %exit
+exit:
+  %v = load ptr, ptr %p, align 8
+  %cmp = icmp ne ptr %v, null
+  ret void
+}
+
+; MemorySSA precision: loop always executes at least once and always overwrites
+; %p with null before exit. The exit-load's defining access is the null store
+; (not a MemoryPhi including startDef), so MemorySSA knows %x is never the
+; value loaded at exit → %x does NOT escape.
+define void @loop_always_overwrites_no_escape(i32 %n) {
+; CHECK-LABEL: Printing analysis 'Escape Analysis' for function 'loop_always_overwrites_no_escape':
+; CHECK: x escapes: no
+; CHECK: p escapes: no
+entry:
+  %x = alloca i32, align 4
+  %p = alloca ptr, align 8
+  store ptr %x, ptr %p, align 8
+  br label %loop
+loop:
+  %i = phi i32 [0, %entry], [%next, %loop]
+  store ptr null, ptr %p, align 8
+  %next = add i32 %i, 1
+  %cond = icmp slt i32 %next, %n
+  br i1 %cond, label %loop, label %exit
+exit:
+  %v = load ptr, ptr %p, align 8
+  store ptr %v, ptr @GPtr, align 8
   ret void
 }
 
