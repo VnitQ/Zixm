@@ -198,6 +198,7 @@ LLVMInitializeHexagonTarget() {
   initializeHexagonGlobalSchedulerPass(PR);
   initializeHexagonLiveVariablesPass(PR);
   initializeHexagonHardwareLoopsPass(PR);
+  initializeHexagonHVXSaveRemarkPass(PR);
   initializeHexagonLoopIdiomRecognizeLegacyPassPass(PR);
   initializeHexagonNewValueJumpPass(PR);
   initializeHexagonOptAddrModePass(PR);
@@ -489,6 +490,8 @@ void HexagonPassConfig::addPreEmitPass() {
 
   if (EnableVectorPrint)
     addPass(createHexagonVectorPrint());
+
+  addPass(createHexagonHVXSaveRemark());
 
   // Add CFI instructions if necessary.
   addPass(createHexagonCallFrameInformation());
