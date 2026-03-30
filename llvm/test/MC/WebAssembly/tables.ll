@@ -5,10 +5,10 @@
 
 
 %externref = type ptr addrspace(10)
-@externref_table = local_unnamed_addr addrspace(1) global [0 x %externref] undef
+@externref_table = local_unnamed_addr addrspace(1) global [0 x %externref] []
 
 %funcref = type ptr addrspace(20)
-@funcref_table = local_unnamed_addr addrspace(1) global [0 x %funcref] undef
+@funcref_table = local_unnamed_addr addrspace(1) global [0 x %funcref] []
 
 ; CHECK:      --- !WASM
 ; CHECK-NEXT: FileHeader:
