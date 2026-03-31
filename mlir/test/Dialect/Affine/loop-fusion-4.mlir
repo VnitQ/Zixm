@@ -772,8 +772,6 @@ func.func @memref_cast_reused(%arg: memref<*xf32>) {
   return
 }
 
-<<<<<<< affine-access-relation-failure-fix
-
 // Exercises fix for crash reported at https://github.com/llvm/llvm-project/issues/54541
 
 func.func @load_linearized_index() {
@@ -789,8 +787,6 @@ func.func @load_linearized_index() {
   }
   return
 }
-=======
-// -----
 
 // Test with symbolic loop bounds.
 
@@ -902,4 +898,3 @@ func.func @high_trip_count(%arg0: memref<1024x4096xf32>, %arg1: memref<8192x4096
   }
   return %alloc : memref<1024x8192xf32>
 }
->>>>>>> main
