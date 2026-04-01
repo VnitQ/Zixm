@@ -525,6 +525,17 @@ MSVCToolChain::MSVCToolChain(const Driver &D, const llvm::Triple &Triple,
       llvm::findVCToolChainViaRegistry(VCToolChainPath, VSLayout);
 }
 
+Tool *MSVCToolChain::getTool(Action::ActionClass AC) const {
+  switch (AC) {
+  case Action::ObjcopyJobClass:
+    if (!LLVMObjcopy)
+      LLVMObjcopy.reset(new tools::MinGW::LLVMObjcopy(*this));
+    return LLVMObjcopy.get();
+  default:
+    return ToolChain::getTool(AC);
+  }
+}
+
 Tool *MSVCToolChain::buildLinker() const {
   return new tools::visualstudio::Linker(*this);
 }
