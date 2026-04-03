@@ -836,8 +836,10 @@ void CodeGenFunction::EmitGotoStmt(const GotoStmt &S) {
 
   // Record this goto so that EmitAutoVarAlloca can retroactively insert
   // trivial-auto-var-init stores for any variables this goto bypasses.
-  if (HaveInsertPoint())
+  if (HaveInsertPoint()) {
+    emitBypassedVarInitsForSource(&S);
     BypassingForwardGotos.push_back({Builder.GetInsertBlock(), &S});
+  }
 
   ApplyAtomGroup Grp(getDebugInfo());
   EmitBranchThroughCleanup(getJumpDestForLabel(S.getLabel()));

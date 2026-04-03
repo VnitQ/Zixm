@@ -305,7 +305,7 @@ public:
   llvm::SmallVector<std::pair<const VarDecl *, Address>, 4> BypassedVarInits;
 
   struct BypassingForwardGoto {
-    llvm::BasicBlock *Block;
+    llvm::AssertingVH<llvm::BasicBlock> Block;
     const GotoStmt *Goto;
   };
 

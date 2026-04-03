@@ -565,6 +565,32 @@ void test_goto_multiple_vars() {
   used(b);
 }
 
+// UNINIT-LABEL:  test_backward_goto_bypass(
+// ZERO-LABEL:    test_backward_goto_bypass(
+// ZERO:      jump:
+// ZERO:      call void @{{.*}}used
+// ZERO:      call void @{{.*}}used
+// ZERO-DAG:  store i32 0, ptr %b, align 4
+// ZERO-DAG:  store i32 0, ptr %a, align 4
+// ZERO:      br label %jump
+// PATTERN-LABEL: test_backward_goto_bypass(
+// PATTERN:      jump:
+// PATTERN:      call void @{{.*}}used
+// PATTERN:      call void @{{.*}}used
+// PATTERN-DAG:  store i32 -1431655766, ptr %b
+// PATTERN-DAG:  store i32 -1431655766, ptr %a
+// PATTERN:      br label %jump
+void test_backward_goto_bypass() {
+  {
+    int a;
+    int b;
+jump:
+    used(a);
+    used(b);
+  }
+  goto jump;
+}
+
 } // extern "C"
 
 // CHECK: [[AUTO_INIT]] = !{ !"auto-init" }
