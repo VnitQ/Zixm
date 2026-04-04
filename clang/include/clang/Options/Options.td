@@ -6576,7 +6576,7 @@ def stdlib_EQ : Joined<["-", "--"], "stdlib=">,
 def cstdlib_EQ : Joined<["--"], "cstdlib=">,
   Visibility<[ClangOption]>,
   HelpText<"C standard library to use">,
-  Values<"newlib,picolibc,llvm-libc,system">;
+  Values<"newlib,newlib-nano,picolibc,llvm-libc,system">;
 def stdlibxx_isystem : JoinedOrSeparate<["-"], "stdlib++-isystem">,
   Group<clang_i_Group>,
   HelpText<"Use directory as the C++ standard library include path">,
