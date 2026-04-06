@@ -1642,7 +1642,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
               LangOptions::TrivialAutoVarInitKind::Uninitialized &&
           isTrivialInitializer(D.getInit())) {
         // Record this bypassed var's address for switch-case init emission.
-        BypassedVarInits.push_back({&D, address});
+        BypassedVarInits.insert({&D, address});
 
         if (Bypasses.isAlwaysBypassed()) {
           // Computed gotos: we can't determine jump sources, so init in the
@@ -1881,12 +1881,10 @@ void CodeGenFunction::emitBypassedVarInitsForSource(const Stmt *Source) {
   if (!Vars)
     return;
   for (const VarDecl *VD : *Vars) {
-    for (const auto &[D, Addr] : BypassedVarInits) {
-      if (D != VD)
-        continue;
+    auto It = BypassedVarInits.find(VD);
+    if (It != BypassedVarInits.end()) {
       QualType Ty = VD->getType().getNonReferenceType();
-      emitZeroOrPatternForAutoVarInit(Ty, *VD, Addr);
-      break;
+      emitZeroOrPatternForAutoVarInit(Ty, *VD, It->second);
     }
   }
 }

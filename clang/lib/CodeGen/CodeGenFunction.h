@@ -302,7 +302,7 @@ public:
   VarBypassDetector Bypasses;
 
   // Map from bypassed VarDecl to its alloca address, for per-target init.
-  llvm::SmallVector<std::pair<const VarDecl *, Address>, 4> BypassedVarInits;
+  llvm::SmallDenseMap<const VarDecl *, Address, 4> BypassedVarInits;
 
   struct BypassingForwardGoto {
     llvm::AssertingVH<llvm::BasicBlock> Block;
