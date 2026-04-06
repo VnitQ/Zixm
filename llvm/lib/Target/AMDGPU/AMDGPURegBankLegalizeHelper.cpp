@@ -60,8 +60,9 @@ bool RegBankLegalizeHelper::findRuleAndApplyMapping(MachineInstr &MI) {
 
   WaterfallInfo WFI;
   unsigned OpIdx = 0;
+  OldNextMI = std::next(MI.getIterator());
   if (!Mapping->DstOpMapping.empty()) {
-    B.setInsertPt(*MI.getParent(), std::next(MI.getIterator()));
+    B.setInsertPt(*MI.getParent(), OldNextMI);
     if (!applyMappingDst(MI, OpIdx, Mapping->DstOpMapping))
       return false;
   }
@@ -200,6 +201,39 @@ bool RegBankLegalizeHelper::executeInWaterfallLoop(MachineIRBuilder &B,
   MachineBasicBlock::iterator NewBegin = BeginIt;
   auto NewEnd = BodyBB->end();
   assert(std::distance(NewBegin, NewEnd) == OrigRangeSize);
+
+  // Create loop-carried dependencies for VGPR defs that lack inherent exec
+  // dependency, preventing machine-sink from moving them out of the loop.
+  for (MachineInstr &MI : make_range(NewBegin, NewEnd)) {
+    if (MI.mayLoadOrStore() || MI.hasUnmodeledSideEffects())
+      continue;
+    for (unsigned I = 0, E = MI.getNumDefs(); I < E; ++I) {
+      if (!MI.getOperand(I).isReg())
+        continue;
+      Register DefReg = MI.getOperand(I).getReg();
+      if (!DefReg.isVirtual() || MRI.getRegBank(DefReg) != VgprRB)
+        continue;
+
+      LLT Ty = MRI.getType(DefReg);
+
+      B.setInsertPt(MBB, MBB.end());
+      Register InitReg = MRI.createVirtualRegister({VgprRB, Ty});
+      B.buildInstr(TargetOpcode::IMPLICIT_DEF).addDef(InitReg);
+
+      Register PhiReg = MRI.createVirtualRegister({VgprRB, Ty});
+      B.setInsertPt(*LoopBB, LoopBB->begin());
+      B.buildInstr(TargetOpcode::G_PHI)
+          .addDef(PhiReg)
+          .addReg(InitReg)
+          .addMBB(&MBB)
+          .addReg(DefReg)
+          .addMBB(BodyBB);
+
+      MI.addOperand(MachineOperand::CreateReg(PhiReg, /*isDef=*/false,
+                                              /*isImp=*/true));
+      MI.tieOperands(I, MI.getNumOperands() - 1);
+    }
+  }
 
   B.setMBB(*LoopBB);
   Register CondReg;
@@ -1696,8 +1730,10 @@ bool RegBankLegalizeHelper::applyMappingSrc(
       if (RB != SgprRB) {
         WFI.SgprWaterfallOperandRegs.insert(Reg);
         if (!WFI.Start.isValid()) {
+          // Waterfall range [WFI.Start, WFI.End). Use OldNextMI so that
+          // any instructions inserted by applyMappingDst are included.
           WFI.Start = MI.getIterator();
-          WFI.End = std::next(MI.getIterator());
+          WFI.End = OldNextMI;
         }
       }
       break;
