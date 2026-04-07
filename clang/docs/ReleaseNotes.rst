@@ -78,7 +78,14 @@ Clang Frontend Potentially Breaking Changes
   libraries will need to be recompiled, or used with
   (`--no-offload-new-driver`). This option will be removed in the next release.
 
-
+libclang Potentially Breaking Changes
+-------------------------------------
+- ``clang_Cursor_getNumTemplateArguments`` and related accessor APIs now
+  expand parameter pack arguments into individual arguments, instead of
+  reporting the pack as a single argument.
+- Variable template declarations and partial specializations now produce
+  ``CXCursor_VarTemplate`` and ``CXCursor_VarTemplatePartialSpecialization``
+  cursor kinds, respectively, instead of ``CXCursor_UnexposedDecl``.
 
 Clang Python Bindings Potentially Breaking Changes
 --------------------------------------------------
@@ -115,6 +122,12 @@ Clang Python Bindings Potentially Breaking Changes
   ``UnsavedFile`` is already available to use and existing uses should
   be adapted to refer to it instead. ``_CXUnsavedFile`` will be removed in a 
   future release.
+- ``Cursor.get_num_template_arguments`` and related methods now expand
+  parameter pack arguments into individual arguments, instead of reporting
+  the pack as a single argument.
+- Variable template declarations and partial specializations now produce
+  ``CursorKind.VAR_TEMPLATE`` and ``CursorKind.VAR_TEMPLATE_PARTIAL_SPECIALIZATION``
+  cursor kinds, respectively, instead of ``CursorKind.UNEXPOSED_DECL``.
 
 What's New in Clang |release|?
 ==============================
@@ -584,9 +597,19 @@ libclang
 - Fix crash in clang_getBinaryOperatorKindSpelling and clang_getUnaryOperatorKindSpelling
 - The clang_Module_getASTFile API is deprecated and now always returns nullptr
 - Added ``clang_Cursor_getNumTemplateParameters``, ``clang_Cursor_getTemplateParameter``,
-  ``clang_Cursor_isTemplateParameterPack``, and ``clang_Cursor_getTemplateArgumentIntegralType``.
-- Fixed ``clang_Cursor_getNumTemplateArguments`` and related APIs to work with
-  ``CXCursor_CXXMethod`` cursors and to correctly allow indexing into parameter pack arguments.
+  ``clang_Cursor_isTemplateParameterPack``, and ``clang_Cursor_getConstantTemplateArgumentType``.
+- Added ``CXCursor_VarTemplate`` and ``CXCursor_VarTemplatePartialSpecialization`` cursor kinds
+  for variable template declarations and partial specializations, which were previously
+  reported as ``CXCursor_UnexposedDecl``.
+- Extended ``clang_Cursor_getNumTemplateArguments``, ``clang_Cursor_getTemplateArgumentKind``,
+  ``clang_Cursor_getTemplateArgumentType``, ``clang_Cursor_getTemplateArgumentValue``, and
+  ``clang_Cursor_getTemplateArgumentUnsignedValue`` to work with variable template
+  specializations (``CXCursor_VarDecl``) and partial specializations
+  (``CXCursor_VarTemplatePartialSpecialization``).
+- Extended ``clang_Cursor_getNumTemplateParameters`` and ``clang_Cursor_getTemplateParameter``
+  to work with variable templates (``CXCursor_VarTemplate``).
+- Fixed ``clang_Cursor_getNumTemplateArguments`` and related APIs to transparently expand
+  parameter pack arguments and to work with ``CXCursor_CXXMethod`` cursors.
 
 Code Completion
 ---------------
@@ -628,7 +651,7 @@ Python Binding Changes
 - Added a new helper method ``get_clang_version`` to the class ``Config`` to
   read the version string of the libclang in use.
 - Added ``Cursor.get_num_template_parameters``, ``Cursor.get_template_parameter``,
-  ``Cursor.is_template_parameter_pack``, and ``Cursor.get_template_argument_integral_type``.
+  ``Cursor.is_template_parameter_pack``, and ``Cursor.get_constant_template_argument_type``.
 
 OpenMP Support
 --------------
