@@ -1051,7 +1051,9 @@ public:
   /// Allow the target to override the cost of using a callee-saved register for
   /// the first time. Default value of 0 means we will use a callee-saved
   /// register if it is available.
-  virtual unsigned getCSRFirstUseCost() const { return 0; }
+  virtual unsigned getCSRFirstUseCost(const MachineFunction &MF) const {
+    return 0;
+  }
   /// FIXME: We should deprecate this usage.
   virtual unsigned getCSRCost() const { return 0; }
 

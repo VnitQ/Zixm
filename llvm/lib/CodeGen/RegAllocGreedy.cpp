@@ -2447,7 +2447,7 @@ void RAGreedy::initializeCSRCost() {
     }
   } else {
     uint64_t EntryFreq = MBFI->getEntryFreq().getFrequency();
-    CSRCost = BlockFrequency(TRI->getCSRFirstUseCost() * EntryFreq);
+    CSRCost = BlockFrequency(TRI->getCSRFirstUseCost(*MF) * EntryFreq);
     if (CSRCostScale < 100)
       CSRCost *= BranchProbability(CSRCostScale, 100);
     else
