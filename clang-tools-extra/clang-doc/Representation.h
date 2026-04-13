@@ -325,6 +325,9 @@ struct ScopeChildren {
   OwningVec<ConceptInfo> Concepts;
   OwningVec<VarInfo> Variables;
 
+  ScopeChildren() = default;
+  ScopeChildren(const ScopeChildren &Other, llvm::BumpPtrAllocator &Arena);
+
   void sort();
 };
 
@@ -528,6 +531,7 @@ inline Context::Context(const Info &I)
 struct NamespaceInfo : public Info {
   NamespaceInfo(SymbolID USR = SymbolID(), StringRef Name = StringRef(),
                 StringRef Path = StringRef());
+  NamespaceInfo(const NamespaceInfo &Other, llvm::BumpPtrAllocator &Arena);
 
   void merge(NamespaceInfo &&I);
 
@@ -585,6 +589,7 @@ struct FriendInfo : public SymbolInfo, public llvm::ilist_node<FriendInfo> {
 struct VarInfo : public SymbolInfo, public llvm::ilist_node<VarInfo> {
   VarInfo() : SymbolInfo(InfoType::IT_variable) {}
   explicit VarInfo(SymbolID USR) : SymbolInfo(InfoType::IT_variable, USR) {}
+  VarInfo(const VarInfo &Other, llvm::BumpPtrAllocator &Arena);
 
   void merge(VarInfo &&I);
 
@@ -596,6 +601,7 @@ struct VarInfo : public SymbolInfo, public llvm::ilist_node<VarInfo> {
 struct FunctionInfo : public SymbolInfo, public llvm::ilist_node<FunctionInfo> {
   FunctionInfo(SymbolID USR = SymbolID())
       : SymbolInfo(InfoType::IT_function, USR) {}
+  FunctionInfo(const FunctionInfo &Other, llvm::BumpPtrAllocator &Arena);
 
   void merge(FunctionInfo &&I);
 
@@ -659,6 +665,7 @@ struct RecordInfo : public SymbolInfo {
 struct TypedefInfo : public SymbolInfo, public llvm::ilist_node<TypedefInfo> {
   TypedefInfo(SymbolID USR = SymbolID())
       : SymbolInfo(InfoType::IT_typedef, USR) {}
+  TypedefInfo(const TypedefInfo &Other, llvm::BumpPtrAllocator &Arena);
 
   void merge(TypedefInfo &&I);
 
@@ -727,6 +734,7 @@ struct EnumValueInfo {
 struct EnumInfo : public SymbolInfo, public llvm::ilist_node<EnumInfo> {
   EnumInfo() : SymbolInfo(InfoType::IT_enum) {}
   EnumInfo(SymbolID USR) : SymbolInfo(InfoType::IT_enum, USR) {}
+  EnumInfo(const EnumInfo &Other, llvm::BumpPtrAllocator &Arena);
 
   void merge(EnumInfo &&I);
 
@@ -744,6 +752,7 @@ struct EnumInfo : public SymbolInfo, public llvm::ilist_node<EnumInfo> {
 struct ConceptInfo : public SymbolInfo, public llvm::ilist_node<ConceptInfo> {
   ConceptInfo() : SymbolInfo(InfoType::IT_concept) {}
   ConceptInfo(SymbolID USR) : SymbolInfo(InfoType::IT_concept, USR) {}
+  ConceptInfo(const ConceptInfo &Other, llvm::BumpPtrAllocator &Arena);
 
   void merge(ConceptInfo &&I);
 
