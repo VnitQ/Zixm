@@ -3350,12 +3350,10 @@ FixedScalableVFPair LoopVectorizationCostModel::computeFeasibleMaxVF(
   // It is computed by MaxVF * sizeOf(type) * 8, where type is taken from
   // the memory accesses that is most restrictive (involved in the smallest
   // dependence distance).
-  unsigned MaxSafeElementsPowerOf2 =
-      bit_floor(Legal->getMaxSafeVectorWidthInBits() / WidestType);
+  unsigned MaxSafeElementsPowerOf2 = bit_floor(Legal->getMaxSafeNumElements());
   if (!Legal->isSafeForAnyStoreLoadForwardDistances()) {
-    unsigned SLDist = Legal->getMaxStoreLoadForwardSafeDistanceInBits();
-    MaxSafeElementsPowerOf2 =
-        std::min(MaxSafeElementsPowerOf2, SLDist / WidestType);
+    unsigned SLDist = Legal->getMaxStoreLoadForwardSafeNumElements();
+    MaxSafeElementsPowerOf2 = std::min(MaxSafeElementsPowerOf2, SLDist);
   }
   auto MaxSafeFixedVF = ElementCount::getFixed(MaxSafeElementsPowerOf2);
   auto MaxSafeScalableVF = getMaxLegalScalableVF(MaxSafeElementsPowerOf2);
