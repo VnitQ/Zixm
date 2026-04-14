@@ -36,6 +36,17 @@ static std::optional<bool> getBoolValue(const Expr *E) {
   return std::nullopt;
 }
 
+[[maybe_unused]] static bool blockEndsInReturn(const Stmt *S) {
+  if (isa<ReturnStmt>(S))
+    return true;
+
+  if (const auto *CS = dyn_cast<CompoundStmt>(S); CS && !CS->body_empty()) {
+    return isa<ReturnStmt>(CS->body_back());
+  }
+
+  return false;
+}
+
 /// Scope used to handle temporaries in toplevel variable declarations.
 template <class Emitter> class DeclScope final : public LocalScope<Emitter> {
 public:
@@ -3468,10 +3479,155 @@ bool Compiler<Emitter>::VisitPredefinedExpr(const PredefinedExpr *E) {
 
 template <class Emitter>
 bool Compiler<Emitter>::VisitCXXThrowExpr(const CXXThrowExpr *E) {
-  if (E->getSubExpr() && !this->discard(E->getSubExpr()))
+  const Expr *SubExpr = E->getSubExpr();
+  if (!Ctx.getLangOpts().CPlusPlus26 || !Ctx.getLangOpts().CXXExceptions) {
+    if (SubExpr && !this->discard(SubExpr))
+      return false;
+    return this->emitInvalid(E);
+  }
+
+  assert(E->getSubExpr()); // XXX
+
+  // llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+  // E->dumpColor();
+
+  QualType ExceptionType = SubExpr->getType();
+  OptPrimType ExceptionT = classify(SubExpr);
+  const Descriptor *Desc;
+  if (ExceptionT)
+    Desc = P.createDescriptor(SubExpr, *ExceptionT);
+  else
+    Desc = P.createDescriptor(SubExpr, ExceptionType.getTypePtr(), std::nullopt,
+                              /*IsConst=*/false);
+
+  if (!this->emitAllocException(Desc, E))
     return false;
 
-  return this->emitInvalid(E);
+  bool Comp;
+  if (ExceptionT) {
+    Comp = false;
+    if (!this->visit(SubExpr))
+      return false;
+    if (!this->emitInit(*ExceptionT, E))
+      return false;
+  } else {
+    Comp = true;
+    if (!this->visitInitializer(SubExpr))
+      return false;
+  }
+
+  if (!this->emitSaveException(ExceptionType.getTypePtr(), E))
+    return false;
+
+  this->VarScope->destroyLocals();
+
+  PrimType T = classify(E->getSubExpr()).value_or(PT_Ptr);
+  return this->emitThrow(T, ExceptionType.getTypePtr(), Comp, E);
+}
+
+template <class Emitter>
+bool Compiler<Emitter>::visitCXXTryStmt(const CXXTryStmt *S) {
+  if (!Ctx.getLangOpts().CPlusPlus26 || !Ctx.getLangOpts().CXXExceptions) {
+    // Ignore all handlers.
+    return this->visitStmt(S->getTryBlock());
+  }
+
+  unsigned NumHandlers = S->getNumHandlers();
+
+  if (!this->emitThrowTrap(S))
+    return false;
+
+  unsigned s = this->currentCodeSize();
+
+  // Emit try block contents.
+  // FIXME: Is the LocalScope here still necessary?
+  const auto *TryBlock = cast<CompoundStmt>(S->getTryBlock());
+  if (!this->visitStmt(TryBlock))
+    return false;
+  // LocalScope<Emitter> TryBlockScope(this);
+  // for (const auto *InnerStmt : TryBlock->body()) {
+  // if (!visitStmt(InnerStmt))
+  // return false;
+  // }
+
+  // if (!TryBlockScope.destroyLocals())
+  // return false;
+  // Unlink this scope. We will emit cleanups for it again later.
+  // assert(this->VarScope == &TryBlockScope);
+  // this->VarScope = TryBlockScope.getParent();
+
+  unsigned e = this->currentCodeSize();
+
+  // Jump after handlers if nothing was thrown.
+  LabelTy EndLabel = this->getLabel();
+  this->jump(EndLabel, S);
+
+  // Register and emit all handlers.
+  for (unsigned I = 0; I != NumHandlers; ++I) {
+    const CXXCatchStmt *Handler = S->getHandler(I);
+    const Stmt *HandlerBlock = Handler->getHandlerBlock();
+    const VarDecl *ExceptionDecl = Handler->getExceptionDecl();
+    QualType CatchType = Handler->getCaughtType();
+    UnsignedOrNone ExceptionDeclOffset = std::nullopt;
+
+    unsigned t = this->currentCodeSize();
+    if (ExceptionDecl) {
+      if (OptPrimType T = classify(CatchType)) {
+        unsigned LocalOffset = allocateLocalPrimitive(ExceptionDecl, *T,
+                                                      /*IsConst=*/true);
+        if (CatchType->isReferenceType()) {
+          if (!this->emitGetPtrExceptionValue(S))
+            return false;
+        } else {
+          if (!this->emitGetExceptionValue(*T, S))
+            return false;
+        }
+        if (!this->emitSetLocal(*T, LocalOffset, S))
+          return false;
+      } else {
+        UnsignedOrNone LocalOffset = allocateLocal(ExceptionDecl, CatchType);
+        if (!LocalOffset)
+          return false;
+
+        if (!this->emitGetPtrLocal(*LocalOffset, Handler))
+          return false;
+        if (!this->emitGetPtrExceptionValue(Handler))
+          return false;
+        // if (!this->emitGetExceptionValuePtr(Handler))
+        // return false;
+        if (!this->emitMemcpy(Handler))
+          return false;
+        if (!this->emitPopPtr(Handler))
+          return false;
+      }
+    } else {
+      // This is a catch-all handler.
+      // if (!this->emitClearExceptionValue(S))
+      // return false;
+
+      // FIXME: MOve down
+      if (!this->emitCatch(S))
+        return false;
+    }
+    const Type *CatchTypePtr = CatchType.getTypePtrOrNull();
+
+    this->registerExceptionHandler(s, e, t, ExceptionDeclOffset, CatchTypePtr);
+    if (!this->visitStmt(HandlerBlock))
+      return false;
+
+    if (!this->emitClearExceptionValue(S))
+      return false;
+
+    // FIXME: Re-enable this.
+    // if (blockEndsInReturn(TryBlock))
+    // continue;
+    this->jump(EndLabel, S);
+  }
+
+  this->fallthrough(EndLabel);
+  this->emitLabel(EndLabel);
+
+  return true;
 }
 
 template <class Emitter>
@@ -6593,12 +6749,6 @@ bool Compiler<Emitter>::visitAttributedStmt(const AttributedStmt *S) {
 }
 
 template <class Emitter>
-bool Compiler<Emitter>::visitCXXTryStmt(const CXXTryStmt *S) {
-  // Ignore all handlers.
-  return this->visitStmt(S->getTryBlock());
-}
-
-template <class Emitter>
 bool Compiler<Emitter>::emitLambdaStaticInvokerBody(const CXXMethodDecl *MD) {
   assert(MD->isLambdaStaticInvoker());
   assert(MD->hasBody());
@@ -6860,8 +7010,17 @@ bool Compiler<Emitter>::compileConstructor(const CXXConstructorDecl *Ctor) {
         return false;
     }
 
-    if (!visitStmt(Body))
-      return false;
+    if (isa<CompoundStmt>(Body)) {
+      if (!visitStmt(Body))
+        return false;
+    } else {
+      // direct try {} body.
+      LocalScope<Emitter> Scope(this);
+      if (!visitStmt(Body))
+        return false;
+      if (!Scope.destroyLocals())
+        return false;
+    }
   }
 
   return this->emitRetVoid(SourceInfo{});
@@ -6951,14 +7110,24 @@ bool Compiler<Emitter>::visitFunc(const FunctionDecl *F) {
   }
 
   // Regular functions.
-  if (const auto *Body = F->getBody())
-    if (!visitStmt(Body))
-      return false;
+  if (const auto *Body = F->getBody()) {
+    if (isa<CompoundStmt>(Body)) {
+      if (!visitStmt(Body))
+        return false;
+    } else {
+      // direct try {} body.
+      LocalScope<Emitter> Scope(this);
+      if (!visitStmt(Body))
+        return false;
+      if (!Scope.destroyLocals())
+        return false;
+    }
+  }
 
   // Emit a guard return to protect against a code path missing one.
   if (F->getReturnType()->isVoidType())
-    return this->emitRetVoid(SourceInfo{});
-  return this->emitNoRet(SourceInfo{});
+    return this->emitRetVoid(SourceInfo{}) && this->emitAfterRet(SourceInfo{});
+  return this->emitNoRet(SourceInfo{}) && this->emitAfterRet(SourceInfo{});
 }
 
 static uint32_t getBitWidth(const Expr *E) {

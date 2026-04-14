@@ -63,6 +63,15 @@ private:
   LocalVectorTy Descriptors;
 };
 
+struct ExceptionTableEntry {
+  unsigned CodeStart;
+  unsigned CodeEnd;
+  unsigned Target;
+  UnsignedOrNone DeclOffset;
+  /// If CatchType is nullptr, this is a catch-all handler.
+  const Type *CatchType;
+};
+
 using FunctionDeclTy =
     llvm::PointerUnion<const FunctionDecl *, const BlockExpr *>;
 
@@ -247,6 +256,16 @@ public:
     return false;
   }
 
+  unsigned getParamOffset(unsigned ParamIndex) const {
+    return ParamDescriptors[ParamIndex].Offset;
+  }
+
+  PrimType getParamType(unsigned ParamIndex) const {
+    return ParamDescriptors[ParamIndex].T;
+  }
+
+  llvm::SmallVector<ExceptionTableEntry> ExceptionTable;
+
 private:
   /// Construct a function representing an actual function.
   Function(Program &P, FunctionDeclTy Source, unsigned ArgSize,
@@ -256,13 +275,15 @@ private:
   /// Sets the code of a function.
   void setCode(FunctionDeclTy Source, unsigned NewFrameSize,
                llvm::SmallVector<std::byte> &&NewCode, SourceMap &&NewSrcMap,
-               llvm::SmallVector<Scope, 2> &&NewScopes, bool NewHasBody,
-               bool NewIsValid) {
+               llvm::SmallVector<Scope, 2> &&NewScopes,
+               llvm::SmallVector<ExceptionTableEntry> &&ExceptionTable,
+               bool NewHasBody, bool NewIsValid) {
     this->Source = Source;
     FrameSize = NewFrameSize;
     Code = std::move(NewCode);
     SrcMap = std::move(NewSrcMap);
     Scopes = std::move(NewScopes);
+    this->ExceptionTable = std::move(ExceptionTable);
     IsValid = NewIsValid;
     HasBody = NewHasBody;
   }

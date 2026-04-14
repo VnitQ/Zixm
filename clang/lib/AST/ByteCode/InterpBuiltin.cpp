@@ -4182,6 +4182,33 @@ static bool interp__builtin_ia32_gfni_mul(InterpState &S, CodePtr OpPC,
   return true;
 }
 
+static bool interp__builtin_current_exception(InterpState &S, CodePtr OpPC,
+                                              const CallExpr *Call) {
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+  if (!S.ThrownValue) {
+    S.Stk.push<Pointer>();
+    return true;
+  }
+
+  S.Stk.push<Pointer>(S.ThrownValue->Ptr);
+  return true;
+}
+
+static bool interp__builtin_uncaught_exceptions(InterpState &S, CodePtr OpPC,
+                                                const CallExpr *Call) {
+  // llvm::errs() << "CC: " << S.inConstantContext() << '\n';
+  if (!S.inConstantContext())
+    return false;
+
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+  llvm::errs() << "ThrownValue: " << (bool)S.ThrownValue << '\n';
+  if (S.ThrownValue && !S.ThrownValue->Caught)
+    pushInteger(S, 1, Call->getType());
+  else
+    pushInteger(S, 0, Call->getType());
+  return true;
+}
+
 bool InterpretBuiltin(InterpState &S, CodePtr OpPC, const CallExpr *Call,
                       uint32_t BuiltinID) {
   if (!S.getASTContext().BuiltinInfo.isConstantEvaluated(BuiltinID))
@@ -6043,6 +6070,10 @@ bool InterpretBuiltin(InterpState &S, CodePtr OpPC, const CallExpr *Call,
         },
         /*IsScalar=*/true);
 
+  case Builtin::BI__builtin_current_exception:
+    return interp__builtin_current_exception(S, OpPC, Call);
+  case Builtin::BI__builtin_uncaught_exceptions:
+    return interp__builtin_uncaught_exceptions(S, OpPC, Call);
   default:
     S.FFDiag(S.Current->getLocation(OpPC),
              diag::note_invalid_subexpr_in_const_expr)

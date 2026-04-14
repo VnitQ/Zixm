@@ -27,6 +27,7 @@
 #include "InterpStack.h"
 #include "InterpState.h"
 #include "MemberPointer.h"
+#include "Opcode.h"
 #include "PrimType.h"
 #include "Program.h"
 #include "State.h"
@@ -117,13 +118,13 @@ bool SetThreeWayComparisonField(InterpState &S, CodePtr OpPC,
 
 bool CallVar(InterpState &S, CodePtr OpPC, const Function *Func,
              uint32_t VarArgSize);
-bool Call(InterpState &S, CodePtr OpPC, const Function *Func,
+bool Call(InterpState &S, CodePtr &PC, CodePtr OpPC, const Function *Func,
           uint32_t VarArgSize);
 bool CallVirt(InterpState &S, CodePtr OpPC, const Function *Func,
               uint32_t VarArgSize);
 bool CallBI(InterpState &S, CodePtr OpPC, const CallExpr *CE,
             uint32_t BuiltinID);
-bool CallPtr(InterpState &S, CodePtr OpPC, uint32_t ArgSize,
+bool CallPtr(InterpState &S, CodePtr &PC, CodePtr OpPC, uint32_t ArgSize,
              const CallExpr *CE);
 bool CheckLiteralType(InterpState &S, CodePtr OpPC, const Type *T);
 bool InvalidShuffleVectorIndex(InterpState &S, CodePtr OpPC, uint32_t Index);
@@ -287,6 +288,289 @@ PRESERVE_NONE inline bool RetVoid(InterpState &S, CodePtr &PC) {
     S.Current = nullptr;
   }
 
+  return true;
+}
+
+template <PrimType Name, class T = typename PrimConv<Name>::T>
+bool Throw(InterpState &S, CodePtr &PC, const Type *Ty, bool IsComp) {
+  CodePtr OpPC;
+  if (PC)
+    OpPC = PC - align(sizeof(Opcode)) - align(sizeof(bool)); // XXX
+  else
+    OpPC = PC;
+
+  auto canCatch = [](const Type *CatchType, const Type *ThrowType) -> bool {
+    if (!CatchType || ASTContext::hasSameType(CatchType, ThrowType))
+      return true;
+
+    assert(CatchType);
+
+    // nullptr_t can be caught by any pointer type.
+    if (ThrowType->isNullPtrType() && CatchType->isPointerType())
+      return true;
+
+    // void* can catch all thown pointer types.
+    if (ThrowType->isPointerType() && CatchType->isVoidPointerType())
+      return true;
+
+    if (CatchType->isPointerType() && !ThrowType->isPointerType())
+      return false;
+
+    if (CatchType->isPointerOrReferenceType())
+      CatchType = CatchType->getPointeeType().getTypePtr();
+    if (ThrowType->isPointerOrReferenceType())
+      ThrowType = ThrowType->getPointeeType().getTypePtr();
+
+    if (CatchType == ThrowType)
+      return true;
+
+    if (CatchType->isRecordType() && ThrowType->isRecordType()) {
+      const CXXRecordDecl *CatchDecl = CatchType->getAsCXXRecordDecl();
+      const CXXRecordDecl *ThrowDecl = ThrowType->getAsCXXRecordDecl();
+      assert(CatchDecl);
+      assert(ThrowDecl);
+
+      if (CatchDecl == ThrowDecl)
+        return true;
+
+      if (ThrowDecl->isDerivedFrom(CatchDecl))
+        return true;
+    }
+
+    return false;
+  };
+
+  // TODO: Diagnose.
+  if (S.Current->isBottomFrame())
+    return false;
+
+  // const auto &ThrownValue = S.Stk.pop<Pointer>();
+  const Pointer ThrownValue = S.ThrownValue->Ptr;
+  S.ThrownValue = std::nullopt;
+  // llvm::errs() << "Value: " << ThrownValue << '\n';
+
+  assert(S.Current->getFrameOffset() == S.Stk.size() && "Invalid frame");
+  // llvm::errs() << "\n\n" << __PRETTY_FUNCTION__ << '\n';
+  // llvm::errs() << "\n\n" << __PRETTY_FUNCTION__ << '\n';
+  // llvm::errs() << "Throwing " << ThrownValue << '\n';
+  // llvm::errs() << "In " << S.Current->getName() << '\n';
+  // unsigned O = PC - S.Current->getFunction()->getCodeBegin();
+  // llvm::errs() << "O: " << O << ". Type: " << Ty << '\n';
+  bool Caught = false;
+
+  // llvm::errs() << "Thrown Type:\n";
+  // Ty->dump();
+
+  const Function *F = S.Current->getFunction();
+  if (!F) {
+    assert(false);
+  }
+  CodePtr CurrentPC = PC;
+  // llvm::errs() << "Current function: " << F->getName() << '\n';
+  unsigned CodeOffset = CurrentPC - F->getCodeBegin();
+  // llvm::errs() << "CodeOffset:  " << CodeOffset << '\n';
+
+  const Type *CaughtType = nullptr;
+
+  for (const auto &E : F->ExceptionTable) {
+    if (E.CatchType) {
+      // llvm::errs() << "Catching:\n";
+      // E.CatchType->dump();
+    }
+    // llvm::errs() << "Can catch: " << canCatch(E.CatchType, Ty) << '\n';
+
+    if (E.CodeStart <= CodeOffset && E.CodeEnd >= CodeOffset &&
+        canCatch(E.CatchType, Ty)) {
+      // llvm::errs() << "SAME FRAME\n";
+      PC = S.Current->getFunction()->getCodeBegin() + E.Target;
+
+      // llvm::errs() << "new offset: "
+      // << (PC - S.Current->getFunction()->getCodeBegin()) << '\n';
+
+      // llvm::errs() << "FOUND!\n";
+      Caught = true;
+      CaughtType = E.CatchType;
+
+      break;
+    }
+  }
+
+  const auto *Source = cast<CXXThrowExpr>(S.Current->getExpr(OpPC));
+  // llvm::errs() << "Comp: " << IsComp << '\n';
+  if (!IsComp) {
+
+    Pointer CastedValue = ThrownValue;
+    const Type *It = ThrownValue.getType().getTypePtr();
+
+    // llvm::errs() <<
+    // "----------------------------------------------------------"
+    // "------------\n";
+    bool NeedsCast =
+        CaughtType && ((CaughtType->isRecordType() && It->isRecordType()) ||
+                       (CaughtType->isPointerOrReferenceType() &&
+                        CaughtType->getPointeeType()->isRecordType() &&
+                        It->isPointerOrReferenceType() &&
+                        It->getPointeeType()->isRecordType()));
+
+    // llvm::errs() << "NeedsCast: " << NeedsCast << '\n';
+
+    // if (CaughtType && CaughtType->isRecordType() && It->isRecordType()) {
+    if (NeedsCast) {
+      CastedValue = CastedValue.deref<Pointer>();
+      // llvm::errs() << "WE ARE CASTING\n";
+      It = It->getPointeeType().getTypePtr();
+      const Record *CaughtRecord = S.getContext().getRecord(
+          CaughtType->getPointeeType()->getAsCXXRecordDecl());
+      const Record *ItRecord =
+          S.getContext().getRecord(It->getAsCXXRecordDecl());
+      while (ItRecord != CaughtRecord) {
+        // llvm::errs() << It << " / " << CaughtType << '\n';
+        const Record *R = S.getContext().getRecord(It->getAsCXXRecordDecl());
+        assert(R);
+        // llvm::errs() << "It record: " << R->getName() << '\n';
+        for (const Record::Base &B : R->bases()) {
+          if (cast<CXXRecordDecl>(ItRecord->getDecl())
+                  ->isDerivedFrom(cast<CXXRecordDecl>(B.Decl))) {
+            // llvm::errs() << "yay!\n";
+            // llvm::errs() << "Casted Value: " << CastedValue << '\n';
+            CastedValue = CastedValue.atField(B.Offset);
+            // llvm::errs() << "Casted Value: " << CastedValue << '\n';
+            It = CastedValue.getType().getTypePtr();
+            ItRecord = S.getContext().getRecord(It->getAsCXXRecordDecl());
+            // return true;
+            break;
+          }
+        }
+      }
+      // llvm::errs() << "Thrownvalue 1\n";
+      S.ThrownValue =
+          ThrowValue{Ty, Source, CastedValue, CastedValue, Name, false};
+    } else {
+      // llvm::errs() << "Thrownvalue 2\n";
+      S.ThrownValue = ThrowValue{Ty,          Source, ThrownValue.deref<T>(),
+                                 ThrownValue, Name,   false};
+    }
+
+  } else {
+    // llvm::errs() <<
+    // "----------------------------------------------------------"
+    // "------------\n";
+    // llvm::errs() << "Value: " << ThrownValue << '\n';
+    assert((std::is_same_v<T, Pointer>));
+    // llvm::errs() << "Direct hit: "
+    // << (ThrownValue.getType().getTypePtr() == CaughtType) << '\n';
+    // We need to cast the thrown value to the expected caught type.
+    // FIXME: Add more tests.
+    // FIXME: We need to be careful here becuase of virtual and multiple
+    // inheritance.
+    //        Add tests for that as well.
+    Pointer CastedValue = ThrownValue;
+    const Type *It = ThrownValue.getType().getTypePtr();
+
+    bool NeedsCast = CaughtType &&
+                     ((CaughtType->isRecordType() && It->isRecordType()) ||
+                      (CaughtType->isPointerOrReferenceType() &&
+                       CaughtType->getPointeeType()->isRecordType() &&
+                       It->isPointerOrReferenceType() &&
+                       It->getPointeeType()->isRecordType())
+
+                      || (It->isRecordType() && CaughtType->isReferenceType() &&
+                          CaughtType->getPointeeType()->isRecordType()));
+
+    // llvm::errs() << "NeedsCast: " << NeedsCast << '\n';
+
+    if (CaughtType && CaughtType->isPointerOrReferenceType())
+      CaughtType = CaughtType->getPointeeType().getTypePtr();
+
+    if (NeedsCast) {
+      const Record *CaughtRecord =
+          S.getContext().getRecord(CaughtType->getAsCXXRecordDecl());
+      const Record *ItRecord =
+          S.getContext().getRecord(It->getAsCXXRecordDecl());
+      while (ItRecord != CaughtRecord) {
+        llvm::errs() << It << " / " << CaughtType << '\n';
+        const Record *R = S.getContext().getRecord(It->getAsCXXRecordDecl());
+        assert(R);
+        llvm::errs() << "It record: " << R->getName() << '\n';
+        for (const Record::Base &B : R->bases()) {
+          if (cast<CXXRecordDecl>(ItRecord->getDecl())
+                  ->isDerivedFrom(cast<CXXRecordDecl>(B.Decl))) {
+            // llvm::errs() << "yay!\n";
+            // llvm::errs() << "Casted Value: " << CastedValue << '\n';
+            CastedValue = CastedValue.atField(B.Offset);
+            // llvm::errs() << "Casted Value: " << CastedValue << '\n';
+            It = CastedValue.getType().getTypePtr();
+            ItRecord = S.getContext().getRecord(It->getAsCXXRecordDecl());
+            // return true;
+            break;
+          }
+        }
+      }
+    }
+    // llvm::errs() << "Thrownvalue 3\n";
+    S.ThrownValue =
+        ThrowValue{Ty, Source, CastedValue, CastedValue, Name, false};
+  }
+
+  if (Caught) {
+    // llvm::errs() << "CAUGHT IN " << F->getName() << '\n';
+    // llvm::errs() << "As\n";
+    // CaughtType->dump();
+  } else {
+    // llvm::errs() << "Uncaught exception!\n";
+    // If we didnt' catch the exception in the current frame, save the thrown
+    // value in InterpState to be caught by callers of this function.
+    // const CXXThrowExpr *Source =
+    // cast<CXXThrowExpr>(S.Current->getExpr(OpPC)); S.ThrownValue =
+    // ThrowValue{Ty, Source, ThrownValue, Name};
+    PC = S.Current->getFunction()->getCodeEnd() - align(sizeof(Opcode));
+    // llvm::errs() << "Offset now: "
+    // << (PC - S.Current->getFunction()->getCodeBegin()) << '\n';
+    // PC = S.Current->getFunction()->getCodeEnd();// - align(sizeof(Opcode));
+  }
+
+  return true;
+}
+
+inline bool SaveException(InterpState &S, CodePtr OpPC, const Type *Ty) {
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+  const Pointer &Ptr = S.Stk.pop<Pointer>();
+
+  const auto *Source = cast<CXXThrowExpr>(S.Current->getExpr(OpPC));
+  S.ThrownValue = ThrowValue{Ty, Source, Ptr, Ptr, PT_Ptr, false};
+  return true;
+}
+
+inline bool ThrowTrap(InterpState &S, CodePtr OpPC) {
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+  S.ThrowTrapStackSize = S.Stk.size();
+  llvm::errs() << "Trap now: " << S.ThrowTrapStackSize << '\n';
+
+  return true;
+}
+
+inline bool Catch(InterpState &S, CodePtr OpPC) {
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+  assert(S.ThrownValue);
+  S.ThrownValue->Caught = true;
+
+  return true;
+}
+
+/// Allocate memory to store an exception object. This uses the InterpState
+/// allocator, so has the same lifetime as local variables (minus scoping).
+inline bool AllocException(InterpState &S, CodePtr &PC,
+                           const Descriptor *Desc) {
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+
+  assert(Desc);
+  char *Memory = (char *)S.allocate(sizeof(Block) + Desc->getAllocSize());
+  Block *B = new (Memory) Block(~0u, Desc);
+  B->invokeCtor();
+
+  // B->dump();
+
+  S.Stk.push<Pointer>(B);
   return true;
 }
 
@@ -2332,7 +2616,8 @@ bool Init(InterpState &S, CodePtr OpPC) {
   const Pointer &Ptr = S.Stk.peek<Pointer>();
   if (!CheckInit(S, OpPC, Ptr))
     return false;
-  Ptr.initialize();
+  if (Ptr.canBeInitialized())
+    Ptr.initialize();
   new (&Ptr.deref<T>()) T(Value);
   return true;
 }
@@ -2343,7 +2628,8 @@ bool InitPop(InterpState &S, CodePtr OpPC) {
   const Pointer &Ptr = S.Stk.pop<Pointer>();
   if (!CheckInit(S, OpPC, Ptr))
     return false;
-  Ptr.initialize();
+  if (Ptr.canBeInitialized())
+    Ptr.initialize();
   new (&Ptr.deref<T>()) T(Value);
   return true;
 }
@@ -3355,6 +3641,30 @@ PRESERVE_NONE inline bool NoRet(InterpState &S, CodePtr OpPC) {
   S.FFDiag(EndLoc, diag::note_constexpr_no_return);
   return false;
 }
+PRESERVE_NONE inline bool AfterRet(InterpState &S, CodePtr &PC) {
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+
+  if (S.ThrownValue) {
+    while (S.Stk.size() != S.Current->getFrameOffset())
+      S.Stk.discardSlow();
+  }
+
+  assert(S.Current->getFrameOffset() == S.Stk.size() && "Invalid frame");
+
+  if (!S.checkingPotentialConstantExpression() || S.Current->Caller)
+    cleanupAfterFunctionCall(S, PC, S.Current->getFunction());
+
+  if (InterpFrame *Caller = S.Current->Caller) {
+    PC = S.Current->getRetPC();
+    InterpFrame::free(S.Current);
+    S.Current = Caller;
+  } else {
+    InterpFrame::free(S.Current);
+    S.Current = nullptr;
+  }
+
+  return true;
+}
 
 //===----------------------------------------------------------------------===//
 // NarrowPtr, ExpandPtr
@@ -4005,6 +4315,34 @@ bool DiagTypeid(InterpState &S, CodePtr OpPC);
 inline bool CheckDestruction(InterpState &S, CodePtr OpPC) {
   const auto &Ptr = S.Stk.peek<Pointer>();
   return CheckDestructor(S, OpPC, Ptr);
+}
+
+template <PrimType Name, class T = typename PrimConv<Name>::T>
+bool GetExceptionValue(InterpState &S, CodePtr OpPC) {
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+  assert(S.ThrownValue);
+  llvm::errs() << "-> " << std::get<T>(S.ThrownValue->Value) << '\n';
+  S.Stk.push<T>(std::get<T>(S.ThrownValue->Value));
+  S.ThrownValue = std::nullopt;
+  return true;
+}
+
+inline bool GetPtrExceptionValue(InterpState &S, CodePtr OpPC) {
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+  assert(S.ThrownValue);
+  llvm::errs() << "-> " << S.ThrownValue->Ptr << '\n';
+  // llvm::errs() << "   " << std::get<Pointer>(S.ThrownValue->Value) << '\n';;
+  S.Stk.push<Pointer>(
+      S.ThrownValue->Ptr); // std::get<T>(S.ThrownValue->Value));
+  S.ThrownValue = std::nullopt;
+  return true;
+}
+
+inline bool ClearExceptionValue(InterpState &S, CodePtr OpPC) {
+  llvm::errs() << __PRETTY_FUNCTION__ << '\n';
+  // assert(S.ThrownValue);
+  S.ThrownValue = std::nullopt;
+  return true;
 }
 
 //===----------------------------------------------------------------------===//

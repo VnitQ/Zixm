@@ -35,6 +35,12 @@ struct UnsignedOrNone {
     return Rep - 1;
   }
 
+  unsigned value_or(unsigned U) const {
+    if (operator bool())
+      return operator*();
+    return U;
+  }
+
   friend constexpr bool operator==(UnsignedOrNone LHS, UnsignedOrNone RHS) {
     return LHS.Rep == RHS.Rep;
   }

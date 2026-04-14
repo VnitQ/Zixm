@@ -5596,3 +5596,14 @@ def CountedByRef : Builtin {
   let Attributes = [NoThrow, CustomTypeChecking];
   let Prototype = "int(...)";
 }
+
+def BuiltinCurrentException: LangBuiltin<"CXX_LANG"> {
+  let Spellings = ["__builtin_current_exception"];
+  let Attributes = [NoThrow, Constexpr];
+  let Prototype = "void*()";
+}
+def BuiltinUncaughtExceptions: LangBuiltin<"CXX_LANG"> {
+  let Spellings = ["__builtin_uncaught_exceptions"];
+  let Attributes = [NoThrow, Constexpr];
+  let Prototype = "int()";
+}

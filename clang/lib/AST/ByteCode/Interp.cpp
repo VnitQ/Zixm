@@ -24,6 +24,7 @@
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/StringExtras.h"
+#include <variant>
 
 using namespace clang;
 using namespace clang::interp;
@@ -754,7 +755,7 @@ bool CheckGlobalLoad(InterpState &S, CodePtr OpPC, const Block *B) {
 // Similarly, for local loads.
 bool CheckLocalLoad(InterpState &S, CodePtr OpPC, const Block *B) {
   assert(!B->isExtern());
-  const auto &Desc = *reinterpret_cast<const InlineDescriptor *>(B->rawData());
+  const auto &Desc = B->getBlockDesc<const InlineDescriptor>();
   if (!CheckLifetime(S, OpPC, Desc.LifeState, AK_Read))
     return false;
   if (!Desc.IsInitialized)
@@ -1232,7 +1233,7 @@ static bool runRecordDestructor(InterpState &S, CodePtr OpPC,
     return false;
 
   S.Stk.push<Pointer>(BasePtr);
-  return Call(S, OpPC, DtorFunc, 0);
+  return Call(S, OpPC, OpPC, DtorFunc, 0);
 }
 
 static bool RunDestructors(InterpState &S, CodePtr OpPC, const Block *B) {
@@ -1638,16 +1639,16 @@ bool CallVar(InterpState &S, CodePtr OpPC, const Function *Func,
   S.Current = FrameBefore;
   return false;
 }
-bool Call(InterpState &S, CodePtr OpPC, const Function *Func,
+bool Call(InterpState &S, CodePtr &PC, CodePtr OpPC, const Function *Func,
           uint32_t VarArgSize) {
-
+  // CodePtr OpPC = PC - align(sizeof(uint32_t)) - align(sizeof(void*));
   // C doesn't have constexpr functions.
   if (!S.getLangOpts().CPlusPlus)
-    return Invalid(S, OpPC);
+    return Invalid(S, PC);
 
   assert(Func);
   auto cleanup = [&]() -> bool {
-    cleanupAfterFunctionCall(S, OpPC, Func);
+    cleanupAfterFunctionCall(S, PC, Func);
     return false;
   };
 
@@ -1705,14 +1706,20 @@ bool Call(InterpState &S, CodePtr OpPC, const Function *Func,
 
   auto Memory = new char[InterpFrame::allocSize(Func)];
   auto NewFrame = new (Memory) InterpFrame(S, Func, OpPC, VarArgSize);
+  // Func->dump();
+
+  llvm::errs() << ":::::: CALLING " << Func->getName() << '\n';
+
   InterpFrame *FrameBefore = S.Current;
   S.Current = NewFrame;
 
+  bool NowThrownValueBefore = !S.ThrownValue;
   InterpStateCCOverride CCOverride(S, Func->isImmediate());
   // Note that we cannot assert(CallResult.hasValue()) here since
   // Ret() above only sets the APValue if the curent frame doesn't
   // have a caller set.
   bool Success = Interpret(S);
+
   // Remove initializing  block again.
   if (Func->isConstructor() || Func->isDestructor())
     S.InitializingBlocks.pop_back();
@@ -1725,7 +1732,158 @@ bool Call(InterpState &S, CodePtr OpPC, const Function *Func,
     return false;
   }
 
-  assert(S.Current == FrameBefore);
+  if (S.ThrownValue && !S.ThrownValue->Caught && NowThrownValueBefore) {
+    llvm::errs() << "WE HAVE A THROWN VALUE in CALL\n";
+    // If we have a thrown value in the InterpState, it was thrown in the
+    // function we just called (or deeper down in the stack), but not caught. We
+    // now need to check if the current function can call it.
+    const Function *CurrFunction = S.Current->getFunction();
+    if (!CurrFunction) {
+      llvm::errs() << "BUT NO FUNCTION, SO DIAGNOSING\n";
+      assert(S.Current->isBottomFrame());
+      if (!S.checkingPotentialConstantExpression()) {
+        QualType UncaughtType = QualType(S.ThrownValue->Ty, 0);
+        std::string ValString;
+        TYPE_SWITCH(S.ThrownValue->T, {
+          ValString = std::get<T>(S.ThrownValue->Value)
+                          .toDiagnosticString(S.getASTContext());
+        });
+        S.FFDiag(S.ThrownValue->ThrowSite,
+                 diag::note_constexpr_uncaught_exception)
+            << UncaughtType << ValString;
+      }
+      return false;
+    }
+    auto canCatch = [](const Type *CatchType, const Type *ThrowType) -> bool {
+      if (!CatchType || ASTContext::hasSameType(CatchType, ThrowType))
+        return true;
+
+      assert(CatchType);
+
+      // if (const auto *L = CatchType->getAs<ReferenceType>()) {
+      // return L->getPointeeType().getTypePtr() == ThrowType;
+      // }
+
+      // nullptr_t can be caught by any pointer type.
+      if (ThrowType->isNullPtrType() && CatchType->isPointerType())
+        return true;
+
+      // void* can catch all thown pointer types.
+      if (ThrowType->isPointerType() && CatchType->isVoidPointerType())
+        return true;
+
+      if (CatchType->isPointerOrReferenceType())
+        CatchType = CatchType->getPointeeType().getTypePtr();
+      if (ThrowType->isPointerOrReferenceType())
+        ThrowType = ThrowType->getPointeeType().getTypePtr();
+
+      if (CatchType->isRecordType() && ThrowType->isRecordType()) {
+        const CXXRecordDecl *CatchDecl = CatchType->getAsCXXRecordDecl();
+        const CXXRecordDecl *ThrowDecl = ThrowType->getAsCXXRecordDecl();
+        assert(CatchDecl);
+        assert(ThrowDecl);
+
+        if (CatchDecl == ThrowDecl)
+          return true;
+        if (ThrowDecl->isDerivedFrom(CatchDecl))
+          return true;
+      }
+
+      return false;
+    };
+
+    bool Caught = false;
+    unsigned CodeOffset = PC - CurrFunction->getCodeBegin();
+    for (const auto &E : CurrFunction->ExceptionTable) {
+      if (E.CodeStart <= CodeOffset && E.CodeEnd >= CodeOffset &&
+          (canCatch(E.CatchType, S.ThrownValue->Ty))) {
+
+        const Type *CaughtType = E.CatchType;
+        const Type *It = S.ThrownValue->Ty;
+
+        llvm::errs() << "Resetting stack to " << S.ThrowTrapStackSize << '\n';
+        while (S.Stk.size() != S.ThrowTrapStackSize) {
+          S.Stk.discardSlow();
+        }
+
+        bool NeedsCast =
+            CaughtType &&
+            ((CaughtType->isRecordType() && It->isRecordType()) ||
+             (CaughtType->isPointerOrReferenceType() &&
+              CaughtType->getPointeeType()->isRecordType() &&
+              It->isPointerOrReferenceType() &&
+              It->getPointeeType()->isRecordType())
+
+             || (It->isRecordType() && CaughtType->isReferenceType() &&
+                 CaughtType->getPointeeType()->isRecordType()));
+
+        llvm::errs() << "NeedsCast: " << NeedsCast << '\n';
+
+        if (NeedsCast) {
+          llvm::errs() << "CASTING AFTER CALL\n";
+          Pointer ThrownValue = std::get<Pointer>(S.ThrownValue->Value);
+          Pointer CastedValue =
+              ThrownValue; // std::get<Pointer>(S.ThrownValue->Value);
+          llvm::errs() << "ThrownValue: " << ThrownValue << '\n';
+
+          if (CaughtType->isPointerOrReferenceType())
+            CaughtType = CaughtType->getPointeeType().getTypePtr();
+
+          if (It->isPointerOrReferenceType())
+            It = It->getPointeeType().getTypePtr();
+          const Record *CaughtRecord =
+              S.getContext().getRecord(CaughtType->getAsCXXRecordDecl());
+          const Record *ItRecord =
+              S.getContext().getRecord(It->getAsCXXRecordDecl());
+          while (ItRecord != CaughtRecord) {
+            llvm::errs() << It << " / " << CaughtType << '\n';
+            const Record *R =
+                S.getContext().getRecord(It->getAsCXXRecordDecl());
+            assert(R);
+            llvm::errs() << "It record: " << R->getName() << '\n';
+            for (const Record::Base &B : R->bases()) {
+              if (cast<CXXRecordDecl>(ItRecord->getDecl())
+                      ->isDerivedFrom(cast<CXXRecordDecl>(B.Decl))) {
+                llvm::errs() << "yay!\n";
+                llvm::errs() << "Casted Value: " << CastedValue << '\n';
+                CastedValue = CastedValue.atField(B.Offset);
+                llvm::errs() << "Casted Value: " << CastedValue << '\n';
+                It = CastedValue.getType().getTypePtr();
+                ItRecord = S.getContext().getRecord(It->getAsCXXRecordDecl());
+                // return true;
+                break;
+              }
+            }
+          }
+
+          S.ThrownValue->Value = CastedValue;
+          S.ThrownValue->Ptr = CastedValue;
+        }
+
+        llvm::errs() << "AAAAAAAHA! IN " << CurrFunction->getName() << "\n";
+        PC = S.Current->getFunction()->getCodeBegin() + E.Target;
+        llvm::errs() << "Offset now: "
+                     << (PC - S.Current->getFunction()->getCodeBegin()) << '\n';
+        Caught = true;
+        break;
+      }
+    }
+
+    if (!Caught) {
+      bool IsNoExcept = S.Current->getFunction()
+                            ->getDecl()
+                            ->getType()
+                            ->getAs<FunctionProtoType>()
+                            ->hasNoexceptExceptionSpec();
+
+      if (IsNoExcept)
+        S.CCEDiag(S.Current->getSource(OpPC),
+                  diag::note_constexpr_exception_in_noexcept_func);
+      PC = S.Current->getFunction()->getCodeEnd() - align(sizeof(Opcode));
+    }
+  }
+
+  // assert(S.Current == FrameBefore);
   return true;
 }
 
@@ -1819,7 +1977,7 @@ bool CallVirt(InterpState &S, CodePtr OpPC, const Function *Func,
     }
   }
 
-  if (!Call(S, OpPC, Func, VarArgSize))
+  if (!Call(S, OpPC, OpPC, Func, VarArgSize))
     return false;
 
   // Covariant return types. The return type of Overrider is a pointer
@@ -1855,7 +2013,7 @@ bool CallBI(InterpState &S, CodePtr OpPC, const CallExpr *CE,
   return InterpretBuiltin(S, OpPC, CE, BuiltinID);
 }
 
-bool CallPtr(InterpState &S, CodePtr OpPC, uint32_t ArgSize,
+bool CallPtr(InterpState &S, CodePtr &PC, CodePtr OpPC, uint32_t ArgSize,
              const CallExpr *CE) {
   const Pointer &Ptr = S.Stk.pop<Pointer>();
 
@@ -1914,7 +2072,7 @@ bool CallPtr(InterpState &S, CodePtr OpPC, uint32_t ArgSize,
   if (F->isVirtual())
     return CallVirt(S, OpPC, F, VarArgSize);
 
-  return Call(S, OpPC, F, VarArgSize);
+  return Call(S, PC, OpPC, F, VarArgSize);
 }
 
 static void startLifetimeRecurse(const Pointer &Ptr) {
@@ -2586,7 +2744,7 @@ constexpr bool OpReturns(Opcode Op) {
          Op == OP_RetSint64 || Op == OP_RetUint64 || Op == OP_RetIntAP ||
          Op == OP_RetIntAPS || Op == OP_RetBool || Op == OP_RetFixedPoint ||
          Op == OP_RetPtr || Op == OP_RetMemberPtr || Op == OP_RetFloat ||
-         Op == OP_EndSpeculation;
+         Op == OP_EndSpeculation || Op == OP_AfterRet;
 }
 
 #if USE_TAILCALLS

@@ -187,6 +187,8 @@ LLVM_DUMP_METHOD void Function::dump(llvm::raw_ostream &OS,
     Text.Addr = Addr;
     Text.IsJump = isJumpOpcode(Op);
     Text.CurrentOp = (PC == OpPC);
+    // llvm::errs() << (void*)(*PC) << " / " << (void*)(*OpPC) << ((*OpPC -
+    // *PC)) << '\n';
     switch (Op) {
 #define GET_DISASM
 #include "Opcodes.inc"
