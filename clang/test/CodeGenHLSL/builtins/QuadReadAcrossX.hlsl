@@ -1,9 +1,9 @@
 // RUN: %clang_cc1 -finclude-default-header -x hlsl -triple \
-// RUN:   dxil-pc-shadermodel6.3-compute %s -fnative-half-type -fnative-int16-type \
+// RUN:   dxil-pc-shadermodel6.3-library %s -fnative-half-type -fnative-int16-type \
 // RUN:   -emit-llvm -disable-llvm-passes -o - | FileCheck %s \
 // RUN:   --check-prefixes=CHECK,CHECK-NATIVE_HALF -DTARGET=dx -DCC=""
 // RUN: %clang_cc1 -finclude-default-header -x hlsl -triple \
-// RUN:   dxil-pc-shadermodel6.3-compute %s -emit-llvm -disable-llvm-passes \
+// RUN:   dxil-pc-shadermodel6.3-library %s -emit-llvm -disable-llvm-passes \
 // RUN:   -o - | FileCheck %s --check-prefixes=CHECK,CHECK-NO_HALF -DTARGET=dx -DCC=""
 
 // RUN: %clang_cc1 -finclude-default-header -x hlsl -triple \
