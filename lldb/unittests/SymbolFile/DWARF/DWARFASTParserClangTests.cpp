@@ -2118,3 +2118,33 @@ DWARF:
   EXPECT_EQ(type_sp->GetName(), "Bar<int>");
   EXPECT_EQ(type_sp->GetForwardCompilerType().GetTypeName(), "Foo::Bar<int>");
 }
+
+TEST_F(DWARFASTParserClangTests, TestRustVariantMember) {
+  // Tests that 128-bit discriminants are output to variant names correctly
+  auto yamldata = llvm::MemoryBuffer::getFile(
+      GetInputFilePath("DW_TAG_variant_rust-test.yaml"), /*IsText=*/true);
+  ASSERT_TRUE(yamldata);
+
+  DWARFASTParserClangYAMLTester tester(yamldata->get()->getBuffer());
+
+  auto &ts_clang = tester.GetTypeSystem();
+  auto *symbol_file = ts_clang.GetSymbolFile();
+
+  TypeQuery query{ConstString("BigDiscr")};
+  TypeResults result{};
+  symbol_file->FindTypes(query, result);
+
+  auto type = result.GetFirstType();
+  auto enum_type = type.get()->GetFullCompilerType();
+  std::string f_name;
+  auto all_variants =
+      enum_type.GetFieldAtIndex(0, f_name, nullptr, nullptr, nullptr);
+  ASSERT_EQ(f_name, "$variants$");
+
+  f_name.clear();
+  all_variants.GetFieldAtIndex(0, f_name, nullptr, nullptr, nullptr);
+  ASSERT_EQ(f_name, "$variant$0");
+
+  all_variants.GetFieldAtIndex(1, f_name, nullptr, nullptr, nullptr);
+  ASSERT_EQ(f_name, "$variant$29352461300415899028694309177919734273");
+}
