@@ -375,6 +375,7 @@ struct VPCostContext {
   /// replicating operands.
   InstructionCost getScalarizationOverhead(
       Type *ResultTy, ArrayRef<const VPValue *> Operands, ElementCount VF,
+      const VPSingleDefRecipe *R = nullptr,
       TTI::VectorInstrContext VIC = TTI::VectorInstrContext::None,
       bool AlwaysIncludeReplicatingR = false);
 
