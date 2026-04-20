@@ -1513,6 +1513,19 @@ bool TargetLowering::SimplifyDemandedBits(
                              Known2, TLO, Depth + 1))
       return true;
 
+    // FIXME: Op1Opc checks are to avoid regressions in
+    // x86 codegen.
+    unsigned Op1Opc = Op1.getOpcode();
+    if (!VT.isVector() &&
+        (Op1Opc == ISD::ZERO_EXTEND || Op1Opc == ISD::SIGN_EXTEND ||
+         Op1Opc == ISD::ANY_EXTEND || Op1Opc == ISD::TRUNCATE) &&
+        (~Known2.Zero & DemandedBits) != DemandedBits) {
+      Known2 = TLO.DAG.computeKnownBits(Op0, DemandedElts, Depth + 1);
+      if (SimplifyDemandedBits(Op1, ~Known2.Zero & DemandedBits, DemandedElts,
+                               Known, TLO, Depth + 1))
+        return true;
+    }
+
     // If all of the demanded bits are known one on one side, return the other.
     // These bits cannot contribute to the result of the 'and'.
     if (DemandedBits.isSubsetOf(Known2.Zero | Known.One))
