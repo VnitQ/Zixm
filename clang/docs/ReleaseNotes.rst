@@ -261,6 +261,8 @@ New Compiler Flags
 - New ``-cl`` option ``/d2guardcfgdispatch-`` added to match MSVC. This acts as a
   shorthand for ``-fwin-cfg-mechanism=check``.
 
+- New Option ``-Wpointer-bool-conversion-strict`` has been added to warn about all implicit pointer-to-bool conversions (#GH9500). This option is ignored by default.
+
 Deprecated Compiler Flags
 -------------------------
 
