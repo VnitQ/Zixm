@@ -159,7 +159,7 @@ public:
 
   LLVM_ABI UnrollCostEstimator(const Loop *L, const TargetTransformInfo &TTI,
                                const SmallPtrSetImpl<const Value *> &EphValues,
-                               unsigned BEInsns);
+                               unsigned BEInsns, bool PrepareForLTO = false);
 
   /// Whether it is legal to unroll this loop.
   LLVM_ABI bool canUnroll() const;

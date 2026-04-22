@@ -36,11 +36,16 @@ class LoopFullUnrollPass : public PassInfoMixin<LoopFullUnrollPass> {
   /// the internal SCEV records. For large loops, the former is faster.
   const bool ForgetSCEV;
 
+  /// If true, consider calls as inline candidates and defer unrolling so that
+  /// LTO post-link inlining can consider them first.
+  const bool PrepareForLTO;
+
 public:
   explicit LoopFullUnrollPass(int OptLevel = 2, bool OnlyWhenForced = false,
-                              bool ForgetSCEV = false)
+                              bool ForgetSCEV = false,
+                              bool PrepareForLTO = false)
       : OptLevel(OptLevel), OnlyWhenForced(OnlyWhenForced),
-        ForgetSCEV(ForgetSCEV) {}
+        ForgetSCEV(ForgetSCEV), PrepareForLTO(PrepareForLTO) {}
 
   PreservedAnalyses run(Loop &L, LoopAnalysisManager &AM,
                         LoopStandardAnalysisResults &AR, LPMUpdater &U);
@@ -76,6 +81,10 @@ struct LoopUnrollOptions {
   /// of the currently processed loops, which removes one entry at a time from
   /// the internal SCEV records. For large loops, the former is faster.
   const bool ForgetSCEV;
+
+  /// If true, consider calls as inline candidates and defer unrolling so that
+  /// LTO post-link inlining can consider them first.
+  bool PrepareForLTO = false;
 
   LoopUnrollOptions(int OptLevel = 2, bool OnlyWhenForced = false,
                     bool ForgetSCEV = false)
@@ -123,6 +132,11 @@ struct LoopUnrollOptions {
   // Sets the max full unroll count.
   LoopUnrollOptions &setFullUnrollMaxCount(unsigned O) {
     FullUnrollMaxCount = O;
+    return *this;
+  }
+
+  LoopUnrollOptions &setPrepareForLTO(bool V) {
+    PrepareForLTO = V;
     return *this;
   }
 };

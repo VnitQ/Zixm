@@ -687,11 +687,11 @@ static std::optional<EstimatedUnrollCost> analyzeLoopUnrollCost(
 
 UnrollCostEstimator::UnrollCostEstimator(
     const Loop *L, const TargetTransformInfo &TTI,
-    const SmallPtrSetImpl<const Value *> &EphValues, unsigned BEInsns) {
+    const SmallPtrSetImpl<const Value *> &EphValues, unsigned BEInsns,
+    bool PrepareForLTO) {
   CodeMetrics Metrics;
   for (BasicBlock *BB : L->blocks())
-    Metrics.analyzeBasicBlock(BB, TTI, EphValues, /* PrepareForLTO= */ false,
-                              L);
+    Metrics.analyzeBasicBlock(BB, TTI, EphValues, PrepareForLTO, L);
   NumInlineCandidates = Metrics.NumInlineCandidates;
   NotDuplicatable = Metrics.notDuplicatable;
   Convergence = Metrics.Convergence;
@@ -1245,7 +1245,7 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
                 OptimizationRemarkEmitter &ORE, BlockFrequencyInfo *BFI,
                 ProfileSummaryInfo *PSI, bool PreserveLCSSA, int OptLevel,
                 bool OnlyFullUnroll, bool OnlyWhenForced, bool ForgetAllSCEV,
-                std::optional<unsigned> ProvidedCount,
+                bool PrepareForLTO, std::optional<unsigned> ProvidedCount,
                 std::optional<unsigned> ProvidedThreshold,
                 std::optional<bool> ProvidedAllowPartial,
                 std::optional<bool> ProvidedRuntime,
@@ -1324,7 +1324,7 @@ tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI, ScalarEvolution &SE,
   SmallPtrSet<const Value *, 32> EphValues;
   CodeMetrics::collectEphemeralValues(L, &AC, EphValues);
 
-  UnrollCostEstimator UCE(L, TTI, EphValues, UP.BEInsns);
+  UnrollCostEstimator UCE(L, TTI, EphValues, UP.BEInsns, PrepareForLTO);
   if (!UCE.canUnroll())
     return LoopUnrollResult::Unmodified;
 
@@ -1553,10 +1553,11 @@ public:
 
     LoopUnrollResult Result = tryToUnrollLoop(
         L, DT, LI, SE, TTI, AC, ORE, nullptr, nullptr, PreserveLCSSA, OptLevel,
-        /*OnlyFullUnroll*/ false, OnlyWhenForced, ForgetAllSCEV, ProvidedCount,
-        ProvidedThreshold, ProvidedAllowPartial, ProvidedRuntime,
-        ProvidedUpperBound, ProvidedAllowPeeling,
-        ProvidedAllowProfileBasedPeeling, ProvidedFullUnrollMaxCount);
+        /*OnlyFullUnroll*/ false, OnlyWhenForced, ForgetAllSCEV,
+        /*PrepareForLTO*/ false, ProvidedCount, ProvidedThreshold,
+        ProvidedAllowPartial, ProvidedRuntime, ProvidedUpperBound,
+        ProvidedAllowPeeling, ProvidedAllowProfileBasedPeeling,
+        ProvidedFullUnrollMaxCount);
 
     if (Result == LoopUnrollResult::FullyUnrolled)
       LPM.markLoopAsDeleted(*L);
@@ -1625,7 +1626,8 @@ PreservedAnalyses LoopFullUnrollPass::run(Loop &L, LoopAnalysisManager &AM,
       tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, AR.TTI, AR.AC, ORE,
                       /*BFI*/ nullptr, /*PSI*/ nullptr,
                       /*PreserveLCSSA*/ true, OptLevel, /*OnlyFullUnroll*/ true,
-                      OnlyWhenForced, ForgetSCEV, /*Count*/ std::nullopt,
+                      OnlyWhenForced, ForgetSCEV, PrepareForLTO,
+                      /*Count*/ std::nullopt,
                       /*Threshold*/ std::nullopt, /*AllowPartial*/ false,
                       /*Runtime*/ false, /*UpperBound*/ false,
                       /*AllowPeeling*/ true,
@@ -1753,7 +1755,7 @@ PreservedAnalyses LoopUnrollPass::run(Function &F,
         &L, DT, &LI, SE, TTI, AC, ORE, BFI, PSI,
         /*PreserveLCSSA*/ true, UnrollOpts.OptLevel, /*OnlyFullUnroll*/ false,
         UnrollOpts.OnlyWhenForced, UnrollOpts.ForgetSCEV,
-        /*Count*/ std::nullopt,
+        UnrollOpts.PrepareForLTO, /*Count*/ std::nullopt,
         /*Threshold*/ std::nullopt, UnrollOpts.AllowPartial,
         UnrollOpts.AllowRuntime, UnrollOpts.AllowUpperBound, LocalAllowPeeling,
         UnrollOpts.AllowProfileBasedPeeling, UnrollOpts.FullUnrollMaxCount,
@@ -1795,6 +1797,8 @@ void LoopUnrollPass::printPipeline(
        << "profile-peeling;";
   if (UnrollOpts.FullUnrollMaxCount != std::nullopt)
     OS << "full-unroll-max=" << UnrollOpts.FullUnrollMaxCount << ';';
+  if (UnrollOpts.PrepareForLTO)
+    OS << "prepare-for-lto;";
   OS << 'O' << UnrollOpts.OptLevel;
   OS << '>';
 }
