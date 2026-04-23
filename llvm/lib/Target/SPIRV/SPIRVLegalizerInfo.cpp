@@ -493,6 +493,9 @@ SPIRVLegalizerInfo::SPIRVLegalizerInfo(const SPIRVSubtarget &ST) {
       .legalFor(allFloatScalarsAndVectors);
   // clang-format on
 
+  getActionDefinitionsBuilder(G_FCANONICALIZE)
+      .legalFor(allFloatScalarsAndVectors);
+
   getActionDefinitionsBuilder(G_FCOPYSIGN)
       .legalForCartesianProduct(allFloatScalarsAndVectors,
                                 allFloatScalarsAndVectors);
