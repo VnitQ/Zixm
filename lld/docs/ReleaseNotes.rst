@@ -40,6 +40,9 @@ ELF Improvements
   beats positional last-match-wins; default: positional). In ELF, the glob
   matches input section names (e.g. ``.text.unlikely.code1``).
 
+* Added ``--unresolved-symbols=@<file>`` flag to specify path to a file with the
+  list of unresolved symbols that will not trigger an error during lininking.
+
 Breaking changes
 ----------------
 
