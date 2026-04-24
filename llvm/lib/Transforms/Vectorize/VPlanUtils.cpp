@@ -747,16 +747,18 @@ VPInstruction *vputils::findCanonicalIVIncrement(VPlan &Plan) {
 /// Find the ComputeReductionResult recipe for \p PhiR, looking through selects
 /// inserted for predicated reductions or tail folding.
 VPInstruction *vputils::findComputeReductionResult(VPReductionPHIRecipe *PhiR) {
-  VPValue *BackedgeVal = PhiR->getBackedgeValue();
-  if (auto *Res = vputils::findUserOf<VPInstruction::ComputeReductionResult>(
-          BackedgeVal))
-    return Res;
+   VPValue *BackedgeVal = PhiR->getBackedgeValue();
+   if (auto *Res = vputils::findUserOf<VPInstruction::ComputeReductionResult>(
+           BackedgeVal))
+     return Res;
 
-  // Look through selects inserted for tail folding or predicated reductions.
-  VPRecipeBase *SelR = vputils::findUserOf(
-      BackedgeVal, m_Select(m_VPValue(), m_VPValue(), m_VPValue()));
-  if (!SelR)
-    return nullptr;
-  return vputils::findUserOf<VPInstruction::ComputeReductionResult>(
-      cast<VPSingleDefRecipe>(SelR));
+   // Look through selects inserted for tail folding or predicated reductions.
+   VPRecipeBase *SelR = vputils::findUserOf(
+       BackedgeVal, m_Select(m_VPValue(), m_VPValue(), m_VPValue()));
+   if (!SelR)
+     SelR = dyn_cast_or_null<VPBlendRecipe>(BackedgeVal->getDefiningRecipe());
+   if (!SelR)
+     return nullptr;
+   return vputils::findUserOf<VPInstruction::ComputeReductionResult>(
+       cast<VPSingleDefRecipe>(SelR));
 }
