@@ -1379,6 +1379,7 @@ def Extra : DiagGroup<"extra", [
     CastFunctionTypeMismatch,
     InitStringTooLongMissingNonString,
     WarnUnnecessaryVirtualSpecifier,
+    ImplicitFallthrough,
   ]>;
 
 def Most : DiagGroup<"most", [
