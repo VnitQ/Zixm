@@ -16,6 +16,30 @@
 using namespace clang;
 using namespace CodeGen;
 
+/// Pre-scna for any statements that could bypass a variable declaration
+/// (gotos, switch, indirect goto). Most functions don't have any jumps so this
+/// is a cheap speedup for most code via a short-circuit guard in Init().
+static bool hasJumpStmts(const Stmt *Body) {
+  llvm::SmallVector<const Stmt *, 32> Worklist;
+  Worklist.push_back(Body);
+  while (!Worklist.empty()) {
+    const Stmt *S = Worklist.pop_back_val();
+    if (!S)
+      continue;
+    switch (S->getStmtClass()) {
+    case Stmt::GotoStmtClass:
+    case Stmt::SwitchStmtClass:
+    case Stmt::IndirectGotoStmtClass:
+      return true;
+    default:
+      break;
+    }
+    for (const Stmt *Child : S->children())
+      Worklist.push_back(Child);
+  }
+  return false;
+}
+
 /// Clear the object and pre-process for the given statement, usually function
 /// body statement.
 void VarBypassDetector::Init(CodeGenModule &CGM, const Stmt *Body) {
@@ -24,6 +48,9 @@ void VarBypassDetector::Init(CodeGenModule &CGM, const Stmt *Body) {
   Bypasses.clear();
   BypassedVarsAtSource.clear();
   Scopes = {{~0U, nullptr}};
+  AlwaysBypassed = false;
+  if (!hasJumpStmts(Body))
+    return;
   unsigned ParentScope = 0;
   AlwaysBypassed = !BuildScopeInformation(CGM, Body, ParentScope);
   if (!AlwaysBypassed)
