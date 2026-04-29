@@ -5986,7 +5986,8 @@ static void transformToPartialReduction(const VPPartialReductionChain &Chain,
       VPValue *V0 = Blend->getIncomingValue(0);
       VPValue *V1 = Blend->getIncomingValue(1);
 
-      if (V0 == WidenRecipe && V1 == RdxPhi || V1 == WidenRecipe && V0 == RdxPhi) {
+      if (V0 == WidenRecipe && V1 == RdxPhi ||
+          V1 == WidenRecipe && V0 == RdxPhi) {
         // Use the mask of the WidenRecipe incoming as the reduction condition.
         unsigned maskIdx = (V0 == WidenRecipe) ? 0 : 1;
         Cond = Blend->getMask(maskIdx);
@@ -6226,7 +6227,7 @@ getScaledReductions(VPReductionPHIRecipe *RedPhiR, VPCostContext &CostCtx,
 
   // Check for a reduction in the operand of a Blend.
   if (auto *Blend = dyn_cast<VPBlendRecipe>(ExitValue)) {
-    if(Blend->getNumIncomingValues() == 2) {
+    if (Blend->getNumIncomingValues() == 2) {
       VPValue *V0 = Blend->getIncomingValue(0);
       VPValue *V1 = Blend->getIncomingValue(1);
 
@@ -6376,7 +6377,8 @@ void VPlanTransforms::createPartialReductions(VPlan &Plan,
 
           VPValue *V0 = Blend->getIncomingValue(0);
           VPValue *V1 = Blend->getIncomingValue(1);
-          return (V0 == Chain.ReductionBinOp && V1 == RedPhiR) || (V1 == Chain.ReductionBinOp && V0 == RedPhiR);
+          return (V0 == Chain.ReductionBinOp && V1 == RedPhiR) ||
+                 (V1 == Chain.ReductionBinOp && V0 == RedPhiR);
         }
 
         auto *R = cast<VPSingleDefRecipe>(U);
