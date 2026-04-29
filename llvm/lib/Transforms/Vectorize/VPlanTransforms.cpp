@@ -5986,8 +5986,8 @@ static void transformToPartialReduction(const VPPartialReductionChain &Chain,
       VPValue *V0 = Blend->getIncomingValue(0);
       VPValue *V1 = Blend->getIncomingValue(1);
 
-      if (V0 == WidenRecipe && V1 == RdxPhi ||
-          V1 == WidenRecipe && V0 == RdxPhi) {
+      if ((V0 == WidenRecipe) && (V1 == RdxPhi) ||
+          (V1 == WidenRecipe) && (V0 == RdxPhi)) {
         // Use the mask of the WidenRecipe incoming as the reduction condition.
         unsigned maskIdx = (V0 == WidenRecipe) ? 0 : 1;
         Cond = Blend->getMask(maskIdx);
