@@ -119,6 +119,10 @@ function clean() {
 function generate-cmake-base() {
     step "Generating CMake"
 
+    # FIXME: This should really be set in the Dockerfile
+    export CMAKE_PREFIX_PATH="/opt/compiler-explorer/clang-trunk/lib/cmake"
+    export PATH="$PATH:/opt/compiler-explorer/clang-trunk/bin"
+
     # We can remove -DCMAKE_INSTALL_MESSAGE=NEVER once https://gitlab.kitware.com/cmake/cmake/-/issues/26085 is fixed.
     cmake \
           -S "${MONOREPO_ROOT}/runtimes" \
