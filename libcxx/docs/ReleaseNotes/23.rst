@@ -74,6 +74,9 @@ Deprecations and Removals
 Potentially breaking changes
 ----------------------------
 
+- The output of ``ostream << std::thread::id`` and ``std::format("...", std::thread:id)`` changes on some platforms from
+  hexadecimal to decimal. This is done to have consistent formatting across all platforms libc++ supports.
+
 Announcements About Future Releases
 -----------------------------------
 

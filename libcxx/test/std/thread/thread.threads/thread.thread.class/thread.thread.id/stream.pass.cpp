@@ -10,7 +10,7 @@
 // UNSUPPORTED: no-localization
 // UNSUPPORTED: GCC-ALWAYS_INLINE-FIXME
 
-// REQUIRES: locale.fr_FR.UTF-8
+// REQUIRES-: locale.fr_FR.UTF-8
 
 // TODO FMT This test should not require std::to_chars(floating-point)
 // XFAIL: availability-fp_to_chars-missing
@@ -27,6 +27,7 @@
 #include <format>
 #include <locale>
 #include <sstream>
+#include <string>
 #include <thread>
 
 #include "make_string.h"
