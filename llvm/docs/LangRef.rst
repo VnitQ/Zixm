@@ -12298,7 +12298,8 @@ operation. The operation must be one of the following keywords:
 -  usub_sat
 
 For most of these operations, the type of '<value>' must be an integer
-type whose bit width is a power of two greater than or equal to eight.
+or fixed vector of integer type whose bit width is a power of two greater
+than or equal to eight.
 For xchg, this
 may also be a floating point or a pointer type with the same size constraints
 as integers.  For fadd/fsub/fmax/fmin/fmaximum/fminimum/fmaximumnum/fminimumnum, this must be a floating-point
