@@ -52,6 +52,7 @@
 #include "lldb/Target/MemoryRegionInfo.h"
 #include "lldb/Target/OperatingSystem.h"
 #include "lldb/Target/Platform.h"
+#include "lldb/Target/Policy.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/StopInfo.h"
@@ -1277,10 +1278,14 @@ StateType Process::GetState() {
   if (!m_current_private_state_thread_sp)
     return eStateUnloaded;
 
+  auto &policy = PolicyStack::GetForCurrentThread().Current();
+  if (policy.view == Policy::View::Private)
+    return GetPrivateState();
+
   if (CurrentThreadPosesAsPrivateStateThread())
     return GetPrivateState();
-  else
-    return GetPublicState();
+
+  return GetPublicState();
 }
 
 void Process::SetPublicState(StateType new_state, bool restarted) {
@@ -4320,14 +4325,12 @@ Status Process::HaltPrivate() {
   return error;
 }
 
-thread_local bool PrivateStateThreadGuard::g_is_private_state_thread = false;
-
 thread_result_t Process::RunPrivateStateThread(bool is_override) {
   // Override PSTs exist solely to service RunThreadPlan expression evaluation.
   // They must see parent frames, not provider-augmented frames.
-  std::optional<PrivateStateThreadGuard> pst_guard;
+  std::optional<PolicyStack::Guard> policy_guard;
   if (is_override)
-    pst_guard.emplace();
+    policy_guard.emplace(Policy::PrivateState());
 
   bool control_only = true;
 
@@ -5525,9 +5528,9 @@ Process::RunThreadPlan(ExecutionContext &exe_ctx,
 
     // If we spawned an override PST, mark the current (original) PST so
     // GetStackFrameList returns parent frames during event processing.
-    std::optional<PrivateStateThreadGuard> private_state_thread_guard;
+    std::optional<PolicyStack::Guard> policy_guard;
     if (backup_private_state_thread)
-      private_state_thread_guard.emplace();
+      policy_guard.emplace(Policy::PrivateState());
 
     while (true) {
       // We usually want to resume the process if we get to the top of the
@@ -5929,7 +5932,7 @@ Process::RunThreadPlan(ExecutionContext &exe_ctx,
       }
     } // END WAIT LOOP
 
-    private_state_thread_guard.reset();
+    policy_guard.reset();
 
     // If we had to start up a temporary private state thread to run this
     // thread plan, shut it down now.
