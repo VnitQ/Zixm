@@ -2072,12 +2072,17 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
 
   std::optional<QualType> Ssize_tTy = lookupTy("ssize_t");
   std::optional<RangeInt> Ssize_tMax = getMaxValue(Ssize_tTy);
+  auto ValidSsize_tSize = [&](ArgNo ArgN) {
+    return ArgumentCondition(ArgN, WithinRange, Range(0, Ssize_tMax),
+                             "a value not greater than SSIZE_MAX");
+  };
 
   auto ReadSummary =
       Summary(NoEvalCall)
           .Case({ReturnValueCondition(LessThanOrEq, ArgNo(2)),
                  ReturnValueCondition(WithinRange, Range(-1, Ssize_tMax))},
-                ErrnoIrrelevant);
+                ErrnoIrrelevant)
+          .ArgConstraint(ValidSsize_tSize(ArgNo(2)));
 
   // FIXME these are actually defined by POSIX and not by the C standard, we
   // should handle them together with the rest of the POSIX functions.
@@ -3011,7 +3016,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             ArgTypes{ConstCharPtrRestrictTy, CharPtrRestrictTy, SizeTyCanonTy},
             RetType{Ssize_tTy}),
         Summary(NoEvalCall)
-            .Case({ArgumentCondition(2, WithinRange, Range(1, IntMax)),
+            .Case({ArgumentCondition(2, WithinRange, Range(1, Ssize_tMax)),
                    ReturnValueCondition(LessThanOrEq, ArgNo(2)),
                    ReturnValueCondition(WithinRange, Range(1, Ssize_tMax))},
                   ErrnoMustNotBeChecked, GenericSuccessMsg)
@@ -3024,8 +3029,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(NotNull(ArgNo(1)))
             .ArgConstraint(BufferSize(/*Buffer=*/ArgNo(1),
                                       /*BufSize=*/ArgNo(2)))
-            .ArgConstraint(
-                ArgumentCondition(2, WithinRange, Range(0, SizeMax))));
+            .ArgConstraint(ValidSsize_tSize(ArgNo(2))));
 
     // ssize_t readlinkat(int fd, const char *restrict path,
     //                    char *restrict buf, size_t bufsize);
@@ -3035,7 +3039,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
                            SizeTyCanonTy},
                   RetType{Ssize_tTy}),
         Summary(NoEvalCall)
-            .Case({ArgumentCondition(3, WithinRange, Range(1, IntMax)),
+            .Case({ArgumentCondition(3, WithinRange, Range(1, Ssize_tMax)),
                    ReturnValueCondition(LessThanOrEq, ArgNo(3)),
                    ReturnValueCondition(WithinRange, Range(1, Ssize_tMax))},
                   ErrnoMustNotBeChecked, GenericSuccessMsg)
@@ -3049,8 +3053,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(NotNull(ArgNo(2)))
             .ArgConstraint(BufferSize(/*Buffer=*/ArgNo(2),
                                       /*BufSize=*/ArgNo(3)))
-            .ArgConstraint(
-                ArgumentCondition(3, WithinRange, Range(0, SizeMax))));
+            .ArgConstraint(ValidSsize_tSize(ArgNo(3))));
 
     // int renameat(int olddirfd, const char *oldpath, int newdirfd, const char
     // *newpath);
