@@ -1282,9 +1282,6 @@ StateType Process::GetState() {
   if (policy.view == Policy::View::Private)
     return GetPrivateState();
 
-  if (CurrentThreadPosesAsPrivateStateThread())
-    return GetPrivateState();
-
   return GetPublicState();
 }
 
@@ -4326,11 +4323,12 @@ Status Process::HaltPrivate() {
 }
 
 thread_result_t Process::RunPrivateStateThread(bool is_override) {
-  // Override PSTs exist solely to service RunThreadPlan expression evaluation.
-  // They must see parent frames, not provider-augmented frames.
-  std::optional<PolicyStack::Guard> policy_guard;
-  if (is_override)
-    policy_guard.emplace(Policy::PrivateState());
+  // All PSTs see the private reality (private state, private run lock).
+  // Override PSTs additionally skip frame providers and recognizers since
+  // they exist solely to service RunThreadPlan expression evaluation.
+  PolicyStack::Guard policy_guard(is_override
+                                      ? Policy::PrivateStateRunningExpression()
+                                      : Policy::PrivateState());
 
   bool control_only = true;
 
@@ -5530,7 +5528,7 @@ Process::RunThreadPlan(ExecutionContext &exe_ctx,
     // GetStackFrameList returns parent frames during event processing.
     std::optional<PolicyStack::Guard> policy_guard;
     if (backup_private_state_thread)
-      policy_guard.emplace(Policy::PrivateState());
+      policy_guard.emplace(Policy::PrivateStateRunningExpression());
 
     while (true) {
       // We usually want to resume the process if we get to the top of the

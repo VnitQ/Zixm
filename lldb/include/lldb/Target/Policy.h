@@ -58,11 +58,17 @@ struct Policy {
 
   static Policy PublicState() { return {}; }
 
-  static Policy PrivateState() {
+  static Policy PrivateStateRunningExpression() {
     Policy p;
     p.view = View::Private;
     p.capabilities.can_load_frame_providers = false;
     p.capabilities.can_run_frame_recognizers = false;
+    return p;
+  }
+
+  static Policy PrivateState() {
+    Policy p;
+    p.view = View::Private;
     return p;
   }
 
