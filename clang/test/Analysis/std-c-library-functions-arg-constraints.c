@@ -387,6 +387,34 @@ void test_write_ssize_max_io_size(int fd, char *Buf) {
   // bugpath-note@-3{{The 3rd argument to 'write' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
 }
 
+void test_pread_ssize_max_io_size(int fd, char *Buf) {
+  pread(fd, Buf, SSIZE_MAX_PLUS_ONE, 0);
+  // report-warning@-1{{The 3rd argument to 'pread' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+  // bugpath-warning@-2{{The 3rd argument to 'pread' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+  // bugpath-note@-3{{The 3rd argument to 'pread' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+}
+
+void test_pread64_ssize_max_io_size(int fd, char *Buf) {
+  pread64(fd, Buf, SSIZE_MAX_PLUS_ONE, 0);
+  // report-warning@-1{{The 3rd argument to 'pread64' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+  // bugpath-warning@-2{{The 3rd argument to 'pread64' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+  // bugpath-note@-3{{The 3rd argument to 'pread64' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+}
+
+void test_pwrite_ssize_max_io_size(int fd, char *Buf) {
+  pwrite(fd, Buf, SSIZE_MAX_PLUS_ONE, 0);
+  // report-warning@-1{{The 3rd argument to 'pwrite' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+  // bugpath-warning@-2{{The 3rd argument to 'pwrite' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+  // bugpath-note@-3{{The 3rd argument to 'pwrite' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+}
+
+void test_pwrite64_ssize_max_io_size(int fd, char *Buf) {
+  pwrite64(fd, Buf, SSIZE_MAX_PLUS_ONE, 0);
+  // report-warning@-1{{The 3rd argument to 'pwrite64' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+  // bugpath-warning@-2{{The 3rd argument to 'pwrite64' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+  // bugpath-note@-3{{The 3rd argument to 'pwrite64' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}
+}
+
 void test_readlink_ssize_max_io_size(char *Buf) {
   readlink("path", Buf, SSIZE_MAX_PLUS_ONE);
   // report-warning@-1{{The 3rd argument to 'readlink' is 9223372036854775808 but should be a value not greater than SSIZE_MAX}}

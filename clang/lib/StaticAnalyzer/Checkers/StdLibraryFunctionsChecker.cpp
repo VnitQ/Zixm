@@ -3008,6 +3008,35 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(
                 ArgumentCondition(0, WithinRange, Range(0, IntMax))));
 
+    // ssize_t pread(int fildes, void *buf, size_t nbyte, off_t offset);
+    addToFunctionSummaryMap(
+        "pread",
+        Signature(ArgTypes{IntTy, VoidPtrTy, SizeTyCanonTy, Off_tTy},
+                  RetType{Ssize_tTy}),
+        ReadSummary);
+
+    // ssize_t pread64(int fildes, void *buf, size_t nbyte, off64_t offset);
+    addToFunctionSummaryMap(
+        "pread64",
+        Signature(ArgTypes{IntTy, VoidPtrTy, SizeTyCanonTy, Off64_tTy},
+                  RetType{Ssize_tTy}),
+        ReadSummary);
+
+    // ssize_t pwrite(int fildes, const void *buf, size_t nbyte, off_t offset);
+    addToFunctionSummaryMap(
+        "pwrite",
+        Signature(ArgTypes{IntTy, ConstVoidPtrTy, SizeTyCanonTy, Off_tTy},
+                  RetType{Ssize_tTy}),
+        ReadSummary);
+
+    // ssize_t pwrite64(int fildes, const void *buf, size_t nbyte,
+    //                  off64_t offset);
+    addToFunctionSummaryMap(
+        "pwrite64",
+        Signature(ArgTypes{IntTy, ConstVoidPtrTy, SizeTyCanonTy, Off64_tTy},
+                  RetType{Ssize_tTy}),
+        ReadSummary);
+
     // ssize_t readlink(const char *restrict path, char *restrict buf,
     //                  size_t bufsize);
     addToFunctionSummaryMap(
