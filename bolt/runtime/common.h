@@ -62,8 +62,6 @@ typedef int int32_t;
 #define MAP_ANONYMOUS 0x20
 #endif
 
-#define MAP_FAILED ((void *)-1)
-
 #define MADV_HUGEPAGE 14 /* Worth backing with hugepages */
 
 /* set the state of the "THP disable" flags for the calling thread */
@@ -366,6 +364,13 @@ public:
 
 inline uint64_t alignTo(uint64_t Value, uint64_t Align) {
   return (Value + Align - 1) / Align * Align;
+}
+
+// See include/linux/err.h file in the Linux kernel
+constexpr intptr_t MaxErrno = 4095;
+inline bool isErrValue(const void *Val) {
+  const intptr_t PtrVal = reinterpret_cast<intptr_t>(Val);
+  return PtrVal >= -MaxErrno && PtrVal <= -1;
 }
 
 } // anonymous namespace

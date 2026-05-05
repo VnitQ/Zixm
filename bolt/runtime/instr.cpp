@@ -141,8 +141,7 @@ public:
       StackBase = reinterpret_cast<uint8_t *>(
           __mmap(0, MaxSize, PROT_READ | PROT_WRITE,
                  (Shared ? MAP_SHARED : MAP_PRIVATE) | MAP_ANONYMOUS, -1, 0));
-      assert(StackBase != MAP_FAILED,
-             "BumpPtrAllocator: failed to mmap stack!");
+      assert(!isErrValue(StackBase), "BumpPtrAllocator: failed to mmap stack!");
       StackSize = 0;
     }
 
@@ -759,7 +758,7 @@ ProfileWriterContext readDescriptions(const uint8_t *BinContents,
     Size = __lseek(FD, 0, SEEK_END);
     BinContents = reinterpret_cast<uint8_t *>(
         __mmap(0, Size, PROT_READ, MAP_PRIVATE, FD, 0));
-    assert(BinContents != MAP_FAILED, "readDescriptions: Failed to mmap self!");
+    assert(!isErrValue(BinContents), "readDescriptions: Failed to mmap self!");
   }
   Result.MMapPtr = BinContents;
   Result.MMapSize = Size;
@@ -1678,11 +1677,11 @@ extern "C" void __attribute((force_align_arg_pointer)) __bolt_instr_setup() {
   void *Ret =
       __mmap(CountersStart, CountersEnd - CountersStart, PROT_READ | PROT_WRITE,
              MAP_ANONYMOUS | MapPrivateOrShared | MAP_FIXED, -1, 0);
-  assert(Ret != MAP_FAILED, "__bolt_instr_setup: Failed to mmap counters!");
+  assert(!isErrValue(Ret), "__bolt_instr_setup: Failed to mmap counters!");
 
   GlobalMetadataStorage = __mmap(0, 4096, PROT_READ | PROT_WRITE,
                                  MapPrivateOrShared | MAP_ANONYMOUS, -1, 0);
-  assert(GlobalMetadataStorage != MAP_FAILED,
+  assert(!isErrValue(GlobalMetadataStorage),
          "__bolt_instr_setup: failed to mmap page for metadata!");
 
   GlobalAlloc = new (GlobalMetadataStorage) BumpPtrAllocator;

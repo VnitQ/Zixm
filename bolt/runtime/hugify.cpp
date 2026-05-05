@@ -101,7 +101,7 @@ static void hugifyForOldKernel(uint8_t *From, uint8_t *To) {
   void *Mem = __mmap(0, Size, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-  if (Mem == MAP_FAILED) {
+  if (isErrValue(Mem)) {
     char Msg[] = "[hugify] could not allocate memory for text move\n";
     reportError(Msg, sizeof(Msg));
   }
@@ -115,8 +115,10 @@ static void hugifyForOldKernel(uint8_t *From, uint8_t *To) {
 
   __prctl(PR_SET_THP_DISABLE, 0, 0, 0, 0);
   // Maps out the existing hot code.
-  if (__mmap(reinterpret_cast<uint64_t>(From), Size, PROT_READ | PROT_WRITE,
-             MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0) == MAP_FAILED) {
+  const void *Addr =
+      __mmap(reinterpret_cast<uint64_t>(From), Size, PROT_READ | PROT_WRITE,
+             MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  if (isErrValue(Addr)) {
     char Msg[] =
         "[hugify] failed to mmap memory for large page move terminating\n";
     reportError(Msg, sizeof(Msg));
