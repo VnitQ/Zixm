@@ -76,7 +76,7 @@ bool Context::evaluateAsRValue(State &Parent, const Expr *E, APValue &Result) {
   size_t StackSizeBefore = Stk.size();
   Compiler<EvalEmitter> C(*this, *P, Parent, Stk);
 
-  auto Res = C.interpretExpr(E, /*ConvertResultToRValue=*/E->isGLValue());
+  auto Res = C.interpretExpr(E);
 
   if (Res.isInvalid()) {
     C.cleanup();
@@ -96,7 +96,6 @@ bool Context::evaluateAsRValue(State &Parent, const Expr *E, APValue &Result) {
   }
 
   Result = Res.stealAPValue();
-
   return true;
 }
 
@@ -105,7 +104,7 @@ bool Context::evaluate(State &Parent, const Expr *E, APValue &Result,
   ++EvalID;
   bool Recursing = !Stk.empty();
   size_t StackSizeBefore = Stk.size();
-  Compiler<EvalEmitter> C(*this, *P, Parent, Stk);
+  Compiler<EvalEmitter> C(*this, *P, Parent, Stk, Kind);
 
   auto Res = C.interpretExpr(E, /*ConvertResultToRValue=*/false,
                              /*DestroyToplevelScope=*/true);
@@ -137,8 +136,8 @@ bool Context::evaluateAsInitializer(State &Parent, const VarDecl *VD,
   Compiler<EvalEmitter> C(*this, *P, Parent, Stk);
 
   bool CheckGlobalInitialized =
-      shouldBeGloballyIndexed(VD) &&
       (VD->getType()->isRecordType() || VD->getType()->isArrayType());
+
   auto Res = C.interpretDecl(VD, Init, CheckGlobalInitialized);
   if (Res.isInvalid()) {
     C.cleanup();
@@ -176,7 +175,8 @@ bool Context::evaluateStringRepr(State &Parent, const Expr *SizeExpr,
     return false;
   uint64_t Size = SizeValue.getInt().getZExtValue();
 
-  auto PtrRes = C.interpretAsPointer(PtrExpr, [&](const Pointer &Ptr) {
+  auto PtrRes = C.interpretAsPointer(PtrExpr, [&](InterpState &S,
+                                                  const Pointer &Ptr) {
     if (Size == 0) {
       if constexpr (std::is_same_v<ResultT, APValue>)
         Result = APValue(APValue::UninitArray{}, 0, 0);
@@ -245,7 +245,8 @@ bool Context::evaluateString(State &Parent, const Expr *E,
   assert(Stk.empty());
   Compiler<EvalEmitter> C(*this, *P, Parent, Stk);
 
-  auto PtrRes = C.interpretAsPointer(E, [&](const Pointer &Ptr) {
+  auto PtrRes = C.interpretAsPointer(E, [&](InterpState &S,
+                                            const Pointer &Ptr) {
     if (!Ptr.isBlockPointer())
       return false;
 
@@ -294,7 +295,8 @@ std::optional<uint64_t> Context::evaluateStrlen(State &Parent, const Expr *E) {
   Compiler<EvalEmitter> C(*this, *P, Parent, Stk);
 
   std::optional<uint64_t> Result;
-  auto PtrRes = C.interpretAsPointer(E, [&](const Pointer &Ptr) {
+  auto PtrRes = C.interpretAsPointer(E, [&](InterpState &S,
+                                            const Pointer &Ptr) {
     if (!Ptr.isBlockPointer())
       return false;
 
@@ -345,7 +347,8 @@ Context::tryEvaluateObjectSize(State &Parent, const Expr *E, unsigned Kind) {
 
   std::optional<uint64_t> Result;
 
-  auto PtrRes = C.interpretAsPointer(E, [&](const Pointer &Ptr) {
+  auto PtrRes = C.interpretAsPointer(E, [&](InterpState &S,
+                                            const Pointer &Ptr) {
     const Descriptor *DeclDesc = Ptr.getDeclDesc();
     if (!DeclDesc)
       return false;
