@@ -114,6 +114,54 @@ subroutine test_dynamic_loop(flag)
   end do
 end subroutine
 
+! CHECK-LABEL: func.func @_QPtest_dynamic_loop_standalone_fallback(
+! CHECK:         fir.if {{.*}} {
+! CHECK:           omp.parallel {
+! CHECK:             omp.wsloop
+! CHECK:               omp.loop_nest
+! CHECK:         } else {
+! CHECK:           omp.barrier
+! CHECK:           fir.do_loop
+! CHECK:         }
+! CHECK:         return
+subroutine test_dynamic_loop_standalone_fallback(flag, a)
+  logical, intent(in) :: flag
+  integer :: i, a
+  a = 0
+  !$omp metadirective &
+  !$omp & when(user={condition(flag)}: parallel do) &
+  !$omp & default(barrier)
+  do i = 1, 100
+    a = a + i
+  end do
+end subroutine
+
+! CHECK-LABEL: func.func @_QPtest_dynamic_loop_dsa_isolation(
+! CHECK:         fir.if {{.*}} {
+! CHECK:           omp.simd
+! CHECK:             omp.loop_nest ({{.*}}, {{.*}}) : i32 {{.*}} collapse(2)
+! CHECK:         } else {
+! CHECK:           omp.simd {{.*}}private(@{{[^,]*}}Ei_private_i32 {{[^:]*}} : !fir.ref<i32>)
+! CHECK-NOT:       @_QFtest_dynamic_loop_dsa_isolationEj_private_i32
+! CHECK:             omp.loop_nest ({{.*}}) : i32
+! CHECK:         }
+! CHECK:         return
+subroutine test_dynamic_loop_dsa_isolation(flag, n, sink)
+  logical, intent(in) :: flag
+  integer :: n, sink
+  integer :: i, j
+  sink = 0
+  !$omp metadirective &
+  !$omp & when(user={condition(flag)}: simd collapse(2)) &
+  !$omp & default(simd)
+  do i = 1, n
+    do j = 1, n
+      sink = sink + i + j
+    end do
+  end do
+  sink = sink + j
+end subroutine
+
 !===----------------------------------------------------------------------===!
 ! Loop-associated variants with clauses
 !===----------------------------------------------------------------------===!
@@ -176,7 +224,7 @@ subroutine test_collapse()
 end subroutine
 
 ! CHECK-LABEL: func.func @_QPtest_safelen()
-! CHECK:         omp.simd {{.*}} safelen(4)
+! CHECK:         omp.simd {{.*}}safelen(4)
 ! CHECK:           omp.loop_nest
 ! CHECK:         return
 subroutine test_safelen()
