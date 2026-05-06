@@ -51,6 +51,7 @@
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Language.h"
 #include "lldb/Target/LanguageRuntime.h"
+#include "lldb/Target/Policy.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterTypeBuilder.h"
 #include "lldb/Target/SectionLoadList.h"
@@ -5889,10 +5890,11 @@ Target::TargetEventData::GetModuleListFromEvent(const Event *event_ptr) {
 }
 
 std::recursive_mutex &Target::GetAPIMutex() {
-  if (GetProcessSP() && GetProcessSP()->CurrentThreadIsPrivateStateThread())
+  auto &policy = PolicyStack::GetForCurrentThread().Current();
+  if (policy.view == Policy::View::Private)
     return m_private_mutex;
-  else
-    return m_mutex;
+
+  return m_mutex;
 }
 
 /// Get metrics associated with this target in JSON format.

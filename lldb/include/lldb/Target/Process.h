@@ -41,6 +41,7 @@
 #include "lldb/Target/InstrumentationRuntime.h"
 #include "lldb/Target/Memory.h"
 #include "lldb/Target/MemoryTagManager.h"
+#include "lldb/Target/Policy.h"
 #include "lldb/Target/QueueList.h"
 #include "lldb/Target/ThreadList.h"
 #include "lldb/Target/ThreadPlanStack.h"
@@ -3334,10 +3335,10 @@ protected:
     }
 
     ProcessRunLock &GetRunLock() {
-      if (IsOnThread(Host::GetCurrentThread()))
+      auto &policy = PolicyStack::GetForCurrentThread().Current();
+      if (policy.view == Policy::View::Private)
         return m_private_run_lock;
-      else
-        return m_public_run_lock;
+      return m_public_run_lock;
     }
 
     Process &m_process;
@@ -3717,28 +3718,6 @@ public:
     if (m_process)
       m_process->SetRunningUtilityFunction(false);
   }
-};
-
-/// RAII guard that marks the current thread as a private state thread.
-///
-/// When RunThreadPlan detects it is running on the private state thread, it
-/// spins up an override thread and reassigns m_current_private_state_thread_sp
-/// to it. The original PST continues processing events via DoOnRemoval
-/// callbacks, but CurrentThreadIsPrivateStateThread() no longer recognizes it.
-/// This guard sets a thread_local flag so that GetStackFrameList can identify
-/// the original PST and return parent frames instead of provider-augmented
-/// frames.
-struct PrivateStateThreadGuard {
-  PrivateStateThreadGuard() { g_is_private_state_thread = true; }
-  ~PrivateStateThreadGuard() { g_is_private_state_thread = false; }
-  static bool IsPrivateStateThread() { return g_is_private_state_thread; }
-
-  // Non-copyable, non-movable.
-  PrivateStateThreadGuard(const PrivateStateThreadGuard &) = delete;
-  PrivateStateThreadGuard &operator=(const PrivateStateThreadGuard &) = delete;
-
-private:
-  static thread_local bool g_is_private_state_thread;
 };
 
 } // namespace lldb_private
