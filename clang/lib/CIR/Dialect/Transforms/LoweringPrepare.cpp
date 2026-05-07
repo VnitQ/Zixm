@@ -152,6 +152,11 @@ struct LoweringPreparePass
   void buildCUDAModuleCtor();
   std::optional<FuncOp> buildCUDAModuleDtor();
   std::optional<FuncOp> buildCUDARegisterGlobals();
+  void buildCUDARegisterVars(cir::CIRBaseBuilderTy &builder,
+                             FuncOp regGlobalFunc);
+  /// Whether the module has any device-side variable that must be registered
+  /// with the CUDA/HIP runtime (carries a `cu.var_registration` attribute).
+  bool hasCUDADeviceVars();
   void buildCUDARegisterGlobalFunctions(cir::CIRBaseBuilderTy &builder,
                                         FuncOp regGlobalFunc);
 
@@ -1941,8 +1946,9 @@ void LoweringPreparePass::buildCUDAModuleCtor() {
     llvm_unreachable("GPU RDC NYI");
 
   // For CUDA without -fgpu-rdc, it's safe to stop generating ctor
-  // if there's nothing to register.
-  if (cudaKernelMap.empty())
+  // if there's nothing to register. Mirrors OG's
+  // `EmittedKernels.empty() && DeviceVars.empty()` check.
+  if (cudaKernelMap.empty() && !hasCUDADeviceVars())
     return;
 
   // There's no device-side binary, so no need to proceed for CUDA.
@@ -2166,8 +2172,9 @@ std::optional<FuncOp> LoweringPreparePass::buildCUDAModuleDtor() {
 }
 
 std::optional<FuncOp> LoweringPreparePass::buildCUDARegisterGlobals() {
-  // There is nothing to register.
-  if (cudaKernelMap.empty())
+  // There is nothing to register. Mirrors OG's
+  // `EmittedKernels.empty() && DeviceVars.empty()` check.
+  if (cudaKernelMap.empty() && !hasCUDADeviceVars())
     return {};
 
   cir::CIRBaseBuilderTy builder(getContext());
@@ -2191,8 +2198,7 @@ std::optional<FuncOp> LoweringPreparePass::buildCUDARegisterGlobals() {
   builder.setInsertionPointToStart(regGlobalFunc.addEntryBlock());
 
   buildCUDARegisterGlobalFunctions(builder, regGlobalFunc);
-  // TODO: Handle shadow registration
-  assert(!cir::MissingFeatures::globalRegistration());
+  buildCUDARegisterVars(builder, regGlobalFunc);
 
   ReturnOp::create(builder, loc);
   return regGlobalFunc;
@@ -2271,6 +2277,108 @@ void LoweringPreparePass::buildCUDARegisterGlobalFunctions(
            ConstantOp::create(builder, loc, IntAttr::get(intTy, -1)),
            cirNullPtr, cirNullPtr, cirNullPtr, cirNullPtr, cirNullPtr});
     }
+  }
+}
+
+bool LoweringPreparePass::hasCUDADeviceVars() {
+  for (auto globalOp : mlirModule.getOps<GlobalOp>()) {
+    if (globalOp->hasAttrOfType<CUDAVarRegistrationInfoAttr>(
+            CUDAVarRegistrationInfoAttr::getMnemonic()))
+      return true;
+  }
+  return false;
+}
+
+// Emit `__{cuda|hip}RegisterVar` calls inside `__{cuda|hip}_register_globals`
+// for every device-side shadow that carries a `cu.var_registration` attribute
+// (attached by `CIRGenNVCUDARuntime::handleVarRegistration`). Mirrors OG's
+// `CGNVCUDARuntime::registerDeviceVar` consumption inside
+// `makeRegisterGlobalsFn` (see clang/lib/CodeGen/CGCUDANV.cpp).
+void LoweringPreparePass::buildCUDARegisterVars(cir::CIRBaseBuilderTy &builder,
+                                                FuncOp regGlobalFunc) {
+  mlir::Location loc = mlirModule.getLoc();
+  llvm::StringRef cudaPrefix = getCUDAPrefix(astCtx);
+  cir::CIRDataLayout dataLayout(mlirModule);
+
+  PointerType voidPtrTy = builder.getVoidPtrTy();
+  PointerType voidPtrPtrTy = builder.getPointerTo(voidPtrTy);
+  IntType intTy = builder.getSIntNTy(32);
+  IntType sizeTy =
+      builder.getUIntNTy(astCtx->getTargetInfo().getMaxPointerWidth());
+  IntType charTy = cir::IntType::get(&getContext(), astCtx->getCharWidth(),
+                                     /*isSigned=*/false);
+
+  // Collect registerable globals first so we can bail out (and avoid declaring
+  // the runtime function) when there are none.
+  llvm::SmallVector<std::pair<GlobalOp, CUDAVarRegistrationInfoAttr>, 8>
+      toRegister;
+  for (auto globalOp : mlirModule.getOps<GlobalOp>()) {
+    if (auto regAttr = globalOp->getAttrOfType<CUDAVarRegistrationInfoAttr>(
+            CUDAVarRegistrationInfoAttr::getMnemonic()))
+      toRegister.emplace_back(globalOp, regAttr);
+  }
+  if (toRegister.empty())
+    return;
+
+  cir::CIRBaseBuilderTy globalBuilder(getContext());
+  globalBuilder.setInsertionPointToStart(mlirModule.getBody());
+
+  // void __{cuda|hip}RegisterVar(void **fatbinHandle,
+  //                              char *hostVar, char *deviceAddress,
+  //                              const char *deviceName, int ext,
+  //                              size_t size, int constant, int normalized);
+  // OG ignores parameter types, treating pointers as void*.
+  auto voidTy = builder.getVoidTy();
+  FuncOp cudaRegisterVar = buildRuntimeFunction(
+      globalBuilder, addUnderscoredPrefix(cudaPrefix, "RegisterVar"), loc,
+      FuncType::get({voidPtrPtrTy, voidPtrTy, voidPtrTy, voidPtrTy, intTy,
+                     sizeTy, intTy, intTy},
+                    voidTy));
+
+  auto makeConstantString = [&](llvm::StringRef str) -> GlobalOp {
+    auto strType = ArrayType::get(&getContext(), charTy, 1 + str.size());
+    auto tmpString = cir::GlobalOp::create(
+        globalBuilder, loc, (".str" + str).str(), strType,
+        /*isConstant=*/true, {},
+        /*linkage=*/cir::GlobalLinkageKind::PrivateLinkage);
+    tmpString.setInitialValueAttr(
+        ConstArrayAttr::get(strType, StringAttr::get(str + "\0", strType)));
+    tmpString.setPrivate();
+    return tmpString;
+  };
+
+  mlir::Value fatbinHandle = *regGlobalFunc.args_begin();
+
+  for (auto &[global, regAttr] : toRegister) {
+    switch (regAttr.getKind()) {
+    case cir::CUDADeviceVarKind::Variable:
+      break;
+    case cir::CUDADeviceVarKind::Surface:
+      llvm_unreachable("Surface registration NYI");
+    case cir::CUDADeviceVarKind::Texture:
+      llvm_unreachable("Texture registration NYI");
+    }
+
+    if (regAttr.getIsManaged())
+      llvm_unreachable("Managed variable registration NYI");
+
+    GlobalOp deviceNameStr = makeConstantString(regAttr.getDeviceSideName());
+    mlir::Value deviceName = builder.createBitcast(
+        builder.createGetGlobal(deviceNameStr), voidPtrTy);
+    mlir::Value hostVar =
+        builder.createBitcast(builder.createGetGlobal(global), voidPtrTy);
+
+    auto isExtern = ConstantOp::create(
+        builder, loc, IntAttr::get(intTy, regAttr.getIsExtern() ? 1 : 0));
+    llvm::TypeSize size = dataLayout.getTypeSizeInBits(global.getSymType());
+    auto varSize = ConstantOp::create(
+        builder, loc, IntAttr::get(sizeTy, size.getFixedValue() / 8));
+    auto isConstant = ConstantOp::create(
+        builder, loc, IntAttr::get(intTy, regAttr.getIsConstant() ? 1 : 0));
+    auto normalized = ConstantOp::create(builder, loc, IntAttr::get(intTy, 0));
+    builder.createCallOp(loc, cudaRegisterVar,
+                         {fatbinHandle, hostVar, deviceName, deviceName,
+                          isExtern, varSize, isConstant, normalized});
   }
 }
 
