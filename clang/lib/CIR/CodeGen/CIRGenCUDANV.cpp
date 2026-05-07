@@ -44,6 +44,17 @@ protected:
   // Mangle context for device.
   std::unique_ptr<MangleContext> deviceMC;
 
+  // Mirrors OG `CGNVCUDARuntime::VarInfo` + `DeviceVars`. The attribute is
+  // attached to the GlobalOp for later lowering, but `finalizeModule` needs
+  // AST-side state (`isUsed()` / `UsedAttr`) that the attribute does not carry,
+  // so we keep this side table to stay equivalent to OG.
+  struct VarInfo {
+    cir::GlobalOp var;
+    const VarDecl *d;
+    cir::CUDADeviceVarKind kind;
+  };
+  llvm::SmallVector<VarInfo, 16> deviceVars;
+
 private:
   void emitDeviceStubBodyNew(CIRGenFunction &cgf, cir::FuncOp fn,
                              FunctionArgList &args);
@@ -76,7 +87,9 @@ public:
 
   void registerDeviceVar(const VarDecl *vd, cir::GlobalOp &var, bool isExtern,
                          bool isConstant) {
-    // Attach the device var attribute to the GlobalOp
+    // Attach the registration attribute to the GlobalOp so lowering knows how
+    // to register this variable. Also record into `deviceVars` so
+    // `finalizeModule` can consult AST-side state.
     auto &builder = cgm.getBuilder();
     var->setAttr(cir::CUDAVarRegistrationInfoAttr::getMnemonic(),
                  cir::CUDAVarRegistrationInfoAttr::get(
@@ -84,6 +97,7 @@ public:
                      getDeviceSideName(cast<NamedDecl>(vd)),
                      cir::CUDADeviceVarKind::Variable, isExtern, isConstant,
                      vd->hasAttr<HIPManagedAttr>()));
+    deviceVars.push_back({var, vd, cir::CUDADeviceVarKind::Variable});
   }
 };
 
@@ -468,20 +482,20 @@ void CIRGenNVCUDARuntime::finalizeModule() {
   //
   // Static device variables have been externalized at this point, therefore
   // variables with private or internal linkage need not be added.
-  for (auto globalOp : cgm.getModule().getOps<cir::GlobalOp>()) {
-    auto regAttr = globalOp->getAttrOfType<cir::CUDAVarRegistrationInfoAttr>(
-        cir::CUDAVarRegistrationInfoAttr::getMnemonic());
-    if (!regAttr)
-      continue;
-
-    auto kind = regAttr.getKind();
-    if (!globalOp.isDeclaration() &&
-        !cir::isLocalLinkage(globalOp.getLinkage()) &&
+  //
+  // Mirrors OG `CGNVCUDARuntime::finalizeModule`: walk the side table so we
+  // can consult AST-side state (`isUsed()` / `UsedAttr`) that isn't carried
+  // on the IR attribute.
+  for (auto &info : deviceVars) {
+    auto kind = info.kind;
+    if (!info.var.isDeclaration() &&
+        !cir::isLocalLinkage(info.var.getLinkage()) &&
         (kind == cir::CUDADeviceVarKind::Variable ||
          kind == cir::CUDADeviceVarKind::Surface ||
-         kind == cir::CUDADeviceVarKind::Texture)) {
+         kind == cir::CUDADeviceVarKind::Texture) &&
+        info.d->isUsed() && !info.d->hasAttr<UsedAttr>()) {
       cgm.addCompilerUsedGlobal(mlir::dyn_cast<cir::CIRGlobalValueInterface>(
-          globalOp.getOperation()));
+          info.var.getOperation()));
     }
   }
 }
