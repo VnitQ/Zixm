@@ -287,6 +287,9 @@ public:
     return AtomicExpansionKind::LLSC;
   }
 
+  bool hasInlineStackProbe(const MachineFunction &MF) const override;
+  unsigned getStackProbeSize(const MachineFunction &MF, Align StackAlign) const;
+
 private:
   void initializeHVXLowering();
   unsigned getPreferredHvxVectorAction(MVT VecTy) const;
