@@ -21559,6 +21559,10 @@ bool ARMTargetLowering::isCheapToSpeculateCtlz(Type *Ty) const {
   return Subtarget->hasV5TOps() && !Subtarget->isThumb1Only();
 }
 
+bool ARMTargetLowering::isCtlzFast() const {
+  return Subtarget->hasV5TOps() && !Subtarget->isThumb1Only();
+}
+
 bool ARMTargetLowering::isMaskAndCmp0FoldingBeneficial(
     const Instruction &AndI) const {
   if (!Subtarget->hasV7Ops())
