@@ -5669,6 +5669,11 @@ public:
   /// \returns The expansion result or SDValue() if it fails.
   SDValue expandCTLZ(SDNode *N, SelectionDAG &DAG) const;
 
+  /// Expands a CTLZ node into a sequence of floating point operations.
+  /// \param N Node to expand
+  /// \returns The expansion result or SDValue() if it fails.
+  SDValue expandCTLZWithFP(SDNode *N, SelectionDAG &DAG) const;
+
   /// Expand VP_CTLZ/VP_CTLZ_ZERO_UNDEF nodes.
   /// \param N Node to expand
   /// \returns The expansion result or SDValue() if it fails.

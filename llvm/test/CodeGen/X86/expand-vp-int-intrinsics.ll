@@ -1476,44 +1476,26 @@ define <4 x i32> @vp_ctlz_v4i32(<4 x i32> %va, <4 x i1> %m, i32 zeroext %evl) {
 ;
 ; SSE-LABEL: vp_ctlz_v4i32:
 ; SSE:       # %bb.0:
+; SSE-NEXT:    xorpd %xmm1, %xmm1
+; SSE-NEXT:    movapd %xmm0, %xmm2
+; SSE-NEXT:    unpckhps {{.*#+}} xmm2 = xmm2[2],xmm1[2],xmm2[3],xmm1[3]
+; SSE-NEXT:    movapd {{.*#+}} xmm3 = [4.503599627370496E+15,4.503599627370496E+15]
+; SSE-NEXT:    orpd %xmm3, %xmm2
+; SSE-NEXT:    subpd %xmm3, %xmm2
+; SSE-NEXT:    psrlq $52, %xmm2
+; SSE-NEXT:    movapd %xmm0, %xmm4
+; SSE-NEXT:    unpcklps {{.*#+}} xmm4 = xmm4[0],xmm1[0],xmm4[1],xmm1[1]
+; SSE-NEXT:    orpd %xmm3, %xmm4
+; SSE-NEXT:    subpd %xmm3, %xmm4
+; SSE-NEXT:    psrlq $52, %xmm4
+; SSE-NEXT:    packssdw %xmm2, %xmm4
+; SSE-NEXT:    movdqa {{.*#+}} xmm2 = [1054,1054,1054,1054]
+; SSE-NEXT:    psubd %xmm4, %xmm2
+; SSE-NEXT:    pcmpeqd %xmm1, %xmm0
 ; SSE-NEXT:    movdqa %xmm0, %xmm1
-; SSE-NEXT:    psrld $1, %xmm1
-; SSE-NEXT:    por %xmm1, %xmm0
-; SSE-NEXT:    movdqa %xmm0, %xmm1
-; SSE-NEXT:    psrld $2, %xmm1
-; SSE-NEXT:    por %xmm1, %xmm0
-; SSE-NEXT:    movdqa %xmm0, %xmm1
-; SSE-NEXT:    psrld $4, %xmm1
-; SSE-NEXT:    por %xmm1, %xmm0
-; SSE-NEXT:    movdqa %xmm0, %xmm1
-; SSE-NEXT:    psrld $8, %xmm1
-; SSE-NEXT:    por %xmm1, %xmm0
-; SSE-NEXT:    movdqa %xmm0, %xmm1
-; SSE-NEXT:    psrld $16, %xmm1
-; SSE-NEXT:    por %xmm1, %xmm0
-; SSE-NEXT:    pcmpeqd %xmm1, %xmm1
-; SSE-NEXT:    pxor %xmm1, %xmm0
-; SSE-NEXT:    movdqa %xmm0, %xmm1
-; SSE-NEXT:    psrlw $1, %xmm1
-; SSE-NEXT:    pand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm1
-; SSE-NEXT:    psubb %xmm1, %xmm0
-; SSE-NEXT:    movdqa {{.*#+}} xmm1 = [51,51,51,51,51,51,51,51,51,51,51,51,51,51,51,51]
-; SSE-NEXT:    movdqa %xmm0, %xmm2
-; SSE-NEXT:    pand %xmm1, %xmm2
-; SSE-NEXT:    psrlw $2, %xmm0
-; SSE-NEXT:    pand %xmm1, %xmm0
-; SSE-NEXT:    paddb %xmm2, %xmm0
-; SSE-NEXT:    movdqa %xmm0, %xmm1
-; SSE-NEXT:    psrlw $4, %xmm1
-; SSE-NEXT:    paddb %xmm1, %xmm0
+; SSE-NEXT:    pandn %xmm2, %xmm1
 ; SSE-NEXT:    pand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
-; SSE-NEXT:    pxor %xmm1, %xmm1
-; SSE-NEXT:    movdqa %xmm0, %xmm2
-; SSE-NEXT:    punpckhdq {{.*#+}} xmm2 = xmm2[2],xmm1[2],xmm2[3],xmm1[3]
-; SSE-NEXT:    psadbw %xmm1, %xmm2
-; SSE-NEXT:    punpckldq {{.*#+}} xmm0 = xmm0[0],xmm1[0],xmm0[1],xmm1[1]
-; SSE-NEXT:    psadbw %xmm1, %xmm0
-; SSE-NEXT:    packuswb %xmm2, %xmm0
+; SSE-NEXT:    por %xmm1, %xmm0
 ; SSE-NEXT:    retq
 ;
 ; AVX1-LABEL: vp_ctlz_v4i32:

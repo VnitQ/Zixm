@@ -10268,6 +10268,64 @@ SDValue TargetLowering::expandCTLZ(SDNode *Node, SelectionDAG &DAG) const {
   return DAG.getNode(ISD::CTPOP, dl, VT, Op);
 }
 
+SDValue TargetLowering::expandCTLZWithFP(SDNode *Node,
+                                         SelectionDAG &DAG) const {
+  // pseudocode :
+  // if (x == 0) return 32;
+  // f64 f = (f64)x;
+  // u64 i = bitcast<u64>(f);
+  // u32 ilog2 = (u32)(i >> 52) - 1023;
+  // return 31 - ilog2;
+
+  SDLoc dl(Node);
+  EVT VT = Node->getValueType(0);
+  SDValue Op = Node->getOperand(0);
+
+  EVT EltVT = VT.getVectorElementType();
+  if (EltVT != MVT::i32)
+    return SDValue();
+
+  EVT HalfVT = VT.getHalfNumVectorElementsVT(*DAG.getContext());
+  EVT HalfFloatVT = HalfVT.changeVectorElementType(*DAG.getContext(), MVT::f64);
+  EVT HalfFloatBitsVT = HalfFloatVT.changeVectorElementTypeToInteger();
+
+  const fltSemantics &Sem =
+      HalfFloatVT.getVectorElementType().getFltSemantics();
+  unsigned BitWidth = EltVT.getSizeInBits();
+  unsigned MantissaBits = APFloat::semanticsPrecision(Sem);
+  unsigned ExponentBias = APFloat::semanticsMaxExponent(Sem);
+
+  auto ComputeExp = [&](SDValue Half) {
+    SDValue Float = DAG.getNode(ISD::UINT_TO_FP, dl, HalfFloatVT, Half);
+    SDValue Bits = DAG.getBitcast(HalfFloatBitsVT, Float);
+    SDValue Exp = DAG.getNode(
+        ISD::SRL, dl, HalfFloatBitsVT, Bits,
+        DAG.getShiftAmountConstant(MantissaBits - 1, HalfFloatBitsVT, dl));
+    return DAG.getNode(ISD::TRUNCATE, dl, HalfVT, Exp);
+  };
+
+  SDValue ExpTruncLo = ComputeExp(DAG.getExtractSubvector(dl, HalfVT, Op, 0));
+  SDValue ExpTruncHi = ComputeExp(
+      DAG.getExtractSubvector(dl, HalfVT, Op, VT.getVectorNumElements() / 2));
+  SDValue Exp =
+      DAG.getNode(ISD::CONCAT_VECTORS, dl, VT, ExpTruncLo, ExpTruncHi);
+  SDValue NonZeroRes =
+      DAG.getNode(ISD::SUB, dl, VT,
+                  DAG.getConstant(BitWidth - 1 + ExponentBias, dl, VT), Exp);
+
+  // Skip Op == 0 case for CTLZ_ZERO_UNDEF
+  if (Node->getOpcode() == ISD::CTLZ_ZERO_UNDEF)
+    return NonZeroRes;
+
+  // This Handles the Op == 0 case
+  EVT CmpVT = getSetCCResultType(DAG.getDataLayout(), *DAG.getContext(), VT);
+  SDValue Zero = DAG.getConstant(0, dl, VT);
+  SDValue IsZero = DAG.getSetCC(dl, CmpVT, Op, Zero, ISD::SETEQ);
+
+  return DAG.getNode(ISD::VSELECT, dl, VT, IsZero,
+                     DAG.getConstant(BitWidth, dl, VT), NonZeroRes);
+}
+
 SDValue TargetLowering::expandVPCTLZ(SDNode *Node, SelectionDAG &DAG) const {
   SDLoc dl(Node);
   EVT VT = Node->getValueType(0);
