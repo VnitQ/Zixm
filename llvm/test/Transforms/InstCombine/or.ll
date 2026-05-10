@@ -2216,10 +2216,7 @@ declare void @use_i1(i1)
 
 define i32 @signum_i32_or_sgt(i32 %x) {
 ; CHECK-LABEL: @signum_i32_or_sgt(
-; CHECK-NEXT:    [[SIGNBIT:%.*]] = ashr i32 [[X:%.*]], 31
-; CHECK-NEXT:    [[SGT0:%.*]] = icmp sgt i32 [[X]], 0
-; CHECK-NEXT:    [[ZGT0:%.*]] = zext i1 [[SGT0]] to i32
-; CHECK-NEXT:    [[R:%.*]] = or i32 [[SIGNBIT]], [[ZGT0]]
+; CHECK-NEXT:    [[R:%.*]] = call i32 @llvm.scmp.i32.i32(i32 [[X:%.*]], i32 0)
 ; CHECK-NEXT:    ret i32 [[R]]
 ;
   %signbit = ashr i32 %x, 31
@@ -2231,10 +2228,7 @@ define i32 @signum_i32_or_sgt(i32 %x) {
 
 define i32 @signum_i32_or_ne(i32 %x) {
 ; CHECK-LABEL: @signum_i32_or_ne(
-; CHECK-NEXT:    [[SIGNBIT:%.*]] = ashr i32 [[X:%.*]], 31
-; CHECK-NEXT:    [[NZ:%.*]] = icmp ne i32 [[X]], 0
-; CHECK-NEXT:    [[ZNZ:%.*]] = zext i1 [[NZ]] to i32
-; CHECK-NEXT:    [[R:%.*]] = or i32 [[SIGNBIT]], [[ZNZ]]
+; CHECK-NEXT:    [[R:%.*]] = call i32 @llvm.scmp.i32.i32(i32 [[X:%.*]], i32 0)
 ; CHECK-NEXT:    ret i32 [[R]]
 ;
   %signbit = ashr i32 %x, 31
@@ -2248,10 +2242,7 @@ define i32 @signum_i32_or_ne(i32 %x) {
 
 define i32 @signum_i32_or_sgt_commuted(i32 %x) {
 ; CHECK-LABEL: @signum_i32_or_sgt_commuted(
-; CHECK-NEXT:    [[SIGNBIT:%.*]] = ashr i32 [[X:%.*]], 31
-; CHECK-NEXT:    [[SGT0:%.*]] = icmp sgt i32 [[X]], 0
-; CHECK-NEXT:    [[ZGT0:%.*]] = zext i1 [[SGT0]] to i32
-; CHECK-NEXT:    [[R:%.*]] = or i32 [[SIGNBIT]], [[ZGT0]]
+; CHECK-NEXT:    [[R:%.*]] = call i32 @llvm.scmp.i32.i32(i32 [[X:%.*]], i32 0)
 ; CHECK-NEXT:    ret i32 [[R]]
 ;
   %signbit = ashr i32 %x, 31
@@ -2265,10 +2256,7 @@ define i32 @signum_i32_or_sgt_commuted(i32 %x) {
 
 define <2 x i5> @signum_v2i5_or_sgt(<2 x i5> %x) {
 ; CHECK-LABEL: @signum_v2i5_or_sgt(
-; CHECK-NEXT:    [[SIGNBIT:%.*]] = ashr <2 x i5> [[X:%.*]], <i5 4, i5 poison>
-; CHECK-NEXT:    [[SGT0:%.*]] = icmp sgt <2 x i5> [[X]], zeroinitializer
-; CHECK-NEXT:    [[ZGT0:%.*]] = zext <2 x i1> [[SGT0]] to <2 x i5>
-; CHECK-NEXT:    [[R:%.*]] = or <2 x i5> [[SIGNBIT]], [[ZGT0]]
+; CHECK-NEXT:    [[R:%.*]] = call <2 x i5> @llvm.scmp.v2i5.v2i5(<2 x i5> [[X:%.*]], <2 x i5> zeroinitializer)
 ; CHECK-NEXT:    ret <2 x i5> [[R]]
 ;
   %signbit = ashr <2 x i5> %x, <i5 4, i5 poison>
@@ -2284,9 +2272,7 @@ define i32 @signum_i32_or_sgt_use_ashr(i32 %x) {
 ; CHECK-LABEL: @signum_i32_or_sgt_use_ashr(
 ; CHECK-NEXT:    [[SIGNBIT:%.*]] = ashr i32 [[X:%.*]], 31
 ; CHECK-NEXT:    call void @use(i32 [[SIGNBIT]])
-; CHECK-NEXT:    [[SGT0:%.*]] = icmp sgt i32 [[X]], 0
-; CHECK-NEXT:    [[ZGT0:%.*]] = zext i1 [[SGT0]] to i32
-; CHECK-NEXT:    [[R:%.*]] = or i32 [[SIGNBIT]], [[ZGT0]]
+; CHECK-NEXT:    [[R:%.*]] = call i32 @llvm.scmp.i32.i32(i32 [[X]], i32 0)
 ; CHECK-NEXT:    ret i32 [[R]]
 ;
   %signbit = ashr i32 %x, 31
@@ -2297,15 +2283,14 @@ define i32 @signum_i32_or_sgt_use_ashr(i32 %x) {
   ret i32 %r
 }
 
-; negative test - extra use of zext blocks the fold (avoids increasing instruction count).
+; extra use of the zext is ok: the zext stays alive but the or still folds.
 
-define i32 @signum_i32_or_sgt_use_zext(i32 %x) {
-; CHECK-LABEL: @signum_i32_or_sgt_use_zext(
-; CHECK-NEXT:    [[SIGNBIT:%.*]] = ashr i32 [[X:%.*]], 31
-; CHECK-NEXT:    [[SGT0:%.*]] = icmp sgt i32 [[X]], 0
+define i32 @signum_i32_or_sgt_extra_use_zext(i32 %x) {
+; CHECK-LABEL: @signum_i32_or_sgt_extra_use_zext(
+; CHECK-NEXT:    [[SGT0:%.*]] = icmp sgt i32 [[X:%.*]], 0
 ; CHECK-NEXT:    [[ZGT0:%.*]] = zext i1 [[SGT0]] to i32
 ; CHECK-NEXT:    call void @use(i32 [[ZGT0]])
-; CHECK-NEXT:    [[R:%.*]] = or i32 [[SIGNBIT]], [[ZGT0]]
+; CHECK-NEXT:    [[R:%.*]] = call i32 @llvm.scmp.i32.i32(i32 [[X]], i32 0)
 ; CHECK-NEXT:    ret i32 [[R]]
 ;
   %signbit = ashr i32 %x, 31
@@ -2316,15 +2301,13 @@ define i32 @signum_i32_or_sgt_use_zext(i32 %x) {
   ret i32 %r
 }
 
-; negative test - extra use of icmp blocks the fold.
+; extra use of the icmp is ok: the icmp/zext stay alive but the or still folds.
 
-define i32 @signum_i32_or_sgt_use_icmp(i32 %x) {
-; CHECK-LABEL: @signum_i32_or_sgt_use_icmp(
-; CHECK-NEXT:    [[SIGNBIT:%.*]] = ashr i32 [[X:%.*]], 31
-; CHECK-NEXT:    [[SGT0:%.*]] = icmp sgt i32 [[X]], 0
+define i32 @signum_i32_or_sgt_extra_use_icmp(i32 %x) {
+; CHECK-LABEL: @signum_i32_or_sgt_extra_use_icmp(
+; CHECK-NEXT:    [[SGT0:%.*]] = icmp sgt i32 [[X:%.*]], 0
 ; CHECK-NEXT:    call void @use_i1(i1 [[SGT0]])
-; CHECK-NEXT:    [[ZGT0:%.*]] = zext i1 [[SGT0]] to i32
-; CHECK-NEXT:    [[R:%.*]] = or i32 [[SIGNBIT]], [[ZGT0]]
+; CHECK-NEXT:    [[R:%.*]] = call i32 @llvm.scmp.i32.i32(i32 [[X]], i32 0)
 ; CHECK-NEXT:    ret i32 [[R]]
 ;
   %signbit = ashr i32 %x, 31
