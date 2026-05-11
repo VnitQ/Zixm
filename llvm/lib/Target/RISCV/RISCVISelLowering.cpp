@@ -34,6 +34,7 @@
 #include "llvm/CodeGen/SelectionDAGAddressAnalysis.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/CodeGenTypes/MachineValueType.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/IRBuilder.h"
@@ -114,6 +115,12 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
               "doesn't support the D instruction set extension (ignoring "
               "target-abi)\n";
     ABI = Subtarget.is64Bit() ? RISCVABI::ABI_LP64 : RISCVABI::ABI_ILP32;
+  } else if ((ABI == RISCVABI::ABI_ILP32Q || ABI == RISCVABI::ABI_LP64Q) &&
+             !Subtarget.hasStdExtQ()) {
+    errs() << "Hard-float 'q' ABI can't be used for a target that "
+              "doesn't support the Q instruction set extension (ignoring "
+              "target-abi)\n";
+    ABI = Subtarget.is64Bit() ? RISCVABI::ABI_LP64 : RISCVABI::ABI_ILP32;
   }
 
   switch (ABI) {
@@ -124,9 +131,11 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
   case RISCVABI::ABI_LP64E:
   case RISCVABI::ABI_ILP32F:
   case RISCVABI::ABI_ILP32D:
+  case RISCVABI::ABI_ILP32Q:
   case RISCVABI::ABI_LP64:
   case RISCVABI::ABI_LP64F:
   case RISCVABI::ABI_LP64D:
+  case RISCVABI::ABI_LP64Q:
     break;
   }
 
@@ -143,6 +152,8 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
     addRegisterClass(MVT::f32, &RISCV::FPR32RegClass);
   if (Subtarget.hasStdExtD())
     addRegisterClass(MVT::f64, &RISCV::FPR64RegClass);
+  if (Subtarget.hasStdExtQ())
+    addRegisterClass(MVT::f128, &RISCV::FPR128RegClass);
   if (Subtarget.hasStdExtZhinxmin())
     addRegisterClass(MVT::f16, &RISCV::GPRF16RegClass);
   if (Subtarget.hasStdExtZfinx())
@@ -23110,11 +23121,15 @@ static MachineBasicBlock *emitReadCounterWidePseudo(MachineInstr &MI,
   return DoneMBB;
 }
 
-static MachineBasicBlock *emitSplitF64Pseudo(MachineInstr &MI,
-                                             MachineBasicBlock *BB,
-                                             const RISCVSubtarget &Subtarget) {
-  assert(MI.getOpcode() == RISCV::SplitF64Pseudo && "Unexpected instruction");
+static MachineBasicBlock *
+emitSplitF2XLenPseudo(MachineInstr &MI, MachineBasicBlock *BB,
+                      const RISCVSubtarget &Subtarget) {
+  unsigned XLen = Subtarget.getXLen();
+  assert(((MI.getOpcode() == RISCV::SplitF64Pseudo && XLen == 32) ||
+          (MI.getOpcode() == RISCV::SplitF128Pseudo && XLen == 64)) &&
+         "Unexpected instruction");
 
+  unsigned XLenInBytes = XLen / 8;
   MachineFunction &MF = *BB->getParent();
   DebugLoc DL = MI.getDebugLoc();
   const RISCVInstrInfo &TII = *MF.getSubtarget<RISCVSubtarget>().getInstrInfo();
@@ -23122,39 +23137,51 @@ static MachineBasicBlock *emitSplitF64Pseudo(MachineInstr &MI,
   Register HiReg = MI.getOperand(1).getReg();
   Register SrcReg = MI.getOperand(2).getReg();
 
-  const TargetRegisterClass *SrcRC = &RISCV::FPR64RegClass;
-  int FI = MF.getInfo<RISCVMachineFunctionInfo>()->getMoveF64FrameIndex(MF);
+  const TargetRegisterClass *SrcRC = nullptr;
+  int FI = 0;
+  if (XLen == 32) {
+    SrcRC = &RISCV::FPR64RegClass;
+    FI = MF.getInfo<RISCVMachineFunctionInfo>()->getMoveF64FrameIndex(MF);
+  } else {
+    SrcRC = &RISCV::FPR128RegClass;
+    FI = MF.getInfo<RISCVMachineFunctionInfo>()->getMoveF128FrameIndex(MF);
+  }
 
   TII.storeRegToStackSlot(*BB, MI, SrcReg, MI.getOperand(2).isKill(), FI, SrcRC,
                           Register());
   MachinePointerInfo MPI = MachinePointerInfo::getFixedStack(MF, FI);
-  MachineMemOperand *MMOLo =
-      MF.getMachineMemOperand(MPI, MachineMemOperand::MOLoad, 4, Align(8));
+  MachineMemOperand *MMOLo = MF.getMachineMemOperand(
+      MPI, MachineMemOperand::MOLoad, XLenInBytes, Align(XLenInBytes * 2));
   MachineMemOperand *MMOHi = MF.getMachineMemOperand(
-      MPI.getWithOffset(4), MachineMemOperand::MOLoad, 4, Align(8));
+      MPI.getWithOffset(XLenInBytes), MachineMemOperand::MOLoad, XLenInBytes,
+      Align(XLenInBytes * 2));
 
   // For big-endian, the high part is at offset 0 and the low part at offset 4.
   if (!Subtarget.isLittleEndian())
     std::swap(LoReg, HiReg);
 
-  BuildMI(*BB, MI, DL, TII.get(RISCV::LW), LoReg)
+  auto LoadOpCode = XLen == 32 ? RISCV::LW : RISCV::LD;
+  BuildMI(*BB, MI, DL, TII.get(LoadOpCode), LoReg)
       .addFrameIndex(FI)
       .addImm(0)
       .addMemOperand(MMOLo);
-  BuildMI(*BB, MI, DL, TII.get(RISCV::LW), HiReg)
+  BuildMI(*BB, MI, DL, TII.get(LoadOpCode), HiReg)
       .addFrameIndex(FI)
-      .addImm(4)
+      .addImm(XLenInBytes)
       .addMemOperand(MMOHi);
   MI.eraseFromParent(); // The pseudo instruction is gone now.
   return BB;
 }
 
-static MachineBasicBlock *emitBuildPairF64Pseudo(MachineInstr &MI,
-                                                 MachineBasicBlock *BB,
-                                                 const RISCVSubtarget &Subtarget) {
-  assert(MI.getOpcode() == RISCV::BuildPairF64Pseudo &&
+static MachineBasicBlock *
+emitBuildPairF2XLenPseudo(MachineInstr &MI, MachineBasicBlock *BB,
+                          const RISCVSubtarget &Subtarget) {
+  unsigned XLen = Subtarget.getXLen();
+  assert(((MI.getOpcode() == RISCV::BuildPairF64Pseudo && XLen == 32) ||
+          (MI.getOpcode() == RISCV::BuildPairF128Pseudo && XLen == 64)) &&
          "Unexpected instruction");
 
+  unsigned XLenInBytes = XLen / 8;
   MachineFunction &MF = *BB->getParent();
   DebugLoc DL = MI.getDebugLoc();
   const RISCVInstrInfo &TII = *MF.getSubtarget<RISCVSubtarget>().getInstrInfo();
@@ -23164,14 +23191,22 @@ static MachineBasicBlock *emitBuildPairF64Pseudo(MachineInstr &MI,
   bool KillLo = MI.getOperand(1).isKill();
   bool KillHi = MI.getOperand(2).isKill();
 
-  const TargetRegisterClass *DstRC = &RISCV::FPR64RegClass;
-  int FI = MF.getInfo<RISCVMachineFunctionInfo>()->getMoveF64FrameIndex(MF);
+  const TargetRegisterClass *DstRC = nullptr;
+  int FI = 0;
+  if (XLen == 32) {
+    DstRC = &RISCV::FPR64RegClass;
+    FI = MF.getInfo<RISCVMachineFunctionInfo>()->getMoveF64FrameIndex(MF);
+  } else {
+    DstRC = &RISCV::FPR128RegClass;
+    FI = MF.getInfo<RISCVMachineFunctionInfo>()->getMoveF128FrameIndex(MF);
+  }
 
   MachinePointerInfo MPI = MachinePointerInfo::getFixedStack(MF, FI);
-  MachineMemOperand *MMOLo =
-      MF.getMachineMemOperand(MPI, MachineMemOperand::MOStore, 4, Align(8));
+  MachineMemOperand *MMOLo = MF.getMachineMemOperand(
+      MPI, MachineMemOperand::MOStore, XLenInBytes, Align(XLenInBytes * 2));
   MachineMemOperand *MMOHi = MF.getMachineMemOperand(
-      MPI.getWithOffset(4), MachineMemOperand::MOStore, 4, Align(8));
+      MPI.getWithOffset(XLenInBytes), MachineMemOperand::MOStore, XLenInBytes,
+      Align(XLenInBytes * 2));
 
   // For big-endian, store the high part at offset 0 and the low part at
   // offset 4.
@@ -23180,15 +23215,16 @@ static MachineBasicBlock *emitBuildPairF64Pseudo(MachineInstr &MI,
     std::swap(KillLo, KillHi);
   }
 
-  BuildMI(*BB, MI, DL, TII.get(RISCV::SW))
+  auto StoreOpCode = XLen == 32 ? RISCV::SW : RISCV::SD;
+  BuildMI(*BB, MI, DL, TII.get(StoreOpCode))
       .addReg(LoReg, getKillRegState(KillLo))
       .addFrameIndex(FI)
       .addImm(0)
       .addMemOperand(MMOLo);
-  BuildMI(*BB, MI, DL, TII.get(RISCV::SW))
+  BuildMI(*BB, MI, DL, TII.get(StoreOpCode))
       .addReg(HiReg, getKillRegState(KillHi))
       .addFrameIndex(FI)
-      .addImm(4)
+      .addImm(XLenInBytes)
       .addMemOperand(MMOHi);
   TII.loadRegFromStackSlot(*BB, MI, DstReg, FI, DstRC, Register());
   MI.eraseFromParent(); // The pseudo instruction is gone now.
@@ -23724,9 +23760,11 @@ RISCVTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
   case RISCV::Select_FPR64IN32X_Using_CC_GPR:
     return emitSelectPseudo(MI, BB, Subtarget);
   case RISCV::BuildPairF64Pseudo:
-    return emitBuildPairF64Pseudo(MI, BB, Subtarget);
+  case RISCV::BuildPairF128Pseudo:
+    return emitBuildPairF2XLenPseudo(MI, BB, Subtarget);
+  case RISCV::SplitF128Pseudo:
   case RISCV::SplitF64Pseudo:
-    return emitSplitF64Pseudo(MI, BB, Subtarget);
+    return emitSplitF2XLenPseudo(MI, BB, Subtarget);
   case RISCV::PseudoQuietFLE_H:
     return emitQuietFCMP(MI, BB, RISCV::FLE_H, RISCV::FEQ_H, Subtarget);
   case RISCV::PseudoQuietFLE_H_INX:
@@ -23940,42 +23978,56 @@ static SDValue unpackFromMemLoc(SelectionDAG &DAG, SDValue Chain,
   return convertLocVTToValVT(DAG, Val, VA, DL, TLI.getSubtarget());
 }
 
-static SDValue unpackF64OnRV32DSoftABI(SelectionDAG &DAG, SDValue Chain,
-                                       const CCValAssign &VA,
-                                       const CCValAssign &HiVA,
-                                       const SDLoc &DL) {
-  assert(VA.getLocVT() == MVT::i32 && VA.getValVT() == MVT::f64 &&
-         "Unexpected VA");
+static SDValue unpackF2XLenOnSoftABI(SelectionDAG &DAG, SDValue Chain,
+                                     const CCValAssign &VA,
+                                     const CCValAssign &HiVA, const SDLoc &DL) {
+  const RISCVSubtarget &Subtarget = DAG.getSubtarget<RISCVSubtarget>();
+  unsigned XLen = Subtarget.getXLen();
+  assert(
+      ((XLen == 32 && VA.getLocVT() == MVT::i32 && VA.getValVT() == MVT::f64) ||
+       (XLen == 64 && VA.getLocVT() == MVT::i64 &&
+        VA.getValVT() == MVT::f128)) &&
+      "Unexpected VA");
   MachineFunction &MF = DAG.getMachineFunction();
   MachineFrameInfo &MFI = MF.getFrameInfo();
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
 
   assert(VA.isRegLoc() && "Expected register VA assignment");
 
+  MVT RegMVT = XLen == 32 ? MVT::i32 : MVT::i64;
   Register LoVReg = RegInfo.createVirtualRegister(&RISCV::GPRRegClass);
   RegInfo.addLiveIn(VA.getLocReg(), LoVReg);
-  SDValue Lo = DAG.getCopyFromReg(Chain, DL, LoVReg, MVT::i32);
+  SDValue Lo = DAG.getCopyFromReg(Chain, DL, LoVReg, RegMVT);
   SDValue Hi;
   if (HiVA.isMemLoc()) {
-    // Second half of f64 is passed on the stack.
+    // Second half of float is passed on the stack.
     int FI = MFI.CreateFixedObject(4, HiVA.getLocMemOffset(),
                                    /*IsImmutable=*/true);
-    SDValue FIN = DAG.getFrameIndex(FI, MVT::i32);
-    Hi = DAG.getLoad(MVT::i32, DL, Chain, FIN,
+    SDValue FIN = DAG.getFrameIndex(FI, RegMVT);
+    Hi = DAG.getLoad(RegMVT, DL, Chain, FIN,
                      MachinePointerInfo::getFixedStack(MF, FI));
   } else {
-    // Second half of f64 is passed in another GPR.
+    // Second half of float is passed in another GPR.
     Register HiVReg = RegInfo.createVirtualRegister(&RISCV::GPRRegClass);
     RegInfo.addLiveIn(HiVA.getLocReg(), HiVReg);
-    Hi = DAG.getCopyFromReg(Chain, DL, HiVReg, MVT::i32);
+    Hi = DAG.getCopyFromReg(Chain, DL, HiVReg, RegMVT);
   }
 
   // For big-endian, swap the order of Lo and Hi when building the pair.
-  const RISCVSubtarget &Subtarget = DAG.getSubtarget<RISCVSubtarget>();
   if (!Subtarget.isLittleEndian())
     std::swap(Lo, Hi);
 
-  return DAG.getNode(RISCVISD::BuildPairF64, DL, MVT::f64, Lo, Hi);
+  unsigned BuildPairOP = 0;
+  MVT FPType;
+  if (XLen == 32) {
+    BuildPairOP = RISCVISD::BuildPairF64;
+    FPType = MVT::f64;
+  } else {
+    BuildPairOP = RISCVISD::BuildPairF128;
+    FPType = MVT::f128;
+  }
+
+  return DAG.getNode(BuildPairOP, DL, FPType, Lo, Hi);
 }
 
 // Transform physical registers into virtual registers.
@@ -24071,11 +24123,12 @@ SDValue RISCVTargetLowering::LowerFormalArguments(
   for (unsigned i = 0, e = ArgLocs.size(), InsIdx = 0; i != e; ++i, ++InsIdx) {
     CCValAssign &VA = ArgLocs[i];
     SDValue ArgValue;
-    // Passing f64 on RV32D with a soft float ABI must be handled as a special
+    // Passing 2XLen fp with a soft float ABI must be handled as a special
     // case.
-    if (VA.getLocVT() == MVT::i32 && VA.getValVT() == MVT::f64) {
+    if ((VA.getLocVT() == MVT::i32 && VA.getValVT() == MVT::f64) ||
+        (VA.getLocVT() == MVT::i64 && VA.getValVT() == MVT::f128)) {
       assert(VA.needsCustom());
-      ArgValue = unpackF64OnRV32DSoftABI(DAG, Chain, VA, ArgLocs[++i], DL);
+      ArgValue = unpackF2XLenOnSoftABI(DAG, Chain, VA, ArgLocs[++i], DL);
     } else if (VA.isRegLoc())
       ArgValue = unpackFromRegLoc(DAG, Chain, VA, DL, Ins[InsIdx], *this);
     else
@@ -24626,12 +24679,17 @@ RISCVTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
     CCValAssign &VA = RVLocs[i];
     assert(VA.isRegLoc() && "Can only return in registers!");
 
-    if (VA.getLocVT() == MVT::i32 && VA.getValVT() == MVT::f64) {
+    const MVT &LocVT = VA.getLocVT();
+    const MVT &ValVT = VA.getValVT();
+    if ((LocVT == MVT::i32 && ValVT == MVT::f64) ||
+        (LocVT == MVT::i64 && ValVT == MVT::f128)) {
       // Handle returning f64 on RV32D with a soft float ABI.
       assert(VA.isRegLoc() && "Expected return via registers");
       assert(VA.needsCustom());
-      SDValue SplitF64 = DAG.getNode(RISCVISD::SplitF64, DL,
-                                     DAG.getVTList(MVT::i32, MVT::i32), Val);
+      auto SplitNode =
+          ValVT == MVT::f64 ? RISCVISD::SplitF64 : RISCVISD::SplitF128;
+      SDValue SplitF64 =
+          DAG.getNode(SplitNode, DL, DAG.getVTList(LocVT, LocVT), Val);
       SDValue Lo = SplitF64.getValue(0);
       SDValue Hi = SplitF64.getValue(1);
 
@@ -24650,10 +24708,10 @@ RISCVTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
 
       Chain = DAG.getCopyToReg(Chain, DL, RegLo, Lo, Glue);
       Glue = Chain.getValue(1);
-      RetOps.push_back(DAG.getRegister(RegLo, MVT::i32));
+      RetOps.push_back(DAG.getRegister(RegLo, LocVT));
       Chain = DAG.getCopyToReg(Chain, DL, RegHi, Hi, Glue);
       Glue = Chain.getValue(1);
-      RetOps.push_back(DAG.getRegister(RegHi, MVT::i32));
+      RetOps.push_back(DAG.getRegister(RegHi, LocVT));
     } else {
       // Handle a 'normal' return.
       Val = convertValVTToLocVT(DAG, Val, VA, DL, Subtarget);
