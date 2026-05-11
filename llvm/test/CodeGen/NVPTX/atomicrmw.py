@@ -9,6 +9,8 @@ SCOPE_LLVM_TO_PTX = {"": "sys", "block": "cta", "cluster": "cluster", "device": 
 
 ORDERINGS = ["monotonic", "acquire", "release", "acq_rel", "seq_cst"]
 
+VECTOR_SIZES = [1, 2, 4, 8]
+
 INTEGER_OPERATIONS = [
     "xchg",
     "add",
@@ -29,11 +31,26 @@ INTEGER_OPERATIONS = [
 
 FLOATING_POINT_OPERATIONS = ["fadd", "fsub", "fmin", "fmax", "fminimum", "fmaximum"]
 
+DATATYPE_SUFFIXES = {
+    "float": "f32",
+    "double": "f64",
+    "half": "f16",
+    "bfloat": "bf16",
+}
+
 ADDRSPACE_NUM_TO_ADDRSPACE = {0: "generic", 1: "global", 3: "shared"}
 
 atomicrmw_func = Template(
     """define ${datatype} @${operation}_${ordering}_${datatype}_${addrspace}_${ptx_scope}(ptr${addrspace_cast} %addr, ${datatype} %val) {
         %retval = atomicrmw ${operation} ptr ${addrspace_cast} %addr, ${datatype} %val syncscope(\"${llvm_scope}\") ${ordering} 
+        ret $datatype %retval
+}
+"""
+)
+
+atomicrmw_elementwise_func = Template(
+    """define ${datatype} @${operation}_${ordering}_${datatype_name}_${addrspace}_${ptx_scope}(ptr${addrspace_cast} %addr, ${datatype} %val) {
+        %retval = atomicrmw elementwise ${operation} ptr ${addrspace_cast} %addr, ${datatype} %val syncscope(\"${llvm_scope}\") ${ordering} 
         ret $datatype %retval
 }
 """
@@ -51,6 +68,14 @@ def get_addrspace_cast(addrspace):
         return ""
     else:
         return " addrspace({})".format(str(addrspace))
+
+
+def get_vector_datatype(datatype, size):
+    return "<{} x {}>".format(size, datatype)
+
+
+def get_vector_datatype_name(datatype, size):
+    return "v{}{}".format(size, DATATYPE_SUFFIXES.get(datatype, datatype))
 
 
 if __name__ == "__main__":
@@ -114,3 +139,47 @@ if __name__ == "__main__":
                     ),
                     file=fp,
                 )
+
+        with open("atomicrmw-elementwise-sm{}.ll".format(str(sm)), "w") as fp:
+            print(run_statement.substitute(sm=sm, ptx=ptx, ptxfp=ptx / 10.0), file=fp)
+
+            def print_elementwise_atomicrmw(operation, datatype, ordering, size):
+                print(
+                    atomicrmw_elementwise_func.substitute(
+                        operation=operation,
+                        ordering=ordering,
+                        datatype=get_vector_datatype(datatype, size),
+                        datatype_name=get_vector_datatype_name(datatype, size),
+                        addrspace=ADDRSPACE_NUM_TO_ADDRSPACE[addrspace],
+                        ptx_scope=SCOPE_LLVM_TO_PTX[llvm_scope],
+                        llvm_scope=llvm_scope,
+                        addrspace_cast=get_addrspace_cast(addrspace),
+                    ),
+                    file=fp,
+                )
+
+            # Integer operations
+            addrspace, llvm_scope, ordering = 1, "block", "acq_rel"
+            for operation, datatype, size in product(
+                INTEGER_OPERATIONS, ["i8", "i16", "i32", "i64"], VECTOR_SIZES
+            ):
+                print_elementwise_atomicrmw(operation, datatype, ordering, size)
+
+            # Floating point operations
+            for datatype, operation, size in product(
+                ["float", "double", "half", "bfloat"],
+                FLOATING_POINT_OPERATIONS,
+                VECTOR_SIZES,
+            ):
+                print_elementwise_atomicrmw(operation, datatype, ordering, size)
+
+            # Slice 2: Keep addrspace, llvm_scope fixed, and generate all possible orderings for operations add and nand.
+            # add is natively supported for larger bitwidths, while nand is emulated always
+            addrspace, llvm_scope = 1, "block"
+            for operation, datatype, ordering, size in product(
+                ["add", "nand"], ["i8", "i32"], ORDERINGS, VECTOR_SIZES
+            ):
+                if addrspace == 1 and llvm_scope == "block" and ordering == "acq_rel":
+                    # These are a part of Slice 1
+                    continue
+                print_elementwise_atomicrmw(operation, datatype, ordering, size)
