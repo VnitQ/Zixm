@@ -600,6 +600,523 @@ template <> bool IsCPSRDead<MachineInstr>(const MachineInstr *MI) {
 
 } // end namespace llvm
 
+//
+// Utility routine that checks if \param MO is defined by an integer multiply
+// (\p MulOpc is ARM::MUL or ARM::t2MUL) in \p MBB and can be fused with its
+// single user.
+static bool canCombineMulDef(MachineBasicBlock &MBB, MachineOperand &MO,
+                             unsigned MulOpc) {
+  MachineRegisterInfo &MRI = MBB.getParent()->getRegInfo();
+  MachineInstr *MI = nullptr;
+
+  if (MO.isReg() && MO.getReg().isVirtual())
+    MI = MRI.getUniqueVRegDef(MO.getReg());
+  // And it needs to be in the trace (otherwise, it won't have a depth).
+  if (!MI || MI->getParent() != &MBB || MI->getOpcode() != MulOpc)
+    return false;
+  // Must only used by the user we combine with.
+  if (!MRI.hasOneNonDBGUse(MI->getOperand(0).getReg()))
+    return false;
+
+  return llvm::IsCPSRDead(MI);
+}
+
+//
+// Is \param MO defined by an integer multiply and can be combined?
+static bool canCombineWithMUL(MachineBasicBlock &MBB, MachineOperand &MO) {
+  return canCombineMulDef(MBB, MO, ARM::MUL);
+}
+
+static bool canCombineWithT2MUL(MachineBasicBlock &MBB, MachineOperand &MO) {
+  return canCombineMulDef(MBB, MO, ARM::t2MUL);
+}
+
+// GPR register/register add/sub roots that can fuse with ARM-mode \p MUL.
+static bool isCombineInstrCandidate(unsigned Opc) {
+  switch (Opc) {
+  case ARM::ADDrr:
+  case ARM::SUBrr:
+    return true;
+  default:
+    return false;
+  }
+}
+
+// Thumb2 GPR add/sub roots that can fuse with \p t2MUL.
+static bool isCombineThumb2InstrCandidate(unsigned Opc) {
+  switch (Opc) {
+  case ARM::t2ADDrr:
+  case ARM::t2SUBrr:
+    return true;
+  default:
+    return false;
+  }
+}
+
+/// Append predicate / cc operands from \p Root onto \p MIB so they match \p
+/// NewDesc's trailing operands (MLS has predicate only; MLA matches Root).
+static void armAppendConditionOperands(MachineInstrBuilder &MIB,
+                                       const MachineInstr &Root,
+                                       const MCInstrDesc &NewDesc) {
+  int RP = Root.findFirstPredOperandIdx();
+  int NP = NewDesc.findFirstPredOperandIdx();
+  assert(RP >= 0 && NP >= 0 && "Expected predicate operands");
+  unsigned NTailNew = NewDesc.getNumOperands() - NP;
+  assert(RP + NTailNew <= Root.getNumOperands() &&
+         "Root does not supply enough predicate/cc operands");
+  for (unsigned i = 0; i < NTailNew; ++i)
+    MIB.add(Root.getOperand(RP + i));
+}
+
+/// Copy predicate / optional cc operands from \p Root so the fused Thumb2 MI
+/// matches \p NewDesc (e.g. \p t2MLA has predicate only; \p t2ADDrr has cc_out).
+static void thumb2AppendMatchingTailOperands(MachineInstrBuilder &MIB,
+                                             const MachineInstr &Root,
+                                             const MCInstrDesc &NewDesc) {
+  int RP = Root.findFirstPredOperandIdx();
+  int NP = NewDesc.findFirstPredOperandIdx();
+  assert(RP >= 0 && NP >= 0 && "Expected predicate operands");
+  unsigned NTailRoot = Root.getNumOperands() - RP;
+  unsigned NTailNew = NewDesc.getNumOperands() - NP;
+  unsigned NTail = std::min(NTailRoot, NTailNew);
+  for (unsigned i = 0; i < NTail; ++i)
+    MIB.add(Root.getOperand(RP + i));
+}
+
+/// Emit t2MLA merging Thumb2 \p Root with ARM::t2MUL feeding operand \p IdxMulOpd.
+static MachineInstr *genThumb2GPRMLA(MachineFunction &MF,
+                                     MachineRegisterInfo &MRI,
+                                     const TargetInstrInfo *TII, MachineInstr &Root,
+                                     SmallVectorImpl<MachineInstr *> &InsInstrs,
+                                     unsigned IdxMulOpd,
+                                     const TargetRegisterClass *RC) {
+  assert(IdxMulOpd == 1 || IdxMulOpd == 2);
+  MachineInstr *Mul =
+      MRI.getUniqueVRegDef(Root.getOperand(IdxMulOpd).getReg());
+  assert(Mul->getOpcode() == ARM::t2MUL && "Expected Thumb2 t2MUL");
+
+  Register Dst = Root.getOperand(0).getReg();
+  Register MulRn = Mul->getOperand(1).getReg();
+  bool MulRnKill = Mul->getOperand(1).isKill();
+  Register MulRm = Mul->getOperand(2).getReg();
+  bool MulRmKill = Mul->getOperand(2).isKill();
+  unsigned IdxOther = IdxMulOpd == 1 ? 2 : 1;
+  Register Other = Root.getOperand(IdxOther).getReg();
+  bool OtherKill = Root.getOperand(IdxOther).isKill();
+
+  if (Dst.isVirtual())
+    MRI.constrainRegClass(Dst, RC);
+  if (MulRn.isVirtual())
+    MRI.constrainRegClass(MulRn, RC);
+  if (MulRm.isVirtual())
+    MRI.constrainRegClass(MulRm, RC);
+  if (Other.isVirtual())
+    MRI.constrainRegClass(Other, RC);
+
+  MachineInstrBuilder MIB =
+      BuildMI(MF, MIMetadata(Root), TII->get(ARM::t2MLA), Dst)
+          .addReg(MulRn, getKillRegState(MulRnKill))
+          .addReg(MulRm, getKillRegState(MulRmKill))
+          .addReg(Other, getKillRegState(OtherKill));
+  thumb2AppendMatchingTailOperands(MIB, Root, TII->get(ARM::t2MLA));
+  InsInstrs.push_back(MIB);
+  return Mul;
+}
+
+/// Emit t2MLS Rd = Ra - Rn*Rm for t2SUBrr where \p IdxMulOpd points at the product.
+static MachineInstr *genThumb2GPRMLS(MachineFunction &MF,
+                                     MachineRegisterInfo &MRI,
+                                     const TargetInstrInfo *TII, MachineInstr &Root,
+                                     SmallVectorImpl<MachineInstr *> &InsInstrs,
+                                     unsigned IdxMulOpd,
+                                     const TargetRegisterClass *RC) {
+  assert(IdxMulOpd == 2 &&
+         "MLS fusion only matches SUB when multiply uses subtract operand");
+  MachineInstr *Mul =
+      MRI.getUniqueVRegDef(Root.getOperand(IdxMulOpd).getReg());
+  assert(Mul->getOpcode() == ARM::t2MUL && "Expected Thumb2 t2MUL");
+
+  Register Dst = Root.getOperand(0).getReg();
+  Register MulRn = Mul->getOperand(1).getReg();
+  bool MulRnKill = Mul->getOperand(1).isKill();
+  Register MulRm = Mul->getOperand(2).getReg();
+  bool MulRmKill = Mul->getOperand(2).isKill();
+  Register Ra = Root.getOperand(1).getReg();
+  bool RaKill = Root.getOperand(1).isKill();
+
+  if (Dst.isVirtual())
+    MRI.constrainRegClass(Dst, RC);
+  if (MulRn.isVirtual())
+    MRI.constrainRegClass(MulRn, RC);
+  if (MulRm.isVirtual())
+    MRI.constrainRegClass(MulRm, RC);
+  if (Ra.isVirtual())
+    MRI.constrainRegClass(Ra, RC);
+
+  MachineInstrBuilder MIB =
+      BuildMI(MF, MIMetadata(Root), TII->get(ARM::t2MLS), Dst)
+          .addReg(MulRn, getKillRegState(MulRnKill))
+          .addReg(MulRm, getKillRegState(MulRmKill))
+          .addReg(Ra, getKillRegState(RaKill));
+  thumb2AppendMatchingTailOperands(MIB, Root, TII->get(ARM::t2MLS));
+  InsInstrs.push_back(MIB);
+  return Mul;
+}
+
+/// t2SUBrr with mul on operand 1: emit t2RSBri + t2MLA.
+static MachineInstr *genThumb2GPRMLASubMulOp1(
+    MachineFunction &MF, MachineRegisterInfo &MRI, const TargetInstrInfo *TII,
+    MachineInstr &Root, SmallVectorImpl<MachineInstr *> &InsInstrs,
+    DenseMap<Register, unsigned> &InstrIdxForVirtReg) {
+  MachineInstr *Mul =
+      MRI.getUniqueVRegDef(Root.getOperand(1).getReg());
+  assert(Mul->getOpcode() == ARM::t2MUL && "Expected Thumb2 t2MUL");
+
+  Register Dst = Root.getOperand(0).getReg();
+  Register Other = Root.getOperand(2).getReg();
+  bool OtherKill = Root.getOperand(2).isKill();
+  Register MulRn = Mul->getOperand(1).getReg();
+  bool MulRnKill = Mul->getOperand(1).isKill();
+  Register MulRm = Mul->getOperand(2).getReg();
+  bool MulRmKill = Mul->getOperand(2).isKill();
+
+  const TargetRegisterClass *MLARc = &ARM::rGPRRegClass;
+  Register NegVr = MRI.createVirtualRegister(MLARc);
+  MachineInstrBuilder RsbMIB =
+      BuildMI(MF, MIMetadata(Root), TII->get(ARM::t2RSBri), NegVr)
+          .addReg(Other, getKillRegState(OtherKill))
+          .addImm(0);
+  thumb2AppendMatchingTailOperands(RsbMIB, Root, TII->get(ARM::t2RSBri));
+  InsInstrs.push_back(RsbMIB);
+  InstrIdxForVirtReg.insert(std::make_pair(NegVr, 0));
+
+  if (Dst.isVirtual())
+    MRI.constrainRegClass(Dst, MLARc);
+  if (MulRn.isVirtual())
+    MRI.constrainRegClass(MulRn, MLARc);
+  if (MulRm.isVirtual())
+    MRI.constrainRegClass(MulRm, MLARc);
+
+  MachineInstrBuilder MlaMIB =
+      BuildMI(MF, MIMetadata(Root), TII->get(ARM::t2MLA), Dst)
+          .addReg(MulRn, getKillRegState(MulRnKill))
+          .addReg(MulRm, getKillRegState(MulRmKill))
+          .addReg(NegVr, RegState::Kill);
+  thumb2AppendMatchingTailOperands(MlaMIB, Root, TII->get(ARM::t2MLA));
+  InsInstrs.push_back(MlaMIB);
+  return Mul;
+}
+
+/// Emit MLA merging ARM-mode \p Root with ARM::MUL feeding operand \p IdxMulOpd.
+static MachineInstr *genArmGPRMLA(MachineFunction &MF,
+                                  MachineRegisterInfo &MRI,
+                                  const TargetInstrInfo *TII, MachineInstr &Root,
+                                  SmallVectorImpl<MachineInstr *> &InsInstrs,
+                                  unsigned IdxMulOpd,
+                                  const TargetRegisterClass *RC) {
+  assert(IdxMulOpd == 1 || IdxMulOpd == 2);
+  MachineInstr *Mul =
+      MRI.getUniqueVRegDef(Root.getOperand(IdxMulOpd).getReg());
+  assert(Mul->getOpcode() == ARM::MUL && "Expected ARM-mode MUL");
+
+  Register Dst = Root.getOperand(0).getReg();
+  Register MulRn = Mul->getOperand(1).getReg();
+  bool MulRnKill = Mul->getOperand(1).isKill();
+  Register MulRm = Mul->getOperand(2).getReg();
+  bool MulRmKill = Mul->getOperand(2).isKill();
+  unsigned IdxOther = IdxMulOpd == 1 ? 2 : 1;
+  Register Other = Root.getOperand(IdxOther).getReg();
+  bool OtherKill = Root.getOperand(IdxOther).isKill();
+
+  if (Dst.isVirtual())
+    MRI.constrainRegClass(Dst, RC);
+  if (MulRn.isVirtual())
+    MRI.constrainRegClass(MulRn, RC);
+  if (MulRm.isVirtual())
+    MRI.constrainRegClass(MulRm, RC);
+  if (Other.isVirtual())
+    MRI.constrainRegClass(Other, RC);
+
+  MachineInstrBuilder MIB =
+      BuildMI(MF, MIMetadata(Root), TII->get(ARM::MLA), Dst)
+          .addReg(MulRn, getKillRegState(MulRnKill))
+          .addReg(MulRm, getKillRegState(MulRmKill))
+          .addReg(Other, getKillRegState(OtherKill));
+  armAppendConditionOperands(MIB, Root, TII->get(ARM::MLA));
+  InsInstrs.push_back(MIB);
+  return Mul;
+}
+
+/// Emit MLS Rd = Ra - Rn*Rm for SUBrr where \p IdxMulOpd points at the product.
+static MachineInstr *genArmGPRMLS(MachineFunction &MF,
+                                  MachineRegisterInfo &MRI,
+                                  const TargetInstrInfo *TII, MachineInstr &Root,
+                                  SmallVectorImpl<MachineInstr *> &InsInstrs,
+                                  unsigned IdxMulOpd,
+                                  const TargetRegisterClass *RC) {
+  assert(IdxMulOpd == 2 &&
+         "MLS fusion only matches SUB when multiply uses subtract operand");
+  MachineInstr *Mul =
+      MRI.getUniqueVRegDef(Root.getOperand(IdxMulOpd).getReg());
+  assert(Mul->getOpcode() == ARM::MUL && "Expected ARM-mode MUL");
+
+  Register Dst = Root.getOperand(0).getReg();
+  Register MulRn = Mul->getOperand(1).getReg();
+  bool MulRnKill = Mul->getOperand(1).isKill();
+  Register MulRm = Mul->getOperand(2).getReg();
+  bool MulRmKill = Mul->getOperand(2).isKill();
+  Register Ra = Root.getOperand(1).getReg();
+  bool RaKill = Root.getOperand(1).isKill();
+
+  if (Dst.isVirtual())
+    MRI.constrainRegClass(Dst, RC);
+  if (MulRn.isVirtual())
+    MRI.constrainRegClass(MulRn, RC);
+  if (MulRm.isVirtual())
+    MRI.constrainRegClass(MulRm, RC);
+  if (Ra.isVirtual())
+    MRI.constrainRegClass(Ra, RC);
+
+  MachineInstrBuilder MIB =
+      BuildMI(MF, MIMetadata(Root), TII->get(ARM::MLS), Dst)
+          .addReg(MulRn, getKillRegState(MulRnKill))
+          .addReg(MulRm, getKillRegState(MulRmKill))
+          .addReg(Ra, getKillRegState(RaKill));
+  armAppendConditionOperands(MIB, Root, TII->get(ARM::MLS));
+  InsInstrs.push_back(MIB);
+  return Mul;
+}
+
+/// SUBrr with mul on operand 1: emit RSB + MLA like AArch64 SUB+0 + MADD.
+static MachineInstr *genArmGPRMLASubMulOp1(
+    MachineFunction &MF, MachineRegisterInfo &MRI, const TargetInstrInfo *TII,
+    MachineInstr &Root, SmallVectorImpl<MachineInstr *> &InsInstrs,
+    DenseMap<Register, unsigned> &InstrIdxForVirtReg) {
+  MachineInstr *Mul =
+      MRI.getUniqueVRegDef(Root.getOperand(1).getReg());
+  assert(Mul->getOpcode() == ARM::MUL && "Expected ARM-mode MUL");
+
+  Register Dst = Root.getOperand(0).getReg();
+  Register Other = Root.getOperand(2).getReg();
+  bool OtherKill = Root.getOperand(2).isKill();
+  Register MulRn = Mul->getOperand(1).getReg();
+  bool MulRnKill = Mul->getOperand(1).isKill();
+  Register MulRm = Mul->getOperand(2).getReg();
+  bool MulRmKill = Mul->getOperand(2).isKill();
+
+  const TargetRegisterClass *MLARc = &ARM::GPRnopcRegClass;
+  Register NegVr = MRI.createVirtualRegister(MLARc);
+  MachineInstrBuilder RsbMIB =
+      BuildMI(MF, MIMetadata(Root), TII->get(ARM::RSBri), NegVr)
+          .addReg(Other, getKillRegState(OtherKill))
+          .addImm(0);
+  armAppendConditionOperands(RsbMIB, Root, TII->get(ARM::RSBri));
+  InsInstrs.push_back(RsbMIB);
+  InstrIdxForVirtReg.insert(std::make_pair(NegVr, 0));
+
+  if (Dst.isVirtual())
+    MRI.constrainRegClass(Dst, MLARc);
+  if (MulRn.isVirtual())
+    MRI.constrainRegClass(MulRn, MLARc);
+  if (MulRm.isVirtual())
+    MRI.constrainRegClass(MulRm, MLARc);
+
+  MachineInstrBuilder MlaMIB =
+      BuildMI(MF, MIMetadata(Root), TII->get(ARM::MLA), Dst)
+          .addReg(MulRn, getKillRegState(MulRnKill))
+          .addReg(MulRm, getKillRegState(MulRmKill))
+          .addReg(NegVr, RegState::Kill);
+  armAppendConditionOperands(MlaMIB, Root, TII->get(ARM::MLA));
+  InsInstrs.push_back(MlaMIB);
+  return Mul;
+}
+
+/// Find instructions that can be turned into t2MLA / t2MLS (Thumb2 GPR).
+static bool getThumb2MaddPatterns(const ARMSubtarget &Subtarget,
+                                  MachineInstr &Root,
+                                  SmallVectorImpl<unsigned> &Patterns) {
+  unsigned Opc = Root.getOpcode();
+  MachineBasicBlock &MBB = *Root.getParent();
+  bool Found = false;
+
+  if (!Subtarget.isThumb2() || !Subtarget.useMulOps())
+    return false;
+
+  if (!isCombineThumb2InstrCandidate(Opc))
+    return false;
+
+  // Same CPSR-def rule as ARM-mode fusion (t2ADDrr / t2SUBrr may set flags).
+  if (Root.findRegisterDefOperandIdx(ARM::CPSR, /*TRI=*/nullptr, false) != -1)
+    return false;
+
+  auto setFound = [&](unsigned OperandIdx, unsigned Pattern) {
+    if (!Root.getOperand(OperandIdx).isReg())
+      return;
+    if (canCombineWithT2MUL(MBB, Root.getOperand(OperandIdx))) {
+      Patterns.push_back(Pattern);
+      Found = true;
+    }
+  };
+
+  typedef ARMMachineCombinerPattern MCP;
+
+  switch (Opc) {
+  default:
+    break;
+  case ARM::t2ADDrr:
+    assert(Root.getOperand(1).isReg() && Root.getOperand(2).isReg() &&
+           "t2ADDrr must use register operands");
+    setFound(1, MCP::MULADD_OP1);
+    setFound(2, MCP::MULADD_OP2);
+    break;
+  case ARM::t2SUBrr:
+    setFound(2, MCP::MULSUB_OP2);
+    setFound(1, MCP::MULSUB_OP1);
+    break;
+  }
+  return Found;
+}
+
+/// Find instructions that can be turned into MLA / MLS (ARM-state GPR).
+static bool getARMMaddPatterns(const ARMSubtarget &Subtarget, MachineInstr &Root,
+                             SmallVectorImpl<unsigned> &Patterns) {
+  unsigned Opc = Root.getOpcode();
+  MachineBasicBlock &MBB = *Root.getParent();
+  bool Found = false;
+
+  if (!isCombineInstrCandidate(Opc))
+    return false;
+
+  // MLA/MLS do not provide ADD/SUB-with-S-bit flag semantics. Do not fuse when
+  // the root defines CPSR: conditional ARM instructions depend on flags without
+  // necessarily listing an explicit CPSR use, so IsCPSRDead(&Root) is unreliable.
+  //
+  // Contrast AArch64 getMaddPatterns: ADDS/SUBS use separate opcodes and may be
+  // converted to non-flag ADD/SUB for fusion when an NZCV def operand exists.
+  // ARM keeps one ADDrr/SUBrr opcode with optional cc_out (explicit CPSR def
+  // when the S bit is used). If this root has any explicit CPSR def operand,
+  // do not fuse. (AArch64 passes isDead=true there to match only dead NZCV
+  // defs before ADDS→ADD conversion; ARM must not fuse on any CPSR-def add.)
+  if (Root.findRegisterDefOperandIdx(ARM::CPSR, /*TRI=*/nullptr, false) != -1)
+    return false;
+
+  // Match TableGen Requires on MLA / MLS (ARMInstrInfo.td).
+  const bool CanMLA =
+      Subtarget.useMulOps() && Subtarget.hasV6Ops() && Subtarget.hasARMOps();
+  const bool CanMLS =
+      Subtarget.useMulOps() && Subtarget.hasV6T2Ops() && Subtarget.hasARMOps();
+
+  auto setFound = [&](unsigned OperandIdx, unsigned Pattern) {
+    if (!Root.getOperand(OperandIdx).isReg())
+      return;
+    if (canCombineWithMUL(MBB, Root.getOperand(OperandIdx))) {
+      Patterns.push_back(Pattern);
+      Found = true;
+    }
+  };
+
+  typedef ARMMachineCombinerPattern MCP;
+
+  switch (Opc) {
+  default:
+    break;
+  case ARM::ADDrr:
+    if (!CanMLA)
+      break;
+    assert(Root.getOperand(1).isReg() && Root.getOperand(2).isReg() &&
+           "ADDrr must use register operands");
+    setFound(1, MCP::MULADD_OP1);
+    setFound(2, MCP::MULADD_OP2);
+    break;
+  case ARM::SUBrr:
+    if (CanMLS)
+      setFound(2, MCP::MULSUB_OP2);
+    if (CanMLA)
+      setFound(1, MCP::MULSUB_OP1);
+    break;
+  }
+  return Found;
+}
+
+bool ARMBaseInstrInfo::getMachineCombinerPatterns(
+    MachineInstr &Root, SmallVectorImpl<unsigned> &Patterns,
+    bool DoRegPressureReduce) const {
+
+  if (Subtarget.isThumb2()) {
+    if (getThumb2MaddPatterns(Subtarget, Root, Patterns))
+      return true;
+  }
+  if (!Subtarget.isThumb()) {
+    if (getARMMaddPatterns(Subtarget, Root, Patterns))
+      return true;
+  }
+
+  return TargetInstrInfo::getMachineCombinerPatterns(Root, Patterns,
+                                                     DoRegPressureReduce);
+}
+
+void ARMBaseInstrInfo::genAlternativeCodeSequence(
+    MachineInstr &Root, unsigned Pattern,
+    SmallVectorImpl<MachineInstr *> &InsInstrs,
+    SmallVectorImpl<MachineInstr *> &DelInstrs,
+    DenseMap<Register, unsigned> &InstrIdxForVirtReg) const {
+  MachineBasicBlock &MBB = *Root.getParent();
+  MachineRegisterInfo &MRI = MBB.getParent()->getRegInfo();
+  MachineFunction &MF = *MBB.getParent();
+  const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
+
+  MachineInstr *MulToDelete = nullptr;
+  typedef ARMMachineCombinerPattern MCP;
+  const bool Thumb2GPRMLxRoot = Root.getOpcode() == ARM::t2ADDrr ||
+                                Root.getOpcode() == ARM::t2SUBrr;
+
+  switch (Pattern) {
+  default:
+    TargetInstrInfo::genAlternativeCodeSequence(Root, Pattern, InsInstrs,
+                                                DelInstrs, InstrIdxForVirtReg);
+    return;
+  case MCP::MULADD_OP1:
+    MulToDelete = Thumb2GPRMLxRoot
+                      ? genThumb2GPRMLA(MF, MRI, TII, Root, InsInstrs, 1,
+                                        &ARM::rGPRRegClass)
+                      : genArmGPRMLA(MF, MRI, TII, Root, InsInstrs, 1,
+                                     &ARM::GPRnopcRegClass);
+    break;
+  case MCP::MULADD_OP2:
+    MulToDelete = Thumb2GPRMLxRoot
+                      ? genThumb2GPRMLA(MF, MRI, TII, Root, InsInstrs, 2,
+                                        &ARM::rGPRRegClass)
+                      : genArmGPRMLA(MF, MRI, TII, Root, InsInstrs, 2,
+                                     &ARM::GPRnopcRegClass);
+    break;
+  case MCP::MULSUB_OP1:
+    MulToDelete =
+        Thumb2GPRMLxRoot
+            ? genThumb2GPRMLASubMulOp1(MF, MRI, TII, Root, InsInstrs,
+                                       InstrIdxForVirtReg)
+            : genArmGPRMLASubMulOp1(MF, MRI, TII, Root, InsInstrs,
+                                    InstrIdxForVirtReg);
+    break;
+  case MCP::MULSUB_OP2:
+    MulToDelete = Thumb2GPRMLxRoot
+                      ? genThumb2GPRMLS(MF, MRI, TII, Root, InsInstrs, 2,
+                                        &ARM::rGPRRegClass)
+                      : genArmGPRMLS(MF, MRI, TII, Root, InsInstrs, 2,
+                                     &ARM::GPRRegClass);
+    break;
+  }
+
+  if (MulToDelete)
+    DelInstrs.push_back(MulToDelete);
+  DelInstrs.push_back(&Root);
+
+  uint32_t Flags = Root.getFlags();
+  if (MulToDelete)
+    Flags = Root.mergeFlagsWith(*MulToDelete);
+  for (MachineInstr *MI : InsInstrs)
+    MI->setFlags(Flags);
+}
+
 /// GetInstSize - Return the size of the specified MachineInstr.
 ///
 unsigned ARMBaseInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
@@ -2601,6 +3118,49 @@ bool llvm::rewriteARMFrameIndex(MachineInstr &MI, unsigned FrameRegIdx,
   return Offset == 0;
 }
 
+// ARM supports MachineCombiner.
+bool ARMBaseInstrInfo::useMachineCombiner() const { return true; }
+
+/// Return true when Inst is associative and commutative so that it can be
+/// reassociated. If Invert is true, then the inverse of Inst operation must
+/// be checked.
+// TODO: There are many more machine instruction opcodes to match:
+//       1. Other data types (integer, vectors)
+//       2. Other math / logic operations (xor, or)
+//       3. Other forms of the same operation (intrinsics and other variants)
+bool ARMBaseInstrInfo::isAssociativeAndCommutative(const MachineInstr &Inst,
+                                                   bool Invert) const {
+  if (Invert)
+    return false;
+
+  // Don't reassociate if CPSR is defined and not dead
+  if (isCPSRDefined(Inst))
+    return false;
+
+  switch (Inst.getOpcode()) {
+  case ARM::ADDrr:
+  case ARM::tADDrr:
+  // FIXME: Unable to reassociate t2ADDrr because it expects a rGPR register,
+  // but gets a GPRnopc register in reassociation. Fixing this requires
+  // splitting t2ADDrr because it has different rules depending on SP case.
+  case ARM::ANDrr:
+  case ARM::tAND:
+  case ARM::t2ANDrr:
+  case ARM::ORRrr:
+  case ARM::tORR:
+  case ARM::t2ORRrr:
+  case ARM::EORrr:
+  case ARM::tEOR:
+  case ARM::t2EORrr:
+  case ARM::MUL:
+  case ARM::t2MUL:
+  case ARM::tMUL:
+    return true;
+  default:
+    return false;
+  }
+}
+
 /// analyzeCompare - For a comparison instruction, return the source registers
 /// in SrcReg and SrcReg2 if having two register operands, and the value it
 /// compares against in CmpValue. Return true if the comparison instruction
@@ -3263,11 +3823,10 @@ bool ARMBaseInstrInfo::foldImmediate(MachineInstr &UseMI, MachineInstr &DefMI,
   UseMI.getOperand(1).setIsKill();
   UseMI.getOperand(2).ChangeToImmediate(SOImmValV2);
   DefMI.eraseFromParent();
-  // FIXME: t2ADDrr should be split, as different rulles apply when writing to SP.
-  // Just as t2ADDri, that was split to [t2ADDri, t2ADDspImm].
-  // Then the below code will not be needed, as the input/output register
-  // classes will be rgpr or gprSP.
-  // For now, we fix the UseMI operand explicitly here:
+  // FIXME: t2ADDrr should be split, as different rules apply when writing to
+  // SP. Just as t2ADDri, that was split to [t2ADDri, t2ADDspImm]. Then the
+  // below code will not be needed, as the input/output register classes will be
+  // rgpr or gprSP. For now, we fix the UseMI operand explicitly here:
   switch(NewUseOpc){
     case ARM::t2ADDspImm:
     case ARM::t2SUBspImm:
