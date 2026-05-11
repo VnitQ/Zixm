@@ -38,6 +38,7 @@ template <> struct ScalarEnumerationTraits<AMXProgModelEnum> {
 
 struct X86MachineFunctionInfo final : public yaml::MachineFunctionInfo {
   AMXProgModelEnum AMXProgModel;
+  unsigned Win64MSVCDynAllocaCallFrameSize = 0;
 
   X86MachineFunctionInfo() = default;
   X86MachineFunctionInfo(const llvm::X86MachineFunctionInfo &MFI);
@@ -49,6 +50,8 @@ struct X86MachineFunctionInfo final : public yaml::MachineFunctionInfo {
 template <> struct MappingTraits<X86MachineFunctionInfo> {
   static void mapping(IO &YamlIO, X86MachineFunctionInfo &MFI) {
     YamlIO.mapOptional("amxProgModel", MFI.AMXProgModel);
+    YamlIO.mapOptional("win64MSVCDynAllocaCallFrameSize",
+                       MFI.Win64MSVCDynAllocaCallFrameSize, 0u);
   }
 };
 } // end namespace yaml
@@ -116,6 +119,9 @@ class X86MachineFunctionInfo : public MachineFunctionInfo {
   unsigned ArgumentStackSize = 0;
   /// NumLocalDynamics - Number of local-dynamic TLS accesses.
   unsigned NumLocalDynamics = 0;
+  /// On x86_64-windows-msvc dynalloca functions, stores the rounded stable
+  /// outgoing call-frame size inferred from ADJCALLSTACKDOWN64/UP64 pseudos.
+  unsigned Win64MSVCDynAllocaCallFrameSize = 0;
   /// HasPushSequences - Keeps track of whether this function uses sequences
   /// of pushes to pass function parameters.
   bool HasPushSequences = false;
@@ -280,6 +286,16 @@ public:
 
   bool hasPreallocatedCall() const { return HasPreallocatedCall; }
   void setHasPreallocatedCall(bool v) { HasPreallocatedCall = v; }
+
+  bool hasWin64MSVCDynAllocaCallFrame() const {
+    return Win64MSVCDynAllocaCallFrameSize != 0;
+  }
+  unsigned getWin64MSVCDynAllocaCallFrameSize() const {
+    return Win64MSVCDynAllocaCallFrameSize;
+  }
+  void setWin64MSVCDynAllocaCallFrameSize(unsigned Size) {
+    Win64MSVCDynAllocaCallFrameSize = Size;
+  }
 
   bool hasSwiftAsyncContext() const { return HasSwiftAsyncContext; }
   void setHasSwiftAsyncContext(bool v) { HasSwiftAsyncContext = v; }
