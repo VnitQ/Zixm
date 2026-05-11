@@ -12,75 +12,40 @@
 ; FIXME: Fallback enabled due to bfloat extensions
 
 define amdgpu_kernel void @s_exp10_f32(ptr addrspace(1) %out, float %in) {
-; VI-SDAG-LABEL: s_exp10_f32:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_load_dword s2, s[4:5], 0x2c
-; VI-SDAG-NEXT:    v_mov_b32_e32 v0, 0x40549000
-; VI-SDAG-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-SDAG-NEXT:    s_and_b32 s0, s2, 0xfffff000
-; VI-SDAG-NEXT:    v_mov_b32_e32 v1, s0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v1, s2, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v3, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v0, s0, v0
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v3
-; VI-SDAG-NEXT:    v_mov_b32_e32 v3, 0x3a2784bc
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v2, v0
-; VI-SDAG-NEXT:    v_mul_f32_e32 v3, s0, v3
-; VI-SDAG-NEXT:    v_sub_f32_e32 v0, v0, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-SDAG-NEXT:    v_add_f32_e32 v0, v0, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v0, v0
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v1, v2
-; VI-SDAG-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x24
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_ldexp_f32 v0, v0, v1
-; VI-SDAG-NEXT:    v_mov_b32_e32 v1, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s2, v1
-; VI-SDAG-NEXT:    v_mov_b32_e32 v1, 0x421a209b
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v0, vcc
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s2, v1
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v2, v2, v0, vcc
-; VI-SDAG-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-SDAG-NEXT:    v_mov_b32_e32 v0, s0
-; VI-SDAG-NEXT:    v_mov_b32_e32 v1, s1
-; VI-SDAG-NEXT:    flat_store_dword v[0:1], v2
-; VI-SDAG-NEXT:    s_endpgm
-;
-; VI-GISEL-LABEL: s_exp10_f32:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_load_dword s2, s[4:5], 0x2c
-; VI-GISEL-NEXT:    v_mov_b32_e32 v0, 0x40549000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v1, 0x3a2784bc
-; VI-GISEL-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-GISEL-NEXT:    s_and_b32 s0, s2, 0xfffff000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, s0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, s2, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v0, s0, v0
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v3
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, s0, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v0, v0, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v0, v0, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v1, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
-; VI-GISEL-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x24
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v0, v0, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v1, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s2, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v1, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v0, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s2, v1
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v2, v0, v2, vcc
-; VI-GISEL-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-GISEL-NEXT:    v_mov_b32_e32 v0, s0
-; VI-GISEL-NEXT:    v_mov_b32_e32 v1, s1
-; VI-GISEL-NEXT:    flat_store_dword v[0:1], v2
-; VI-GISEL-NEXT:    s_endpgm
+; VI-LABEL: s_exp10_f32:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_load_dword s2, s[4:5], 0x2c
+; VI-NEXT:    v_mov_b32_e32 v0, 0x40549000
+; VI-NEXT:    s_waitcnt lgkmcnt(0)
+; VI-NEXT:    s_and_b32 s0, s2, 0xfffff000
+; VI-NEXT:    v_mov_b32_e32 v1, s0
+; VI-NEXT:    v_sub_f32_e32 v1, s2, v1
+; VI-NEXT:    v_mul_f32_e32 v3, 0x3a2784bc, v1
+; VI-NEXT:    v_mul_f32_e32 v1, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v0, s0, v0
+; VI-NEXT:    v_add_f32_e32 v1, v1, v3
+; VI-NEXT:    v_mov_b32_e32 v3, 0x3a2784bc
+; VI-NEXT:    v_rndne_f32_e32 v2, v0
+; VI-NEXT:    v_mul_f32_e32 v3, s0, v3
+; VI-NEXT:    v_sub_f32_e32 v0, v0, v2
+; VI-NEXT:    v_add_f32_e32 v1, v3, v1
+; VI-NEXT:    v_add_f32_e32 v0, v0, v1
+; VI-NEXT:    v_exp_f32_e32 v0, v0
+; VI-NEXT:    v_cvt_i32_f32_e32 v1, v2
+; VI-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x24
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_ldexp_f32 v0, v0, v1
+; VI-NEXT:    v_mov_b32_e32 v1, 0xc23369f4
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s2, v1
+; VI-NEXT:    v_mov_b32_e32 v1, 0x421a209b
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v0, vcc
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s2, v1
+; VI-NEXT:    v_cndmask_b32_e32 v2, v2, v0, vcc
+; VI-NEXT:    s_waitcnt lgkmcnt(0)
+; VI-NEXT:    v_mov_b32_e32 v0, s0
+; VI-NEXT:    v_mov_b32_e32 v1, s1
+; VI-NEXT:    flat_store_dword v[0:1], v2
+; VI-NEXT:    s_endpgm
 ;
 ; GFX900-SDAG-LABEL: s_exp10_f32:
 ; GFX900-SDAG:       ; %bb.0:
@@ -338,109 +303,57 @@ define amdgpu_kernel void @s_exp10_f32(ptr addrspace(1) %out, float %in) {
 ; FIXME: We should be able to merge these packets together on Cayman so we
 ; have a maximum of 4 instructions.
 define amdgpu_kernel void @s_exp10_v2f32(ptr addrspace(1) %out, <2 x float> %in) {
-; VI-SDAG-LABEL: s_exp10_v2f32:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x24
-; VI-SDAG-NEXT:    v_mov_b32_e32 v0, 0x40549000
-; VI-SDAG-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-SDAG-NEXT:    s_and_b32 s4, s3, 0xfffff000
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, s4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, s3, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-SDAG-NEXT:    v_mov_b32_e32 v4, 0x3a2784bc
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, s4, v0
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, s4, v4
-; VI-SDAG-NEXT:    s_and_b32 s4, s2, 0xfffff000
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v1
-; VI-SDAG-NEXT:    v_mov_b32_e32 v6, s4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v1, v1, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v5, v2
-; VI-SDAG-NEXT:    v_sub_f32_e32 v6, s2, v6
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v0, s4, v0
-; VI-SDAG-NEXT:    v_mul_f32_e32 v7, 0x3a2784bc, v6
-; VI-SDAG-NEXT:    v_mul_f32_e32 v6, 0x40549000, v6
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v5, v0
-; VI-SDAG-NEXT:    v_add_f32_e32 v6, v6, v7
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, s4, v4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v0, v0, v5
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v6
-; VI-SDAG-NEXT:    v_add_f32_e32 v0, v0, v4
-; VI-SDAG-NEXT:    v_exp_f32_e32 v0, v0
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v4, v5
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s3, v2
-; VI-SDAG-NEXT:    v_mov_b32_e32 v3, 0x421a209b
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v5, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s3, v3
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, v5, v1, vcc
-; VI-SDAG-NEXT:    v_ldexp_f32 v0, v0, v4
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s2, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v0, vcc
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s2, v3
-; VI-SDAG-NEXT:    v_mov_b32_e32 v3, s1
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v5, v0, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, s0
-; VI-SDAG-NEXT:    flat_store_dwordx2 v[2:3], v[0:1]
-; VI-SDAG-NEXT:    s_endpgm
-;
-; VI-GISEL-LABEL: s_exp10_v2f32:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x24
-; VI-GISEL-NEXT:    v_mov_b32_e32 v0, 0x40549000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v1, 0x3a2784bc
-; VI-GISEL-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-GISEL-NEXT:    s_and_b32 s4, s2, 0xfffff000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, s4
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, s2, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, s4, v0
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, s4, v1
-; VI-GISEL-NEXT:    s_and_b32 s4, s3, 0xfffff000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v5, s4
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v4, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v4, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v5, s3, v5
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v6, 0x3a2784bc, v5
-; VI-GISEL-NEXT:    v_mul_f32_e32 v5, 0x40549000, v5
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v3, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v0, s4, v0
-; VI-GISEL-NEXT:    v_add_f32_e32 v5, v5, v6
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, s4, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v3, v4
-; VI-GISEL-NEXT:    v_exp_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v5
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v5, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v0, v0, v5
-; VI-GISEL-NEXT:    v_add_f32_e32 v0, v0, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v1, v5
-; VI-GISEL-NEXT:    v_exp_f32_e32 v5, v0
-; VI-GISEL-NEXT:    v_ldexp_f32 v2, v2, v3
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s2, v3
-; VI-GISEL-NEXT:    v_mov_b32_e32 v4, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v2, v2, 0, vcc
-; VI-GISEL-NEXT:    v_mov_b32_e32 v6, 0x7f800000
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s2, v4
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v2, v6, vcc
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v5, v1
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s3, v3
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s3, v4
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, s1
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v1, v1, v6, vcc
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, s0
-; VI-GISEL-NEXT:    flat_store_dwordx2 v[2:3], v[0:1]
-; VI-GISEL-NEXT:    s_endpgm
+; VI-LABEL: s_exp10_v2f32:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x24
+; VI-NEXT:    v_mov_b32_e32 v0, 0x40549000
+; VI-NEXT:    s_waitcnt lgkmcnt(0)
+; VI-NEXT:    s_and_b32 s4, s3, 0xfffff000
+; VI-NEXT:    v_mov_b32_e32 v2, s4
+; VI-NEXT:    v_sub_f32_e32 v2, s3, v2
+; VI-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
+; VI-NEXT:    v_add_f32_e32 v2, v2, v4
+; VI-NEXT:    v_mov_b32_e32 v4, 0x3a2784bc
+; VI-NEXT:    v_mul_f32_e32 v1, s4, v0
+; VI-NEXT:    v_mul_f32_e32 v5, s4, v4
+; VI-NEXT:    s_and_b32 s4, s2, 0xfffff000
+; VI-NEXT:    v_rndne_f32_e32 v3, v1
+; VI-NEXT:    v_mov_b32_e32 v6, s4
+; VI-NEXT:    v_sub_f32_e32 v1, v1, v3
+; VI-NEXT:    v_add_f32_e32 v2, v5, v2
+; VI-NEXT:    v_sub_f32_e32 v6, s2, v6
+; VI-NEXT:    v_add_f32_e32 v1, v1, v2
+; VI-NEXT:    v_mul_f32_e32 v0, s4, v0
+; VI-NEXT:    v_mul_f32_e32 v7, 0x3a2784bc, v6
+; VI-NEXT:    v_mul_f32_e32 v6, 0x40549000, v6
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    v_rndne_f32_e32 v5, v0
+; VI-NEXT:    v_add_f32_e32 v6, v6, v7
+; VI-NEXT:    v_mul_f32_e32 v4, s4, v4
+; VI-NEXT:    v_sub_f32_e32 v0, v0, v5
+; VI-NEXT:    v_add_f32_e32 v4, v4, v6
+; VI-NEXT:    v_add_f32_e32 v0, v0, v4
+; VI-NEXT:    v_exp_f32_e32 v0, v0
+; VI-NEXT:    v_cvt_i32_f32_e32 v4, v5
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s3, v2
+; VI-NEXT:    v_mov_b32_e32 v3, 0x421a209b
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v5, 0x7f800000
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s3, v3
+; VI-NEXT:    v_cndmask_b32_e32 v1, v5, v1, vcc
+; VI-NEXT:    v_ldexp_f32 v0, v0, v4
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s2, v2
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v0, vcc
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s2, v3
+; VI-NEXT:    v_mov_b32_e32 v3, s1
+; VI-NEXT:    v_cndmask_b32_e32 v0, v5, v0, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, s0
+; VI-NEXT:    flat_store_dwordx2 v[2:3], v[0:1]
+; VI-NEXT:    s_endpgm
 ;
 ; GFX900-SDAG-LABEL: s_exp10_v2f32:
 ; GFX900-SDAG:       ; %bb.0:
@@ -852,149 +765,77 @@ define amdgpu_kernel void @s_exp10_v2f32(ptr addrspace(1) %out, <2 x float> %in)
 }
 
 define amdgpu_kernel void @s_exp10_v3f32(ptr addrspace(1) %out, <3 x float> %in) {
-; VI-SDAG-LABEL: s_exp10_v3f32:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x34
-; VI-SDAG-NEXT:    v_mov_b32_e32 v0, 0x40549000
-; VI-SDAG-NEXT:    s_load_dwordx2 s[4:5], s[4:5], 0x24
-; VI-SDAG-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-SDAG-NEXT:    s_and_b32 s3, s2, 0xfffff000
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, s3
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, s2, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, s3, v0
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-SDAG-NEXT:    v_mov_b32_e32 v4, 0x3a2784bc
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, s3, v4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v1, v1, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v5, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_and_b32 s3, s1, 0xfffff000
-; VI-SDAG-NEXT:    v_mov_b32_e32 v7, s3
-; VI-SDAG-NEXT:    v_sub_f32_e32 v7, s1, v7
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, s3, v0
-; VI-SDAG-NEXT:    v_mul_f32_e32 v8, 0x3a2784bc, v7
-; VI-SDAG-NEXT:    v_mul_f32_e32 v7, 0x40549000, v7
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v6, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v7, v7, v8
-; VI-SDAG-NEXT:    v_mul_f32_e32 v8, s3, v4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v6
-; VI-SDAG-NEXT:    v_add_f32_e32 v7, v8, v7
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v2, v7
-; VI-SDAG-NEXT:    v_exp_f32_e32 v7, v2
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v6, v6
-; VI-SDAG-NEXT:    v_mov_b32_e32 v3, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s2, v3
-; VI-SDAG-NEXT:    v_mov_b32_e32 v5, 0x421a209b
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v8, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s2, v5
-; VI-SDAG-NEXT:    s_and_b32 s2, s0, 0xfffff000
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v2, v8, v1, vcc
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v7, v6
-; VI-SDAG-NEXT:    v_mov_b32_e32 v7, s2
-; VI-SDAG-NEXT:    v_sub_f32_e32 v7, s0, v7
-; VI-SDAG-NEXT:    v_mul_f32_e32 v0, s2, v0
-; VI-SDAG-NEXT:    v_mul_f32_e32 v9, 0x3a2784bc, v7
-; VI-SDAG-NEXT:    v_mul_f32_e32 v7, 0x40549000, v7
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v6, v0
-; VI-SDAG-NEXT:    v_add_f32_e32 v7, v7, v9
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, s2, v4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v0, v0, v6
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v7
-; VI-SDAG-NEXT:    v_add_f32_e32 v0, v0, v4
-; VI-SDAG-NEXT:    v_exp_f32_e32 v0, v0
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v4, v6
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s1, v3
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s1, v5
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, v8, v1, vcc
-; VI-SDAG-NEXT:    v_ldexp_f32 v0, v0, v4
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s0, v3
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v0, vcc
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s0, v5
-; VI-SDAG-NEXT:    v_mov_b32_e32 v3, s4
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v8, v0, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v4, s5
-; VI-SDAG-NEXT:    flat_store_dwordx3 v[3:4], v[0:2]
-; VI-SDAG-NEXT:    s_endpgm
-;
-; VI-GISEL-LABEL: s_exp10_v3f32:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x34
-; VI-GISEL-NEXT:    v_mov_b32_e32 v1, 0x40549000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x3a2784bc
-; VI-GISEL-NEXT:    s_load_dwordx2 s[4:5], s[4:5], 0x24
-; VI-GISEL-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-GISEL-NEXT:    s_and_b32 s3, s0, 0xfffff000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v0, s3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v0, s0, v0
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v0
-; VI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549000, v0
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, s3, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v0, v0, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, s3, v2
-; VI-GISEL-NEXT:    s_and_b32 s3, s1, 0xfffff000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v5, s3
-; VI-GISEL-NEXT:    v_add_f32_e32 v0, v4, v0
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v4, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v5, s1, v5
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v7, 0x3a2784bc, v5
-; VI-GISEL-NEXT:    v_mul_f32_e32 v5, 0x40549000, v5
-; VI-GISEL-NEXT:    v_add_f32_e32 v0, v3, v0
-; VI-GISEL-NEXT:    v_mul_f32_e32 v6, s3, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v5, v5, v7
-; VI-GISEL-NEXT:    v_mul_f32_e32 v7, s3, v2
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v3, v4
-; VI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
-; VI-GISEL-NEXT:    v_add_f32_e32 v5, v7, v5
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v7, v6
-; VI-GISEL-NEXT:    v_sub_f32_e32 v6, v6, v7
-; VI-GISEL-NEXT:    v_add_f32_e32 v5, v6, v5
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v6, v7
-; VI-GISEL-NEXT:    v_exp_f32_e32 v5, v5
-; VI-GISEL-NEXT:    v_ldexp_f32 v0, v0, v3
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s0, v3
-; VI-GISEL-NEXT:    v_mov_b32_e32 v4, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v0, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s0, v4
-; VI-GISEL-NEXT:    s_and_b32 s0, s2, 0xfffff000
-; VI-GISEL-NEXT:    v_ldexp_f32 v5, v5, v6
-; VI-GISEL-NEXT:    v_mov_b32_e32 v6, s0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v6, s2, v6
-; VI-GISEL-NEXT:    v_mul_f32_e32 v8, 0x3a2784bc, v6
-; VI-GISEL-NEXT:    v_mul_f32_e32 v6, 0x40549000, v6
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, s0, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v6, v6, v8
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, s0, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v6
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v6, v1
-; VI-GISEL-NEXT:    v_sub_f32_e32 v1, v1, v6
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v6
-; VI-GISEL-NEXT:    v_exp_f32_e32 v6, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v7, 0x7f800000
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v0, v7, vcc
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s1, v3
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v5, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s1, v4
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v1, v1, v7, vcc
-; VI-GISEL-NEXT:    v_ldexp_f32 v2, v6, v2
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s2, v3
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v2, v2, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s2, v4
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, s4
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v2, v2, v7, vcc
-; VI-GISEL-NEXT:    v_mov_b32_e32 v4, s5
-; VI-GISEL-NEXT:    flat_store_dwordx3 v[3:4], v[0:2]
-; VI-GISEL-NEXT:    s_endpgm
+; VI-LABEL: s_exp10_v3f32:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x34
+; VI-NEXT:    v_mov_b32_e32 v0, 0x40549000
+; VI-NEXT:    s_load_dwordx2 s[4:5], s[4:5], 0x24
+; VI-NEXT:    s_waitcnt lgkmcnt(0)
+; VI-NEXT:    s_and_b32 s3, s2, 0xfffff000
+; VI-NEXT:    v_mov_b32_e32 v2, s3
+; VI-NEXT:    v_sub_f32_e32 v2, s2, v2
+; VI-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
+; VI-NEXT:    v_mul_f32_e32 v1, s3, v0
+; VI-NEXT:    v_add_f32_e32 v2, v2, v4
+; VI-NEXT:    v_mov_b32_e32 v4, 0x3a2784bc
+; VI-NEXT:    v_rndne_f32_e32 v3, v1
+; VI-NEXT:    v_mul_f32_e32 v5, s3, v4
+; VI-NEXT:    v_sub_f32_e32 v1, v1, v3
+; VI-NEXT:    v_add_f32_e32 v2, v5, v2
+; VI-NEXT:    v_add_f32_e32 v1, v1, v2
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_and_b32 s3, s1, 0xfffff000
+; VI-NEXT:    v_mov_b32_e32 v7, s3
+; VI-NEXT:    v_sub_f32_e32 v7, s1, v7
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_mul_f32_e32 v2, s3, v0
+; VI-NEXT:    v_mul_f32_e32 v8, 0x3a2784bc, v7
+; VI-NEXT:    v_mul_f32_e32 v7, 0x40549000, v7
+; VI-NEXT:    v_rndne_f32_e32 v6, v2
+; VI-NEXT:    v_add_f32_e32 v7, v7, v8
+; VI-NEXT:    v_mul_f32_e32 v8, s3, v4
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v6
+; VI-NEXT:    v_add_f32_e32 v7, v8, v7
+; VI-NEXT:    v_add_f32_e32 v2, v2, v7
+; VI-NEXT:    v_exp_f32_e32 v7, v2
+; VI-NEXT:    v_cvt_i32_f32_e32 v6, v6
+; VI-NEXT:    v_mov_b32_e32 v3, 0xc23369f4
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s2, v3
+; VI-NEXT:    v_mov_b32_e32 v5, 0x421a209b
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v8, 0x7f800000
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s2, v5
+; VI-NEXT:    s_and_b32 s2, s0, 0xfffff000
+; VI-NEXT:    v_cndmask_b32_e32 v2, v8, v1, vcc
+; VI-NEXT:    v_ldexp_f32 v1, v7, v6
+; VI-NEXT:    v_mov_b32_e32 v7, s2
+; VI-NEXT:    v_sub_f32_e32 v7, s0, v7
+; VI-NEXT:    v_mul_f32_e32 v0, s2, v0
+; VI-NEXT:    v_mul_f32_e32 v9, 0x3a2784bc, v7
+; VI-NEXT:    v_mul_f32_e32 v7, 0x40549000, v7
+; VI-NEXT:    v_rndne_f32_e32 v6, v0
+; VI-NEXT:    v_add_f32_e32 v7, v7, v9
+; VI-NEXT:    v_mul_f32_e32 v4, s2, v4
+; VI-NEXT:    v_sub_f32_e32 v0, v0, v6
+; VI-NEXT:    v_add_f32_e32 v4, v4, v7
+; VI-NEXT:    v_add_f32_e32 v0, v0, v4
+; VI-NEXT:    v_exp_f32_e32 v0, v0
+; VI-NEXT:    v_cvt_i32_f32_e32 v4, v6
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s1, v3
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s1, v5
+; VI-NEXT:    v_cndmask_b32_e32 v1, v8, v1, vcc
+; VI-NEXT:    v_ldexp_f32 v0, v0, v4
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s0, v3
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v0, vcc
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s0, v5
+; VI-NEXT:    v_mov_b32_e32 v3, s4
+; VI-NEXT:    v_cndmask_b32_e32 v0, v8, v0, vcc
+; VI-NEXT:    v_mov_b32_e32 v4, s5
+; VI-NEXT:    flat_store_dwordx3 v[3:4], v[0:2]
+; VI-NEXT:    s_endpgm
 ;
 ; GFX900-SDAG-LABEL: s_exp10_v3f32:
 ; GFX900-SDAG:       ; %bb.0:
@@ -1591,187 +1432,96 @@ define amdgpu_kernel void @s_exp10_v3f32(ptr addrspace(1) %out, <3 x float> %in)
 ; FIXME: We should be able to merge these packets together on Cayman so we
 ; have a maximum of 4 instructions.
 define amdgpu_kernel void @s_exp10_v4f32(ptr addrspace(1) %out, <4 x float> %in) {
-; VI-SDAG-LABEL: s_exp10_v4f32:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x34
-; VI-SDAG-NEXT:    v_mov_b32_e32 v0, 0x40549000
-; VI-SDAG-NEXT:    v_mov_b32_e32 v6, 0x421a209b
-; VI-SDAG-NEXT:    s_load_dwordx2 s[4:5], s[4:5], 0x24
-; VI-SDAG-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-SDAG-NEXT:    s_and_b32 s6, s3, 0xfffff000
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, s6
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, s3, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, s6, v0
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-SDAG-NEXT:    v_mov_b32_e32 v4, 0x3a2784bc
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, s6, v4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v1, v1, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v5, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_and_b32 s6, s2, 0xfffff000
-; VI-SDAG-NEXT:    v_mov_b32_e32 v7, s6
-; VI-SDAG-NEXT:    v_sub_f32_e32 v7, s2, v7
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, s6, v0
-; VI-SDAG-NEXT:    v_mul_f32_e32 v8, 0x3a2784bc, v7
-; VI-SDAG-NEXT:    v_mul_f32_e32 v7, 0x40549000, v7
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v7, v7, v8
-; VI-SDAG-NEXT:    v_mul_f32_e32 v8, s6, v4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v7, v8, v7
-; VI-SDAG-NEXT:    v_mov_b32_e32 v5, 0xc23369f4
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v2, v7
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s3, v5
-; VI-SDAG-NEXT:    v_exp_f32_e32 v2, v2
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v7, v3
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s3, v6
-; VI-SDAG-NEXT:    s_and_b32 s3, s1, 0xfffff000
-; VI-SDAG-NEXT:    v_mov_b32_e32 v9, s3
-; VI-SDAG-NEXT:    v_mov_b32_e32 v8, 0x7f800000
-; VI-SDAG-NEXT:    v_sub_f32_e32 v9, s1, v9
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v3, v8, v1, vcc
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v2, v7
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, s3, v0
-; VI-SDAG-NEXT:    v_mul_f32_e32 v10, 0x3a2784bc, v9
-; VI-SDAG-NEXT:    v_mul_f32_e32 v9, 0x40549000, v9
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v7, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v9, v9, v10
-; VI-SDAG-NEXT:    v_mul_f32_e32 v10, s3, v4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v7
-; VI-SDAG-NEXT:    v_add_f32_e32 v9, v10, v9
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v2, v9
-; VI-SDAG-NEXT:    v_exp_f32_e32 v9, v2
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v7, v7
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s2, v5
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s2, v6
-; VI-SDAG-NEXT:    s_and_b32 s2, s0, 0xfffff000
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v2, v8, v1, vcc
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v9, v7
-; VI-SDAG-NEXT:    v_mov_b32_e32 v9, s2
-; VI-SDAG-NEXT:    v_sub_f32_e32 v9, s0, v9
-; VI-SDAG-NEXT:    v_mul_f32_e32 v0, s2, v0
-; VI-SDAG-NEXT:    v_mul_f32_e32 v10, 0x3a2784bc, v9
-; VI-SDAG-NEXT:    v_mul_f32_e32 v9, 0x40549000, v9
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v7, v0
-; VI-SDAG-NEXT:    v_add_f32_e32 v9, v9, v10
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, s2, v4
-; VI-SDAG-NEXT:    v_sub_f32_e32 v0, v0, v7
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v9
-; VI-SDAG-NEXT:    v_add_f32_e32 v0, v0, v4
-; VI-SDAG-NEXT:    v_exp_f32_e32 v0, v0
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v4, v7
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s1, v5
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s1, v6
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, v8, v1, vcc
-; VI-SDAG-NEXT:    v_ldexp_f32 v0, v0, v4
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s0, v5
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v0, vcc
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s0, v6
-; VI-SDAG-NEXT:    v_mov_b32_e32 v4, s4
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v8, v0, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v5, s5
-; VI-SDAG-NEXT:    flat_store_dwordx4 v[4:5], v[0:3]
-; VI-SDAG-NEXT:    s_endpgm
-;
-; VI-GISEL-LABEL: s_exp10_v4f32:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x34
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x40549000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x3a2784bc
-; VI-GISEL-NEXT:    v_mov_b32_e32 v5, 0x421a209b
-; VI-GISEL-NEXT:    s_load_dwordx2 s[4:5], s[4:5], 0x24
-; VI-GISEL-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-GISEL-NEXT:    s_and_b32 s6, s0, 0xfffff000
-; VI-GISEL-NEXT:    v_mov_b32_e32 v0, s6
-; VI-GISEL-NEXT:    v_sub_f32_e32 v0, s0, v0
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v0
-; VI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549000, v0
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, s6, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v0, v0, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, s6, v3
-; VI-GISEL-NEXT:    v_add_f32_e32 v0, v4, v0
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v4, v1
-; VI-GISEL-NEXT:    v_sub_f32_e32 v1, v1, v4
-; VI-GISEL-NEXT:    v_add_f32_e32 v0, v1, v0
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v1, v4
-; VI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
-; VI-GISEL-NEXT:    s_and_b32 s6, s1, 0xfffff000
-; VI-GISEL-NEXT:    v_mul_f32_e32 v6, s6, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v4, 0xc23369f4
-; VI-GISEL-NEXT:    v_ldexp_f32 v0, v0, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v1, s6
-; VI-GISEL-NEXT:    v_sub_f32_e32 v1, s1, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v7, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v7
-; VI-GISEL-NEXT:    v_mul_f32_e32 v7, s6, v3
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v7, v1
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v7, v6
-; VI-GISEL-NEXT:    v_sub_f32_e32 v6, v6, v7
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v6, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v6, v7
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s0, v4
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v0, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s0, v5
-; VI-GISEL-NEXT:    s_and_b32 s0, s2, 0xfffff000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v6
-; VI-GISEL-NEXT:    v_mov_b32_e32 v6, s0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v6, s2, v6
-; VI-GISEL-NEXT:    v_mul_f32_e32 v9, 0x3a2784bc, v6
-; VI-GISEL-NEXT:    v_mul_f32_e32 v6, 0x40549000, v6
-; VI-GISEL-NEXT:    v_mul_f32_e32 v8, s0, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v6, v6, v9
-; VI-GISEL-NEXT:    v_mul_f32_e32 v9, s0, v3
-; VI-GISEL-NEXT:    v_add_f32_e32 v6, v9, v6
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v9, v8
-; VI-GISEL-NEXT:    v_sub_f32_e32 v8, v8, v9
-; VI-GISEL-NEXT:    v_add_f32_e32 v6, v8, v6
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v8, v9
-; VI-GISEL-NEXT:    v_exp_f32_e32 v6, v6
-; VI-GISEL-NEXT:    s_and_b32 s0, s3, 0xfffff000
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, s0, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, s0, v3
-; VI-GISEL-NEXT:    v_ldexp_f32 v6, v6, v8
-; VI-GISEL-NEXT:    v_mov_b32_e32 v8, s0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v8, s3, v8
-; VI-GISEL-NEXT:    v_mul_f32_e32 v9, 0x3a2784bc, v8
-; VI-GISEL-NEXT:    v_mul_f32_e32 v8, 0x40549000, v8
-; VI-GISEL-NEXT:    v_add_f32_e32 v8, v8, v9
-; VI-GISEL-NEXT:    v_add_f32_e32 v3, v3, v8
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v8, v2
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v2, v8
-; VI-GISEL-NEXT:    v_mov_b32_e32 v7, 0x7f800000
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v3
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v0, v7, vcc
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s1, v4
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v3, v8
-; VI-GISEL-NEXT:    v_exp_f32_e32 v8, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s1, v5
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v1, v1, v7, vcc
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s2, v4
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v2, v6, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s2, v5
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v2, v2, v7, vcc
-; VI-GISEL-NEXT:    v_ldexp_f32 v3, v8, v3
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, s3, v4
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v3, v3, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, s3, v5
-; VI-GISEL-NEXT:    v_mov_b32_e32 v4, s4
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v3, v3, v7, vcc
-; VI-GISEL-NEXT:    v_mov_b32_e32 v5, s5
-; VI-GISEL-NEXT:    flat_store_dwordx4 v[4:5], v[0:3]
-; VI-GISEL-NEXT:    s_endpgm
+; VI-LABEL: s_exp10_v4f32:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x34
+; VI-NEXT:    v_mov_b32_e32 v0, 0x40549000
+; VI-NEXT:    v_mov_b32_e32 v6, 0x421a209b
+; VI-NEXT:    s_load_dwordx2 s[4:5], s[4:5], 0x24
+; VI-NEXT:    s_waitcnt lgkmcnt(0)
+; VI-NEXT:    s_and_b32 s6, s3, 0xfffff000
+; VI-NEXT:    v_mov_b32_e32 v2, s6
+; VI-NEXT:    v_sub_f32_e32 v2, s3, v2
+; VI-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
+; VI-NEXT:    v_mul_f32_e32 v1, s6, v0
+; VI-NEXT:    v_add_f32_e32 v2, v2, v4
+; VI-NEXT:    v_mov_b32_e32 v4, 0x3a2784bc
+; VI-NEXT:    v_rndne_f32_e32 v3, v1
+; VI-NEXT:    v_mul_f32_e32 v5, s6, v4
+; VI-NEXT:    v_sub_f32_e32 v1, v1, v3
+; VI-NEXT:    v_add_f32_e32 v2, v5, v2
+; VI-NEXT:    v_add_f32_e32 v1, v1, v2
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_and_b32 s6, s2, 0xfffff000
+; VI-NEXT:    v_mov_b32_e32 v7, s6
+; VI-NEXT:    v_sub_f32_e32 v7, s2, v7
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_mul_f32_e32 v2, s6, v0
+; VI-NEXT:    v_mul_f32_e32 v8, 0x3a2784bc, v7
+; VI-NEXT:    v_mul_f32_e32 v7, 0x40549000, v7
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v7, v7, v8
+; VI-NEXT:    v_mul_f32_e32 v8, s6, v4
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v7, v8, v7
+; VI-NEXT:    v_mov_b32_e32 v5, 0xc23369f4
+; VI-NEXT:    v_add_f32_e32 v2, v2, v7
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s3, v5
+; VI-NEXT:    v_exp_f32_e32 v2, v2
+; VI-NEXT:    v_cvt_i32_f32_e32 v7, v3
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s3, v6
+; VI-NEXT:    s_and_b32 s3, s1, 0xfffff000
+; VI-NEXT:    v_mov_b32_e32 v9, s3
+; VI-NEXT:    v_mov_b32_e32 v8, 0x7f800000
+; VI-NEXT:    v_sub_f32_e32 v9, s1, v9
+; VI-NEXT:    v_cndmask_b32_e32 v3, v8, v1, vcc
+; VI-NEXT:    v_ldexp_f32 v1, v2, v7
+; VI-NEXT:    v_mul_f32_e32 v2, s3, v0
+; VI-NEXT:    v_mul_f32_e32 v10, 0x3a2784bc, v9
+; VI-NEXT:    v_mul_f32_e32 v9, 0x40549000, v9
+; VI-NEXT:    v_rndne_f32_e32 v7, v2
+; VI-NEXT:    v_add_f32_e32 v9, v9, v10
+; VI-NEXT:    v_mul_f32_e32 v10, s3, v4
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v7
+; VI-NEXT:    v_add_f32_e32 v9, v10, v9
+; VI-NEXT:    v_add_f32_e32 v2, v2, v9
+; VI-NEXT:    v_exp_f32_e32 v9, v2
+; VI-NEXT:    v_cvt_i32_f32_e32 v7, v7
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s2, v5
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s2, v6
+; VI-NEXT:    s_and_b32 s2, s0, 0xfffff000
+; VI-NEXT:    v_cndmask_b32_e32 v2, v8, v1, vcc
+; VI-NEXT:    v_ldexp_f32 v1, v9, v7
+; VI-NEXT:    v_mov_b32_e32 v9, s2
+; VI-NEXT:    v_sub_f32_e32 v9, s0, v9
+; VI-NEXT:    v_mul_f32_e32 v0, s2, v0
+; VI-NEXT:    v_mul_f32_e32 v10, 0x3a2784bc, v9
+; VI-NEXT:    v_mul_f32_e32 v9, 0x40549000, v9
+; VI-NEXT:    v_rndne_f32_e32 v7, v0
+; VI-NEXT:    v_add_f32_e32 v9, v9, v10
+; VI-NEXT:    v_mul_f32_e32 v4, s2, v4
+; VI-NEXT:    v_sub_f32_e32 v0, v0, v7
+; VI-NEXT:    v_add_f32_e32 v4, v4, v9
+; VI-NEXT:    v_add_f32_e32 v0, v0, v4
+; VI-NEXT:    v_exp_f32_e32 v0, v0
+; VI-NEXT:    v_cvt_i32_f32_e32 v4, v7
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s1, v5
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s1, v6
+; VI-NEXT:    v_cndmask_b32_e32 v1, v8, v1, vcc
+; VI-NEXT:    v_ldexp_f32 v0, v0, v4
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s0, v5
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v0, vcc
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s0, v6
+; VI-NEXT:    v_mov_b32_e32 v4, s4
+; VI-NEXT:    v_cndmask_b32_e32 v0, v8, v0, vcc
+; VI-NEXT:    v_mov_b32_e32 v5, s5
+; VI-NEXT:    flat_store_dwordx4 v[4:5], v[0:3]
+; VI-NEXT:    s_endpgm
 ;
 ; GFX900-SDAG-LABEL: s_exp10_v4f32:
 ; GFX900-SDAG:       ; %bb.0:
@@ -2521,57 +2271,31 @@ define amdgpu_kernel void @s_exp10_v4f32(ptr addrspace(1) %out, <4 x float> %in)
 }
 
 define float @v_exp10_f32(float %in) {
-; VI-SDAG-LABEL: v_exp10_f32:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32:
 ; GFX900-SDAG:       ; %bb.0:
@@ -2679,59 +2403,32 @@ define float @v_exp10_f32(float %in) {
 }
 
 define float @v_exp10_fabs_f32(float %in) {
-; VI-SDAG-LABEL: v_exp10_fabs_f32:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0x7fffffff, v0
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0x7ffff000, v1
-; VI-SDAG-NEXT:    v_sub_f32_e64 v4, |v0|, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e64 vcc, |v0|, s4
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e64 vcc, |v0|, s4
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_fabs_f32:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0x7fffffff, v0
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v1
-; VI-GISEL-NEXT:    v_sub_f32_e64 v2, |v0|, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e64 s[4:5], |v0|, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, s[4:5]
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e64 vcc, |v0|, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_fabs_f32:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0x7fffffff, v0
+; VI-NEXT:    v_and_b32_e32 v1, 0x7ffff000, v1
+; VI-NEXT:    v_sub_f32_e64 v4, |v0|, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_nlt_f32_e64 vcc, |v0|, s4
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_ngt_f32_e64 vcc, |v0|, s4
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_fabs_f32:
 ; GFX900-SDAG:       ; %bb.0:
@@ -2840,59 +2537,32 @@ define float @v_exp10_fabs_f32(float %in) {
 }
 
 define float @v_exp10_fneg_fabs_f32(float %in) {
-; VI-SDAG-LABEL: v_exp10_fneg_fabs_f32:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_or_b32_e32 v1, 0x80000000, v0
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v1
-; VI-SDAG-NEXT:    v_sub_f32_e64 v4, -|v0|, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x423369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e64 vcc, |v0|, s4
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc21a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e64 vcc, |v0|, s4
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_fneg_fabs_f32:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_or_b32_e32 v1, 0x80000000, v0
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v1
-; VI-GISEL-NEXT:    v_sub_f32_e64 v2, -|v0|, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e64 s[4:5], -|v0|, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, s[4:5]
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e64 vcc, -|v0|, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_fneg_fabs_f32:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_or_b32_e32 v1, 0x80000000, v0
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v1
+; VI-NEXT:    v_sub_f32_e64 v4, -|v0|, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0x423369f4
+; VI-NEXT:    v_cmp_ngt_f32_e64 vcc, |v0|, s4
+; VI-NEXT:    s_mov_b32 s4, 0xc21a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e64 vcc, |v0|, s4
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_fneg_fabs_f32:
 ; GFX900-SDAG:       ; %bb.0:
@@ -3002,59 +2672,32 @@ define float @v_exp10_fneg_fabs_f32(float %in) {
 }
 
 define float @v_exp10_fneg_f32(float %in) {
-; VI-SDAG-LABEL: v_exp10_fneg_f32:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_xor_b32_e32 v1, 0x80000000, v0
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v1
-; VI-SDAG-NEXT:    v_sub_f32_e64 v4, -v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x423369f4
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc21a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_fneg_f32:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_xor_b32_e32 v1, 0x80000000, v0
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v1
-; VI-GISEL-NEXT:    v_sub_f32_e64 v2, -v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e64 s[4:5], -v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, s[4:5]
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e64 vcc, -v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_fneg_f32:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_xor_b32_e32 v1, 0x80000000, v0
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v1
+; VI-NEXT:    v_sub_f32_e64 v4, -v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0x423369f4
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0xc21a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_fneg_f32:
 ; GFX900-SDAG:       ; %bb.0:
@@ -3241,49 +2884,27 @@ define float @v_exp10_f32_fast(float %in) {
 }
 
 define float @v_exp10_f32_ninf(float %in) {
-; VI-SDAG-LABEL: v_exp10_f32_ninf:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_ninf:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v1, 0, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_ninf:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_ninf:
 ; GFX900-SDAG:       ; %bb.0:
@@ -3648,57 +3269,31 @@ define float @v_fabs_exp10_f32_afn(float %in) {
 }
 
 define float @v_exp10_f32_daz(float %in) #0 {
-; VI-SDAG-LABEL: v_exp10_f32_daz:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_daz:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_daz:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_daz:
 ; GFX900-SDAG:       ; %bb.0:
@@ -3806,57 +3401,31 @@ define float @v_exp10_f32_daz(float %in) #0 {
 }
 
 define float @v_exp10_f32_nnan(float %in) {
-; VI-SDAG-LABEL: v_exp10_f32_nnan:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_nnan:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_nnan:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_nnan:
 ; GFX900-SDAG:       ; %bb.0:
@@ -3964,57 +3533,31 @@ define float @v_exp10_f32_nnan(float %in) {
 }
 
 define float @v_exp10_f32_nnan_daz(float %in) #0 {
-; VI-SDAG-LABEL: v_exp10_f32_nnan_daz:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_nnan_daz:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_nnan_daz:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_nnan_daz:
 ; GFX900-SDAG:       ; %bb.0:
@@ -4122,57 +3665,31 @@ define float @v_exp10_f32_nnan_daz(float %in) #0 {
 }
 
 define float @v_exp10_f32_nnan_dynamic(float %in) #1 {
-; VI-SDAG-LABEL: v_exp10_f32_nnan_dynamic:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_nnan_dynamic:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_nnan_dynamic:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_nnan_dynamic:
 ; GFX900-SDAG:       ; %bb.0:
@@ -4280,49 +3797,27 @@ define float @v_exp10_f32_nnan_dynamic(float %in) #1 {
 }
 
 define float @v_exp10_f32_ninf_daz(float %in) #0 {
-; VI-SDAG-LABEL: v_exp10_f32_ninf_daz:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_ninf_daz:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v1, 0, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_ninf_daz:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_ninf_daz:
 ; GFX900-SDAG:       ; %bb.0:
@@ -4414,49 +3909,27 @@ define float @v_exp10_f32_ninf_daz(float %in) #0 {
 }
 
 define float @v_exp10_f32_ninf_dynamic(float %in) #1 {
-; VI-SDAG-LABEL: v_exp10_f32_ninf_dynamic:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_ninf_dynamic:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v1, 0, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_ninf_dynamic:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_ninf_dynamic:
 ; GFX900-SDAG:       ; %bb.0:
@@ -4548,49 +4021,27 @@ define float @v_exp10_f32_ninf_dynamic(float %in) #1 {
 }
 
 define float @v_exp10_f32_nnan_ninf(float %in) {
-; VI-SDAG-LABEL: v_exp10_f32_nnan_ninf:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_nnan_ninf:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v1, 0, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_nnan_ninf:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_nnan_ninf:
 ; GFX900-SDAG:       ; %bb.0:
@@ -4682,49 +4133,27 @@ define float @v_exp10_f32_nnan_ninf(float %in) {
 }
 
 define float @v_exp10_f32_nnan_ninf_daz(float %in) #0 {
-; VI-SDAG-LABEL: v_exp10_f32_nnan_ninf_daz:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_nnan_ninf_daz:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v1, 0, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_nnan_ninf_daz:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_nnan_ninf_daz:
 ; GFX900-SDAG:       ; %bb.0:
@@ -4816,49 +4245,27 @@ define float @v_exp10_f32_nnan_ninf_daz(float %in) #0 {
 }
 
 define float @v_exp10_f32_nnan_ninf_dynamic(float %in) #1 {
-; VI-SDAG-LABEL: v_exp10_f32_nnan_ninf_dynamic:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_nnan_ninf_dynamic:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v1, 0, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_nnan_ninf_dynamic:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_nnan_ninf_dynamic:
 ; GFX900-SDAG:       ; %bb.0:
@@ -4984,57 +4391,31 @@ define float @v_exp10_f32_fast_daz(float %in) #0 {
 }
 
 define float @v_exp10_f32_dynamic_mode(float %in) #1 {
-; VI-SDAG-LABEL: v_exp10_f32_dynamic_mode:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_dynamic_mode:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_dynamic_mode:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_dynamic_mode:
 ; GFX900-SDAG:       ; %bb.0:
@@ -5192,59 +4573,32 @@ define float @v_exp10_f32_0() {
 }
 
 define float @v_exp10_f32_from_fpext_f16(i16 %src.i) {
-; VI-SDAG-LABEL: v_exp10_f32_from_fpext_f16:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_cvt_f32_f16_e32 v0, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v3, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v3
-; VI-SDAG-NEXT:    v_mul_f32_e32 v3, 0x40549000, v3
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v4, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v3, v3, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v4
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_from_fpext_f16:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_from_fpext_f16:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_cvt_f32_f16_e32 v0, v0
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v3, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v3
+; VI-NEXT:    v_mul_f32_e32 v3, 0x40549000, v3
+; VI-NEXT:    v_rndne_f32_e32 v4, v2
+; VI-NEXT:    v_add_f32_e32 v3, v3, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v4
+; VI-NEXT:    v_add_f32_e32 v1, v1, v3
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v4
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_from_fpext_f16:
 ; GFX900-SDAG:       ; %bb.0:
@@ -5358,61 +4712,33 @@ define float @v_exp10_f32_from_fpext_f16(i16 %src.i) {
 }
 
 define float @v_exp10_f32_from_fpext_math_f16(i16 %src0.i, i16 %src1.i) {
-; VI-SDAG-LABEL: v_exp10_f32_from_fpext_math_f16:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_add_f16_e32 v0, v0, v1
-; VI-SDAG-NEXT:    v_cvt_f32_f16_e32 v0, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v3, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x40549000, v1
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v3, v2
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v1, v1, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_from_fpext_math_f16:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_add_f16_e32 v0, v0, v1
-; VI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_from_fpext_math_f16:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_add_f16_e32 v0, v0, v1
+; VI-NEXT:    v_cvt_f32_f16_e32 v0, v0
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v2, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
+; VI-NEXT:    v_mul_f32_e32 v3, 0x3a2784bc, v1
+; VI-NEXT:    v_add_f32_e32 v2, v2, v4
+; VI-NEXT:    v_mul_f32_e32 v1, 0x40549000, v1
+; VI-NEXT:    v_add_f32_e32 v2, v3, v2
+; VI-NEXT:    v_rndne_f32_e32 v3, v1
+; VI-NEXT:    v_sub_f32_e32 v1, v1, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v2
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_from_fpext_math_f16:
 ; GFX900-SDAG:       ; %bb.0:
@@ -5687,61 +5013,33 @@ define float @v_exp10_f32_from_fpext_math_f16_fast(i16 %src0.i, i16 %src1.i) {
 }
 
 define float @v_exp10_f32_from_fpext_math_f16_daz(i16 %src0.i, i16 %src1.i) #0 {
-; VI-SDAG-LABEL: v_exp10_f32_from_fpext_math_f16_daz:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_add_f16_e32 v0, v0, v1
-; VI-SDAG-NEXT:    v_cvt_f32_f16_e32 v0, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-SDAG-NEXT:    v_mul_f32_e32 v3, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x40549000, v1
-; VI-SDAG-NEXT:    v_add_f32_e32 v2, v3, v2
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v1, v1, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_from_fpext_math_f16_daz:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_add_f16_e32 v0, v0, v1
-; VI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_from_fpext_math_f16_daz:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_add_f16_e32 v0, v0, v1
+; VI-NEXT:    v_cvt_f32_f16_e32 v0, v0
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v2, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
+; VI-NEXT:    v_mul_f32_e32 v3, 0x3a2784bc, v1
+; VI-NEXT:    v_add_f32_e32 v2, v2, v4
+; VI-NEXT:    v_mul_f32_e32 v1, 0x40549000, v1
+; VI-NEXT:    v_add_f32_e32 v2, v3, v2
+; VI-NEXT:    v_rndne_f32_e32 v3, v1
+; VI-NEXT:    v_sub_f32_e32 v1, v1, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v2
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_from_fpext_math_f16_daz:
 ; GFX900-SDAG:       ; %bb.0:
@@ -6093,13 +5391,15 @@ define <2 x half> @v_exp10_v2f16(<2 x half> %in) {
 ; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
 ; VI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v0
 ; VI-GISEL-NEXT:    v_cvt_f32_f16_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
+; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 16
 ; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
 ; VI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
 ; VI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
+; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
 ; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_cvt_f16_f32_sdwa v0, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
-; VI-GISEL-NEXT:    v_or_b32_e32 v0, v1, v0
+; VI-GISEL-NEXT:    v_lshlrev_b32_sdwa v0, v2, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
+; VI-GISEL-NEXT:    v_or_b32_sdwa v0, v1, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
 ; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-LABEL: v_exp10_v2f16:
@@ -6135,17 +5435,19 @@ define <2 x half> @v_exp10_v2f16(<2 x half> %in) {
 ; SI-GISEL-LABEL: v_exp10_v2f16:
 ; SI-GISEL:       ; %bb.0:
 ; SI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; SI-GISEL-NEXT:    v_lshrrev_b32_e32 v1, 16, v0
-; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v1
+; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v0
+; SI-GISEL-NEXT:    v_lshrrev_b32_e32 v0, 16, v0
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
 ; SI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
-; SI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
-; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 16, v1
-; SI-GISEL-NEXT:    v_or_b32_e32 v0, v0, v1
+; SI-GISEL-NEXT:    v_bfe_u32 v1, v1, 0, 16
+; SI-GISEL-NEXT:    v_bfe_u32 v0, v0, 0, 16
+; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
+; SI-GISEL-NEXT:    v_or_b32_e32 v0, v1, v0
 ; SI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; R600-LABEL: v_exp10_v2f16:
@@ -6182,13 +5484,15 @@ define <2 x half> @v_exp10_fabs_v2f16(<2 x half> %in) {
 ; VI-GISEL-NEXT:    v_and_b32_e32 v0, 0x7fff7fff, v0
 ; VI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v0
 ; VI-GISEL-NEXT:    v_cvt_f32_f16_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
+; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 16
 ; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
 ; VI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
 ; VI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
+; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
 ; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_cvt_f16_f32_sdwa v0, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
-; VI-GISEL-NEXT:    v_or_b32_e32 v0, v1, v0
+; VI-GISEL-NEXT:    v_lshlrev_b32_sdwa v0, v2, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
+; VI-GISEL-NEXT:    v_or_b32_sdwa v0, v1, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
 ; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_fabs_v2f16:
@@ -6240,17 +5544,19 @@ define <2 x half> @v_exp10_fabs_v2f16(<2 x half> %in) {
 ; SI-GISEL:       ; %bb.0:
 ; SI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
 ; SI-GISEL-NEXT:    v_and_b32_e32 v0, 0x7fff7fff, v0
-; SI-GISEL-NEXT:    v_lshrrev_b32_e32 v1, 16, v0
-; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v1
+; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v0
+; SI-GISEL-NEXT:    v_lshrrev_b32_e32 v0, 16, v0
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
 ; SI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
-; SI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
-; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 16, v1
-; SI-GISEL-NEXT:    v_or_b32_e32 v0, v0, v1
+; SI-GISEL-NEXT:    v_bfe_u32 v1, v1, 0, 16
+; SI-GISEL-NEXT:    v_bfe_u32 v0, v0, 0, 16
+; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
+; SI-GISEL-NEXT:    v_or_b32_e32 v0, v1, v0
 ; SI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; R600-LABEL: v_exp10_fabs_v2f16:
@@ -6288,13 +5594,15 @@ define <2 x half> @v_exp10_fneg_fabs_v2f16(<2 x half> %in) {
 ; VI-GISEL-NEXT:    v_or_b32_e32 v0, 0x80008000, v0
 ; VI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v0
 ; VI-GISEL-NEXT:    v_cvt_f32_f16_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
+; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 16
 ; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
 ; VI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
 ; VI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
+; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
 ; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_cvt_f16_f32_sdwa v0, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
-; VI-GISEL-NEXT:    v_or_b32_e32 v0, v1, v0
+; VI-GISEL-NEXT:    v_lshlrev_b32_sdwa v0, v2, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
+; VI-GISEL-NEXT:    v_or_b32_sdwa v0, v1, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
 ; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_fneg_fabs_v2f16:
@@ -6347,17 +5655,19 @@ define <2 x half> @v_exp10_fneg_fabs_v2f16(<2 x half> %in) {
 ; SI-GISEL:       ; %bb.0:
 ; SI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
 ; SI-GISEL-NEXT:    v_or_b32_e32 v0, 0x80008000, v0
-; SI-GISEL-NEXT:    v_lshrrev_b32_e32 v1, 16, v0
-; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v1
+; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v0
+; SI-GISEL-NEXT:    v_lshrrev_b32_e32 v0, 16, v0
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
 ; SI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
-; SI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
-; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 16, v1
-; SI-GISEL-NEXT:    v_or_b32_e32 v0, v0, v1
+; SI-GISEL-NEXT:    v_bfe_u32 v1, v1, 0, 16
+; SI-GISEL-NEXT:    v_bfe_u32 v0, v0, 0, 16
+; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
+; SI-GISEL-NEXT:    v_or_b32_e32 v0, v1, v0
 ; SI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; R600-LABEL: v_exp10_fneg_fabs_v2f16:
@@ -6396,13 +5706,15 @@ define <2 x half> @v_exp10_fneg_v2f16(<2 x half> %in) {
 ; VI-GISEL-NEXT:    v_xor_b32_e32 v0, 0x80008000, v0
 ; VI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v0
 ; VI-GISEL-NEXT:    v_cvt_f32_f16_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
+; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 16
 ; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
 ; VI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
 ; VI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
+; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
 ; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_cvt_f16_f32_sdwa v0, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
-; VI-GISEL-NEXT:    v_or_b32_e32 v0, v1, v0
+; VI-GISEL-NEXT:    v_lshlrev_b32_sdwa v0, v2, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
+; VI-GISEL-NEXT:    v_or_b32_sdwa v0, v1, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
 ; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_fneg_v2f16:
@@ -6455,17 +5767,19 @@ define <2 x half> @v_exp10_fneg_v2f16(<2 x half> %in) {
 ; SI-GISEL:       ; %bb.0:
 ; SI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
 ; SI-GISEL-NEXT:    v_xor_b32_e32 v0, 0x80008000, v0
-; SI-GISEL-NEXT:    v_lshrrev_b32_e32 v1, 16, v0
-; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v1
+; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v0
+; SI-GISEL-NEXT:    v_lshrrev_b32_e32 v0, 16, v0
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
 ; SI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
-; SI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
-; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 16, v1
-; SI-GISEL-NEXT:    v_or_b32_e32 v0, v0, v1
+; SI-GISEL-NEXT:    v_bfe_u32 v1, v1, 0, 16
+; SI-GISEL-NEXT:    v_bfe_u32 v0, v0, 0, 16
+; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
+; SI-GISEL-NEXT:    v_or_b32_e32 v0, v1, v0
 ; SI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; R600-LABEL: v_exp10_fneg_v2f16:
@@ -6510,13 +5824,15 @@ define <2 x half> @v_exp10_v2f16_fast(<2 x half> %in) {
 ; VI-GISEL-NEXT:    v_mul_f16_e32 v4, 0x42a4, v0
 ; VI-GISEL-NEXT:    v_mul_f16_sdwa v1, v0, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1 src1_sel:DWORD
 ; VI-GISEL-NEXT:    v_mul_f16_sdwa v0, v0, v3 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1 src1_sel:DWORD
-; VI-GISEL-NEXT:    v_exp_f16_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f16_e32 v4, v4
 ; VI-GISEL-NEXT:    v_exp_f16_e32 v1, v1
 ; VI-GISEL-NEXT:    v_exp_f16_e32 v0, v0
+; VI-GISEL-NEXT:    v_exp_f16_e32 v2, v2
+; VI-GISEL-NEXT:    v_exp_f16_e32 v4, v4
+; VI-GISEL-NEXT:    v_mul_f16_e32 v0, v0, v1
+; VI-GISEL-NEXT:    v_mov_b32_e32 v1, 16
 ; VI-GISEL-NEXT:    v_mul_f16_e32 v2, v4, v2
-; VI-GISEL-NEXT:    v_mul_f16_sdwa v0, v0, v1 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
-; VI-GISEL-NEXT:    v_or_b32_e32 v0, v2, v0
+; VI-GISEL-NEXT:    v_lshlrev_b32_sdwa v0, v1, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
+; VI-GISEL-NEXT:    v_or_b32_sdwa v0, v2, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
 ; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_v2f16_fast:
@@ -6611,7 +5927,9 @@ define <2 x half> @v_exp10_v2f16_fast(<2 x half> %in) {
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
 ; SI-GISEL-NEXT:    v_mul_f32_e32 v1, v1, v2
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_bfe_u32 v0, v0, 0, 16
 ; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
+; SI-GISEL-NEXT:    v_bfe_u32 v1, v1, 0, 16
 ; SI-GISEL-NEXT:    v_or_b32_e32 v0, v1, v0
 ; SI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
@@ -6629,23 +5947,44 @@ define <2 x half> @v_exp10_v2f16_fast(<2 x half> %in) {
 }
 
 define <3 x half> @v_exp10_v3f16(<3 x half> %in) {
-; VI-LABEL: v_exp10_v3f16:
-; VI:       ; %bb.0:
-; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-NEXT:    v_cvt_f32_f16_e32 v2, v0
-; VI-NEXT:    v_cvt_f32_f16_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
-; VI-NEXT:    v_cvt_f32_f16_e32 v1, v1
-; VI-NEXT:    v_mul_f32_e32 v2, 0x40549a78, v2
-; VI-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
-; VI-NEXT:    v_exp_f32_e32 v2, v2
-; VI-NEXT:    v_exp_f32_e32 v0, v0
-; VI-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
-; VI-NEXT:    v_exp_f32_e32 v1, v1
-; VI-NEXT:    v_cvt_f16_f32_e32 v2, v2
-; VI-NEXT:    v_cvt_f16_f32_sdwa v0, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
-; VI-NEXT:    v_cvt_f16_f32_e32 v1, v1
-; VI-NEXT:    v_or_b32_e32 v0, v2, v0
-; VI-NEXT:    s_setpc_b64 s[30:31]
+; VI-SDAG-LABEL: v_exp10_v3f16:
+; VI-SDAG:       ; %bb.0:
+; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-SDAG-NEXT:    v_cvt_f32_f16_e32 v2, v0
+; VI-SDAG-NEXT:    v_cvt_f32_f16_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
+; VI-SDAG-NEXT:    v_cvt_f32_f16_e32 v1, v1
+; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549a78, v2
+; VI-SDAG-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
+; VI-SDAG-NEXT:    v_exp_f32_e32 v2, v2
+; VI-SDAG-NEXT:    v_exp_f32_e32 v0, v0
+; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
+; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
+; VI-SDAG-NEXT:    v_cvt_f16_f32_e32 v2, v2
+; VI-SDAG-NEXT:    v_cvt_f16_f32_sdwa v0, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
+; VI-SDAG-NEXT:    v_cvt_f16_f32_e32 v1, v1
+; VI-SDAG-NEXT:    v_or_b32_e32 v0, v2, v0
+; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
+;
+; VI-GISEL-LABEL: v_exp10_v3f16:
+; VI-GISEL:       ; %bb.0:
+; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-GISEL-NEXT:    v_cvt_f32_f16_e32 v2, v0
+; VI-GISEL-NEXT:    v_cvt_f32_f16_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
+; VI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v1
+; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 16
+; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549a78, v2
+; VI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40549a78, v0
+; VI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
+; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40549a78, v1
+; VI-GISEL-NEXT:    v_exp_f32_e32 v2, v2
+; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
+; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v2, v2
+; VI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
+; VI-GISEL-NEXT:    v_lshlrev_b32_sdwa v0, v3, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
+; VI-GISEL-NEXT:    v_or_b32_sdwa v0, v2, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
+; VI-GISEL-NEXT:    v_bfe_u32 v1, v1, 0, 16
+; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-LABEL: v_exp10_v3f16:
 ; GFX900:       ; %bb.0:
@@ -6701,8 +6040,11 @@ define <3 x half> @v_exp10_v3f16(<3 x half> %in) {
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v2, v2
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_bfe_u32 v2, v2, 0, 16
+; SI-GISEL-NEXT:    v_bfe_u32 v0, v0, 0, 16
 ; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
 ; SI-GISEL-NEXT:    v_or_b32_e32 v0, v2, v0
+; SI-GISEL-NEXT:    v_bfe_u32 v1, v1, 0, 16
 ; SI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; R600-LABEL: v_exp10_v3f16:
@@ -6751,18 +6093,21 @@ define <3 x half> @v_exp10_v3f16_afn(<3 x half> %in) {
 ; VI-GISEL-NEXT:    v_mul_f16_e32 v5, 0x42a4, v0
 ; VI-GISEL-NEXT:    v_mul_f16_sdwa v2, v0, v2 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1 src1_sel:DWORD
 ; VI-GISEL-NEXT:    v_mul_f16_sdwa v0, v0, v4 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1 src1_sel:DWORD
-; VI-GISEL-NEXT:    v_exp_f16_e32 v3, v3
-; VI-GISEL-NEXT:    v_exp_f16_e32 v5, v5
 ; VI-GISEL-NEXT:    v_exp_f16_e32 v2, v2
 ; VI-GISEL-NEXT:    v_exp_f16_e32 v0, v0
 ; VI-GISEL-NEXT:    v_mul_f16_e32 v4, 0x113c, v1
 ; VI-GISEL-NEXT:    v_mul_f16_e32 v1, 0x42a4, v1
+; VI-GISEL-NEXT:    v_exp_f16_e32 v3, v3
+; VI-GISEL-NEXT:    v_exp_f16_e32 v5, v5
 ; VI-GISEL-NEXT:    v_exp_f16_e32 v4, v4
 ; VI-GISEL-NEXT:    v_exp_f16_e32 v1, v1
+; VI-GISEL-NEXT:    v_mul_f16_e32 v0, v0, v2
+; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 16
 ; VI-GISEL-NEXT:    v_mul_f16_e32 v3, v5, v3
-; VI-GISEL-NEXT:    v_mul_f16_sdwa v0, v0, v2 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
-; VI-GISEL-NEXT:    v_or_b32_e32 v0, v3, v0
 ; VI-GISEL-NEXT:    v_mul_f16_e32 v1, v1, v4
+; VI-GISEL-NEXT:    v_lshlrev_b32_sdwa v0, v2, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
+; VI-GISEL-NEXT:    v_or_b32_sdwa v0, v3, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
+; VI-GISEL-NEXT:    v_bfe_u32 v1, v1, 0, 16
 ; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_v3f16_afn:
@@ -6875,46 +6220,49 @@ define <3 x half> @v_exp10_v3f16_afn(<3 x half> %in) {
 ; SI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40548000, v2
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v2, v2
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v3, v3
-; SI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a278000, v0
+; SI-GISEL-NEXT:    v_mul_f32_e32 v5, 0x3a278000, v0
 ; SI-GISEL-NEXT:    v_mul_f32_e32 v0, 0x40548000, v0
-; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
-; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v4, v4
-; SI-GISEL-NEXT:    v_mul_f32_e32 v5, 0x3a278000, v1
-; SI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40548000, v1
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v2, v2
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v3, v3
-; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v5, v5
-; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
-; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v4, v4
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v2, v2
 ; SI-GISEL-NEXT:    v_exp_f32_e32 v3, v3
-; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v1
-; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v5, v5
-; SI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
-; SI-GISEL-NEXT:    v_exp_f32_e32 v4, v4
+; SI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a278000, v1
+; SI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x40548000, v1
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v2, v2
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v3, v3
-; SI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; SI-GISEL-NEXT:    v_exp_f32_e32 v5, v5
-; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v4, v4
+; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v2, v2
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v3, v3
-; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
-; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v5, v5
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
+; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v1
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v4, v4
 ; SI-GISEL-NEXT:    v_mul_f32_e32 v2, v2, v3
-; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v1
 ; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v3, v5
-; SI-GISEL-NEXT:    v_mul_f32_e32 v0, v0, v4
+; SI-GISEL-NEXT:    v_exp_f32_e32 v0, v0
+; SI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_exp_f32_e32 v4, v4
+; SI-GISEL-NEXT:    v_exp_f32_e32 v3, v3
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
-; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v2, v2
-; SI-GISEL-NEXT:    v_mul_f32_e32 v1, v1, v3
 ; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v4, v4
+; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v3, v3
+; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v0, v0
+; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v1, v1
+; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v4, v4
+; SI-GISEL-NEXT:    v_cvt_f32_f16_e32 v3, v3
+; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v2, v2
+; SI-GISEL-NEXT:    v_mul_f32_e32 v1, v1, v4
+; SI-GISEL-NEXT:    v_mul_f32_e32 v0, v0, v3
+; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v0, v0
+; SI-GISEL-NEXT:    v_cvt_f16_f32_e32 v1, v1
+; SI-GISEL-NEXT:    v_bfe_u32 v2, v2, 0, 16
+; SI-GISEL-NEXT:    v_bfe_u32 v0, v0, 0, 16
 ; SI-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
 ; SI-GISEL-NEXT:    v_or_b32_e32 v0, v2, v0
+; SI-GISEL-NEXT:    v_bfe_u32 v1, v1, 0, 16
 ; SI-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; R600-LABEL: v_exp10_v3f16_afn:
@@ -6931,57 +6279,31 @@ define <3 x half> @v_exp10_v3f16_afn(<3 x half> %in) {
 }
 
 define float @v_exp10_f32_contract(float %in) {
-; VI-SDAG-LABEL: v_exp10_f32_contract:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_contract:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_contract:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_contract:
 ; GFX900-SDAG:       ; %bb.0:
@@ -7089,57 +6411,31 @@ define float @v_exp10_f32_contract(float %in) {
 }
 
 define float @v_exp10_f32_contract_daz(float %in) #0 {
-; VI-SDAG-LABEL: v_exp10_f32_contract_daz:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0x421a209b
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
-; VI-SDAG-NEXT:    v_mov_b32_e32 v2, 0x7f800000
-; VI-SDAG-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_contract_daz:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_mov_b32_e32 v3, 0x7f800000
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0x421a209b
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v1, v1, 0, vcc
-; VI-GISEL-NEXT:    v_cmp_gt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e32 v0, v1, v3, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_contract_daz:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    s_mov_b32 s4, 0x421a209b
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v1, 0, v1, vcc
+; VI-NEXT:    v_mov_b32_e32 v2, 0x7f800000
+; VI-NEXT:    v_cmp_nlt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_cndmask_b32_e32 v0, v2, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_contract_daz:
 ; GFX900-SDAG:       ; %bb.0:
@@ -7247,49 +6543,27 @@ define float @v_exp10_f32_contract_daz(float %in) #0 {
 }
 
 define float @v_exp10_f32_contract_nnan_ninf(float %in) {
-; VI-SDAG-LABEL: v_exp10_f32_contract_nnan_ninf:
-; VI-SDAG:       ; %bb.0:
-; VI-SDAG-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-SDAG-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-SDAG-NEXT:    v_sub_f32_e32 v4, v0, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
-; VI-SDAG-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
-; VI-SDAG-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
-; VI-SDAG-NEXT:    v_rndne_f32_e32 v3, v2
-; VI-SDAG-NEXT:    v_add_f32_e32 v4, v4, v5
-; VI-SDAG-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-SDAG-NEXT:    v_sub_f32_e32 v2, v2, v3
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v1, v4
-; VI-SDAG-NEXT:    v_add_f32_e32 v1, v2, v1
-; VI-SDAG-NEXT:    v_exp_f32_e32 v1, v1
-; VI-SDAG-NEXT:    v_cvt_i32_f32_e32 v2, v3
-; VI-SDAG-NEXT:    s_mov_b32 s4, 0xc23369f4
-; VI-SDAG-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
-; VI-SDAG-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-SDAG-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
-; VI-SDAG-NEXT:    s_setpc_b64 s[30:31]
-;
-; VI-GISEL-LABEL: v_exp10_f32_contract_nnan_ninf:
-; VI-GISEL:       ; %bb.0:
-; VI-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-GISEL-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
-; VI-GISEL-NEXT:    v_sub_f32_e32 v2, v0, v1
-; VI-GISEL-NEXT:    v_mul_f32_e32 v4, 0x3a2784bc, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v2, 0x40549000, v2
-; VI-GISEL-NEXT:    v_mul_f32_e32 v3, 0x40549000, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v2, v2, v4
-; VI-GISEL-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v1, v2
-; VI-GISEL-NEXT:    v_rndne_f32_e32 v2, v3
-; VI-GISEL-NEXT:    v_sub_f32_e32 v3, v3, v2
-; VI-GISEL-NEXT:    v_add_f32_e32 v1, v3, v1
-; VI-GISEL-NEXT:    v_cvt_i32_f32_e32 v2, v2
-; VI-GISEL-NEXT:    v_exp_f32_e32 v1, v1
-; VI-GISEL-NEXT:    v_ldexp_f32 v1, v1, v2
-; VI-GISEL-NEXT:    v_mov_b32_e32 v2, 0xc23369f4
-; VI-GISEL-NEXT:    v_cmp_lt_f32_e32 vcc, v0, v2
-; VI-GISEL-NEXT:    v_cndmask_b32_e64 v0, v1, 0, vcc
-; VI-GISEL-NEXT:    s_setpc_b64 s[30:31]
+; VI-LABEL: v_exp10_f32_contract_nnan_ninf:
+; VI:       ; %bb.0:
+; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; VI-NEXT:    v_and_b32_e32 v1, 0xfffff000, v0
+; VI-NEXT:    v_sub_f32_e32 v4, v0, v1
+; VI-NEXT:    v_mul_f32_e32 v2, 0x40549000, v1
+; VI-NEXT:    v_mul_f32_e32 v5, 0x3a2784bc, v4
+; VI-NEXT:    v_mul_f32_e32 v4, 0x40549000, v4
+; VI-NEXT:    v_rndne_f32_e32 v3, v2
+; VI-NEXT:    v_add_f32_e32 v4, v4, v5
+; VI-NEXT:    v_mul_f32_e32 v1, 0x3a2784bc, v1
+; VI-NEXT:    v_sub_f32_e32 v2, v2, v3
+; VI-NEXT:    v_add_f32_e32 v1, v1, v4
+; VI-NEXT:    v_add_f32_e32 v1, v2, v1
+; VI-NEXT:    v_exp_f32_e32 v1, v1
+; VI-NEXT:    v_cvt_i32_f32_e32 v2, v3
+; VI-NEXT:    s_mov_b32 s4, 0xc23369f4
+; VI-NEXT:    v_cmp_ngt_f32_e32 vcc, s4, v0
+; VI-NEXT:    v_ldexp_f32 v1, v1, v2
+; VI-NEXT:    v_cndmask_b32_e32 v0, 0, v1, vcc
+; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX900-SDAG-LABEL: v_exp10_f32_contract_nnan_ninf:
 ; GFX900-SDAG:       ; %bb.0:

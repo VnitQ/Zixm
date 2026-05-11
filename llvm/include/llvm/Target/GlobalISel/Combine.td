@@ -1623,7 +1623,11 @@ def sub_add_reg: GICombineRule <
 def bitcast_bitcast_fold : GICombineRule<
   (defs root:$dst),
   (match (G_BITCAST $dst, $src1):$op, (G_BITCAST $src1, $src0),
-      [{ return MRI.getType(${src0}.getReg()) == MRI.getType(${dst}.getReg()); }]),
+      [{ LLT Src0Ty = MRI.getType(${src0}.getReg());
+         LLT DstTy = MRI.getType(${dst}.getReg());
+         return Src0Ty == DstTy &&
+                (!Src0Ty.isScalar() || (Src0Ty.isInteger() == DstTy.isInteger() &&
+                                        Src0Ty.isFloat() == DstTy.isFloat())); }]),
   (apply [{ Helper.replaceSingleDefInstWithReg(*${op}, ${src0}.getReg()); }])>;
 
 

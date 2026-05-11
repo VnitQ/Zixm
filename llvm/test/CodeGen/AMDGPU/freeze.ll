@@ -7610,8 +7610,9 @@ define void @freeze_v3f16(ptr addrspace(1) %ptra, ptr addrspace(1) %ptrb) {
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
 ; GFX9-GISEL-NEXT:    global_load_dwordx2 v[0:1], v[0:1], off
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0)
+; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v4, 16, v0
 ; GFX9-GISEL-NEXT:    global_store_short v[2:3], v0, off
-; GFX9-GISEL-NEXT:    global_store_short_d16_hi v[2:3], v0, off offset:2
+; GFX9-GISEL-NEXT:    global_store_short v[2:3], v4, off offset:2
 ; GFX9-GISEL-NEXT:    global_store_short v[2:3], v1, off offset:4
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0)
 ; GFX9-GISEL-NEXT:    s_setpc_b64 s[30:31]
@@ -7630,8 +7631,9 @@ define void @freeze_v3f16(ptr addrspace(1) %ptra, ptr addrspace(1) %ptrb) {
 ; GFX10-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
 ; GFX10-GISEL-NEXT:    global_load_dwordx2 v[0:1], v[0:1], off
 ; GFX10-GISEL-NEXT:    s_waitcnt vmcnt(0)
+; GFX10-GISEL-NEXT:    v_lshrrev_b32_e32 v4, 16, v0
 ; GFX10-GISEL-NEXT:    global_store_short v[2:3], v0, off
-; GFX10-GISEL-NEXT:    global_store_short_d16_hi v[2:3], v0, off offset:2
+; GFX10-GISEL-NEXT:    global_store_short v[2:3], v4, off offset:2
 ; GFX10-GISEL-NEXT:    global_store_short v[2:3], v1, off offset:4
 ; GFX10-GISEL-NEXT:    s_setpc_b64 s[30:31]
 ;
@@ -7650,9 +7652,10 @@ define void @freeze_v3f16(ptr addrspace(1) %ptra, ptr addrspace(1) %ptrb) {
 ; GFX11-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
 ; GFX11-GISEL-NEXT:    global_load_b64 v[0:1], v[0:1], off
 ; GFX11-GISEL-NEXT:    s_waitcnt vmcnt(0)
+; GFX11-GISEL-NEXT:    v_lshrrev_b32_e32 v4, 16, v0
 ; GFX11-GISEL-NEXT:    s_clause 0x2
 ; GFX11-GISEL-NEXT:    global_store_b16 v[2:3], v0, off
-; GFX11-GISEL-NEXT:    global_store_d16_hi_b16 v[2:3], v0, off offset:2
+; GFX11-GISEL-NEXT:    global_store_b16 v[2:3], v4, off offset:2
 ; GFX11-GISEL-NEXT:    global_store_b16 v[2:3], v1, off offset:4
 ; GFX11-GISEL-NEXT:    s_setpc_b64 s[30:31]
   %a = load <3 x half>, ptr addrspace(1) %ptra

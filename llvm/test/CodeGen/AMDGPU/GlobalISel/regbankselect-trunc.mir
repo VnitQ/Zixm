@@ -123,11 +123,11 @@ body: |
     ; GFX6-NEXT: {{  $}}
     ; GFX6-NEXT: [[COPY:%[0-9]+]]:vgpr(s32) = COPY $vgpr0
     ; GFX6-NEXT: [[TRUNC:%[0-9]+]]:vgpr(s16) = G_TRUNC [[COPY]](s32)
-    ; GFX6-NEXT: [[ANYEXT:%[0-9]+]]:vgpr(s32) = G_ANYEXT [[TRUNC]](s16)
-    ; GFX6-NEXT: [[C:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 1
-    ; GFX6-NEXT: [[AND:%[0-9]+]]:vgpr(s32) = G_AND [[ANYEXT]], [[C]]
-    ; GFX6-NEXT: [[C1:%[0-9]+]]:vgpr(s32) = G_CONSTANT i32 0
-    ; GFX6-NEXT: [[ICMP:%[0-9]+]]:vcc(s1) = G_ICMP intpred(ne), [[AND]](s32), [[C1]]
+    ; GFX6-NEXT: [[ANYEXT:%[0-9]+]]:vgpr(i32) = G_ANYEXT [[TRUNC]](s16)
+    ; GFX6-NEXT: [[C:%[0-9]+]]:vgpr(i32) = G_CONSTANT i32 1
+    ; GFX6-NEXT: [[AND:%[0-9]+]]:vgpr(i32) = G_AND [[ANYEXT]], [[C]]
+    ; GFX6-NEXT: [[C1:%[0-9]+]]:vgpr(i32) = G_CONSTANT i32 0
+    ; GFX6-NEXT: [[ICMP:%[0-9]+]]:vcc(s1) = G_ICMP intpred(ne), [[AND]](i32), [[C1]]
     ;
     ; GFX8-LABEL: name: trunc_i16_to_i1_v
     ; GFX8: liveins: $vgpr0

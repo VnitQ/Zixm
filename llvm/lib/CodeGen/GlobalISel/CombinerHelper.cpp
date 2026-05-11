@@ -191,9 +191,25 @@ void CombinerHelper::replaceRegWith(MachineRegisterInfo &MRI, Register FromReg,
                                     Register ToReg) const {
   Observer.changingAllUsesOfReg(MRI, FromReg);
 
-  if (MRI.constrainRegAttrs(ToReg, FromReg))
+  if (MRI.constrainRegAttrs(ToReg, FromReg)) {
+    // Notify about ToReg's def so CSE re-hashes it after constrainRegAttrs
+    // may have changed its type in MRI.
+    MachineInstr *ToRegDef =
+        ToReg.isVirtual() ? MRI.getUniqueVRegDef(ToReg) : nullptr;
+    if (ToRegDef)
+      Observer.changingInstr(*ToRegDef);
+    // Notify the observer about each use instruction that is about to have its
+    // operand changed, so that CSE info can invalidate and re-hash them.
+    SmallVector<MachineInstr *, 4> UseInstrs;
+    for (MachineOperand &UseMO : MRI.use_nodbg_operands(FromReg))
+      if (!is_contained(UseInstrs, UseMO.getParent()))
+        UseInstrs.push_back(UseMO.getParent());
+    for (MachineInstr *UseMI : UseInstrs)
+      Observer.changingInstr(*UseMI);
     MRI.replaceRegWith(FromReg, ToReg);
-  else
+    if (ToRegDef)
+      Observer.changedInstr(*ToRegDef);
+  } else
     Builder.buildCopy(FromReg, ToReg);
 
   Observer.finishedChangingAllUsesOfReg();
@@ -2497,7 +2513,7 @@ void CombinerHelper::applyCombineShiftToUnmerge(
   unsigned HalfSize = Size / 2;
   assert(ShiftVal >= HalfSize);
 
-  LLT HalfTy = LLT::scalar(HalfSize);
+  LLT HalfTy = Ty.isInteger() ? LLT::integer(HalfSize) : LLT::scalar(HalfSize);
 
   auto Unmerge = Builder.buildUnmerge(HalfTy, SrcReg);
   unsigned NarrowShiftAmt = ShiftVal - HalfSize;
