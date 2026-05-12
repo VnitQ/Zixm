@@ -523,7 +523,7 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
     : ST(&_ST), MRI(&_MRI) {
 
   addRulesForGOpcs({G_ADD, G_SUB}, Standard)
-      .Uni(S16, {{Sgpr32Trunc}, {Sgpr32AExt, Sgpr32AExt}})
+      .Uni(S16, {{Sgpr32Trunc}, {SgprI32AExt, SgprI32AExt}})
       .Div(S16, {{Vgpr16}, {Vgpr16, Vgpr16}})
       .Uni(S32, {{Sgpr32}, {Sgpr32, Sgpr32}})
       .Div(S32, {{Vgpr32}, {Vgpr32, Vgpr32}})
@@ -556,7 +556,7 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
       .Uni(S64, {{SgprB64}, {SgprB64, SgprB64}})
       .Uni(V2S16, {{UniInVgprV2S16}, {VgprV2S16, VgprV2S16}})
       .Div(V2S16, {{VgprV2S16}, {VgprV2S16, VgprV2S16}})
-      .Uni(S16, {{Sgpr32Trunc}, {Sgpr32AExt, Sgpr32AExt}})
+      .Uni(S16, {{Sgpr32Trunc}, {SgprI32AExt, SgprI32AExt}})
       .Div(S64, {{VgprB64}, {VgprB64, VgprB64}}, HasVecMulU64)
       .Div(S64, {{VgprB64}, {VgprB64, VgprB64}, SplitTo32Mul}, !HasVecMulU64);
 
@@ -586,7 +586,7 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
       .Div(B64, {{VgprB64}, {VgprB64, VgprB64}, SplitTo32});
 
   addRulesForGOpcs({G_SHL}, Standard)
-      .Uni(S16, {{Sgpr32Trunc}, {Sgpr32AExt, Sgpr32ZExt}})
+      .Uni(S16, {{Sgpr32Trunc}, {SgprI32AExt, Sgpr32ZExt}})
       .Div(S16, {{Vgpr16}, {Vgpr16, Vgpr16}})
       .Uni(V2S16, {{SgprV2S16}, {SgprV2S16, SgprV2S16}, UnpackBitShift})
       .Div(V2S16, {{VgprV2S16}, {VgprV2S16, VgprV2S16}})
@@ -647,6 +647,8 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
       .Div(S16, {{Vgpr16}, {Vgpr16, Vgpr16}})
       .Uni(S32, {{Sgpr32}, {Sgpr32, Sgpr32}})
       .Div(S32, {{Vgpr32}, {Vgpr32, Vgpr32}})
+      .Uni(S64, {{UniInVgprS64}, {Vgpr64, Vgpr64}})
+      .Div(S64, {{Vgpr64}, {Vgpr64, Vgpr64}})
       .Uni(V2S16, {{SgprV2S16}, {SgprV2S16, SgprV2S16}, UnpackMinMax})
       .Div(V2S16, {{VgprV2S16}, {VgprV2S16, VgprV2S16}});
 
@@ -655,6 +657,8 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
       .Div(S16, {{Vgpr16}, {Vgpr16, Vgpr16}})
       .Uni(S32, {{Sgpr32}, {Sgpr32, Sgpr32}})
       .Div(S32, {{Vgpr32}, {Vgpr32, Vgpr32}})
+      .Uni(S64, {{UniInVgprS64}, {Vgpr64, Vgpr64}})
+      .Div(S64, {{Vgpr64}, {Vgpr64, Vgpr64}})
       .Uni(V2S16, {{SgprV2S16}, {SgprV2S16, SgprV2S16}, UnpackMinMax})
       .Div(V2S16, {{VgprV2S16}, {VgprV2S16, VgprV2S16}});
 
@@ -684,6 +688,8 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
       .Any({{DivBRC}, {{VgprBRC}, {VgprBRC}}});
 
   addRulesForGOpcs({G_BITCAST})
+      .Any({{UniS16}, {{Sgpr16}, {Sgpr16}}})
+      .Any({{DivS16}, {{Vgpr16}, {Vgpr16}}})
       .Any({{UniBRC}, {{SgprBRC}, {SgprBRC}}})
       .Any({{DivBRC}, {{VgprBRC}, {VgprBRC}}});
 
@@ -2110,6 +2116,14 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
   addRulesForIOpcs({amdgcn_sat_pk4_i4_i8, amdgcn_sat_pk4_u4_u8}, Standard)
       .Uni(S16, {{UniInVgprS16}, {IntrId, Vgpr32}})
       .Div(S16, {{Vgpr16}, {IntrId, Vgpr32}});
+
+  addRulesForIOpcs({amdgcn_set_inactive_chain_arg}, Standard)
+      .Div(S32, {{Vgpr32}, {IntrId, Vgpr32, Vgpr32}});
+
+  addRulesForIOpcs({amdgcn_set_inactive})
+      .Any({{DivS32, _, P3}, {{Vgpr32}, {IntrId, VgprP3, Vgpr32}}})
+      .Any({{DivB32}, {{VgprB32}, {IntrId, VgprB32, VgprB32}}})
+      .Any({{DivB64}, {{VgprB64}, {IntrId, VgprB64, VgprB64}}});
 
   // TODO: Add handling for GFX90A+ which should use VGPRs instead of AGPRs.
   bool HasGFX90AInsts = ST->hasGFX90AInsts();

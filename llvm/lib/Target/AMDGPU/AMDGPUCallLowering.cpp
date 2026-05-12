@@ -36,7 +36,7 @@ static Register extendRegisterMin32(CallLowering::ValueHandler &Handler,
   if (VA.getLocVT().getSizeInBits() < 32) {
     // 16-bit types are reported as legal for 32-bit registers. We need to
     // extend and do a 32-bit copy to avoid the verifier complaining about it.
-    return Handler.MIRBuilder.buildAnyExt(LLT::scalar(32), ValVReg).getReg(0);
+    return Handler.MIRBuilder.buildAnyExt(LLT::integer(32), ValVReg).getReg(0);
   }
 
   return Handler.extendRegister(ValVReg, VA);
@@ -73,7 +73,7 @@ struct AMDGPUOutgoingValueHandler : public CallLowering::OutgoingValueHandler {
       = static_cast<const SIRegisterInfo *>(MRI.getTargetRegisterInfo());
     if (TRI->isSGPRReg(MRI, PhysReg)) {
       LLT Ty = MRI.getType(ExtReg);
-      LLT S32 = LLT::scalar(32);
+      LLT S32 = LLT::integer(32);
       if (Ty != S32) {
         // FIXME: We should probably support readfirstlane intrinsics with all
         // legal 32-bit types.
@@ -123,7 +123,7 @@ struct AMDGPUIncomingArgHandler : public CallLowering::IncomingValueHandler {
       // 16-bit types are reported as legal for 32-bit registers. We need to
       // do a 32-bit copy, and truncate to avoid the verifier complaining
       // about it.
-      auto Copy = MIRBuilder.buildCopy(LLT::scalar(32), PhysReg);
+      auto Copy = MIRBuilder.buildCopy(LLT::integer(32), PhysReg);
 
       // If we have signext/zeroext, it applies to the whole 32-bit register
       // before truncation.
@@ -149,7 +149,7 @@ struct AMDGPUIncomingArgHandler : public CallLowering::IncomingValueHandler {
     // because the inreg attribute information is not preserved in MIR. We could
     // use WWM_COPY (or similar instructions) and mark it as foldable to enable
     // later optimization passes to eliminate the redundant readfirstlane.
-    auto Copy = MIRBuilder.buildCopy(LLT::scalar(32), PhysReg);
+    auto Copy = MIRBuilder.buildCopy(LLT::integer(32), PhysReg);
     if (VA.getLocVT().getSizeInBits() < 32) {
       auto ToSGPR = MIRBuilder
                         .buildIntrinsic(Intrinsic::amdgcn_readfirstlane,
@@ -161,8 +161,17 @@ struct AMDGPUIncomingArgHandler : public CallLowering::IncomingValueHandler {
       return;
     }
 
-    MIRBuilder.buildIntrinsic(Intrinsic::amdgcn_readfirstlane, ValVReg)
-        .addReg(Copy.getReg(0));
+    LLT ValTy = MRI.getType(ValVReg);
+    if (ValTy.isFloat()) {
+      auto RFL = MIRBuilder
+                     .buildIntrinsic(Intrinsic::amdgcn_readfirstlane,
+                                     {LLT::integer(32)})
+                     .addReg(Copy.getReg(0));
+      MIRBuilder.buildBitcast(ValVReg, RFL);
+    } else {
+      MIRBuilder.buildIntrinsic(Intrinsic::amdgcn_readfirstlane, ValVReg)
+          .addReg(Copy.getReg(0));
+    }
   }
 
   void assignValueToReg(Register ValVReg, Register PhysReg,
@@ -239,7 +248,7 @@ struct AMDGPUOutgoingArgHandler : public AMDGPUOutgoingValueHandler {
                            ISD::ArgFlagsTy Flags) override {
     MachineFunction &MF = MIRBuilder.getMF();
     const LLT PtrTy = LLT::pointer(AMDGPUAS::PRIVATE_ADDRESS, 32);
-    const LLT S32 = LLT::scalar(32);
+    const LLT S32 = LLT::integer(32);
 
     if (IsTailCall) {
       Offset += FPDiff;
@@ -446,7 +455,7 @@ void AMDGPUCallLowering::lowerParameterPtr(Register DstReg, MachineIRBuilder &B,
     MFI->getPreloadedReg(AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
   Register KernArgSegmentVReg = MRI.getLiveInVirtReg(KernArgSegmentPtr);
 
-  auto OffsetReg = B.buildConstant(LLT::scalar(64), Offset);
+  auto OffsetReg = B.buildConstant(LLT::integer(64), Offset);
 
   B.buildPtrAdd(DstReg, KernArgSegmentVReg, OffsetReg);
 }
@@ -950,7 +959,7 @@ bool AMDGPUCallLowering::passSpecialInputs(MachineIRBuilder &MIRBuilder,
   const ArgDescriptor *IncomingArgX = std::get<0>(WorkitemIDX);
   const ArgDescriptor *IncomingArgY = std::get<0>(WorkitemIDY);
   const ArgDescriptor *IncomingArgZ = std::get<0>(WorkitemIDZ);
-  const LLT S32 = LLT::scalar(32);
+  const LLT S32 = LLT::integer(32);
 
   const bool NeedWorkItemIDX = !Info.CB->hasFnAttr("amdgpu-no-workitem-id-x");
   const bool NeedWorkItemIDY = !Info.CB->hasFnAttr("amdgpu-no-workitem-id-y");

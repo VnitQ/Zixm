@@ -74,6 +74,9 @@ public:
       if (MRI.getType(DstReg) == MRI.getType(TruncSrc))
         replaceRegOrBuildCopy(DstReg, TruncSrc, MRI, Builder, UpdatedDefs,
                               Observer);
+      else if (MRI.getType(DstReg).getSizeInBits() ==
+               MRI.getType(TruncSrc).getSizeInBits())
+        Builder.buildBitcast(DstReg, TruncSrc);
       else
         Builder.buildAnyExtOrTrunc(DstReg, TruncSrc);
       UpdatedDefs.push_back(DstReg);
@@ -1062,7 +1065,16 @@ public:
         }
 
         MIB.setInstrAndDebugLoc(MI);
-        MIB.buildMergeLikeInstr(Dst, ConcatSources);
+        if (ConcatSources.size() == 1) {
+          if (MRI.getType(Dst) == MRI.getType(ConcatSources[0]))
+            replaceRegOrBuildCopy(Dst, ConcatSources[0], MRI, MIB, UpdatedDefs,
+                                  Observer);
+          else {
+            MIB.buildBitcast(Dst, ConcatSources[0]);
+            UpdatedDefs.push_back(Dst);
+          }
+        } else
+          MIB.buildMergeLikeInstr(Dst, ConcatSources);
         DeadInsts.push_back(&MI);
         return true;
       }
