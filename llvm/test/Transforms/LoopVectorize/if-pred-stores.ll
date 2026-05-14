@@ -824,23 +824,17 @@ define void @sinkable_predicated_store(ptr %A, ptr %B) {
 ; UNROLL-NEXT:    br label %[[VECTOR_BODY:.*]]
 ; UNROLL:       [[VECTOR_BODY]]:
 ; UNROLL-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
-; UNROLL-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 1
-; UNROLL-NEXT:    [[TMP1:%.*]] = getelementptr i32, ptr [[A]], i64 [[INDEX]]
-; UNROLL-NEXT:    [[TMP2:%.*]] = getelementptr i32, ptr [[A]], i64 [[TMP0]]
-; UNROLL-NEXT:    [[TMP3:%.*]] = getelementptr i32, ptr [[B]], i64 [[INDEX]]
-; UNROLL-NEXT:    [[TMP4:%.*]] = getelementptr i32, ptr [[B]], i64 [[TMP0]]
-; UNROLL-NEXT:    [[TMP5:%.*]] = load i32, ptr [[TMP3]], align 4, !alias.scope [[META9:![0-9]+]]
-; UNROLL-NEXT:    [[TMP6:%.*]] = load i32, ptr [[TMP4]], align 4, !alias.scope [[META9]]
-; UNROLL-NEXT:    [[TMP7:%.*]] = icmp ne i32 [[TMP5]], 0
-; UNROLL-NEXT:    [[TMP8:%.*]] = icmp ne i32 [[TMP6]], 0
-; UNROLL-NEXT:    [[TMP9:%.*]] = select i1 [[TMP7]], i32 1, i32 0
-; UNROLL-NEXT:    [[TMP10:%.*]] = select i1 [[TMP8]], i32 1, i32 0
-; UNROLL-NEXT:    store i32 [[TMP9]], ptr [[TMP1]], align 4, !alias.scope [[META12:![0-9]+]], !noalias [[META9]]
-; UNROLL-NEXT:    store i32 [[TMP10]], ptr [[TMP2]], align 4, !alias.scope [[META12]], !noalias [[META9]]
 ; UNROLL-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
-; UNROLL-NEXT:    [[TMP11:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
-; UNROLL-NEXT:    br i1 [[TMP11]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP14:![0-9]+]]
+; UNROLL-NEXT:    [[TMP1:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
+; UNROLL-NEXT:    br i1 [[TMP1]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP9:![0-9]+]]
 ; UNROLL:       [[MIDDLE_BLOCK]]:
+; UNROLL-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 1
+; UNROLL-NEXT:    [[TMP2:%.*]] = getelementptr i32, ptr [[A]], i64 [[TMP0]]
+; UNROLL-NEXT:    [[TMP4:%.*]] = getelementptr i32, ptr [[B]], i64 [[TMP0]]
+; UNROLL-NEXT:    [[TMP6:%.*]] = load i32, ptr [[TMP4]], align 4, !alias.scope [[META10:![0-9]+]]
+; UNROLL-NEXT:    [[TMP8:%.*]] = icmp ne i32 [[TMP6]], 0
+; UNROLL-NEXT:    [[TMP10:%.*]] = select i1 [[TMP8]], i32 1, i32 0
+; UNROLL-NEXT:    store i32 [[TMP10]], ptr [[TMP2]], align 4, !alias.scope [[META13:![0-9]+]], !noalias [[META10]]
 ; UNROLL-NEXT:    br label %[[SCALAR_PH]]
 ; UNROLL:       [[SCALAR_PH]]:
 ; UNROLL-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 100, %[[MIDDLE_BLOCK]] ], [ 0, %[[VECTOR_MEMCHECK]] ]
@@ -880,23 +874,17 @@ define void @sinkable_predicated_store(ptr %A, ptr %B) {
 ; UNROLL-NOSIMPLIFY-NEXT:    br label %[[VECTOR_BODY:.*]]
 ; UNROLL-NOSIMPLIFY:       [[VECTOR_BODY]]:
 ; UNROLL-NOSIMPLIFY-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 1
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP1:%.*]] = getelementptr i32, ptr [[A]], i64 [[INDEX]]
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP2:%.*]] = getelementptr i32, ptr [[A]], i64 [[TMP0]]
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP3:%.*]] = getelementptr i32, ptr [[B]], i64 [[INDEX]]
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP4:%.*]] = getelementptr i32, ptr [[B]], i64 [[TMP0]]
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP5:%.*]] = load i32, ptr [[TMP3]], align 4, !alias.scope [[META9:![0-9]+]]
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP6:%.*]] = load i32, ptr [[TMP4]], align 4, !alias.scope [[META9]]
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP7:%.*]] = icmp ne i32 [[TMP5]], 0
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP8:%.*]] = icmp ne i32 [[TMP6]], 0
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP9:%.*]] = select i1 [[TMP7]], i32 1, i32 0
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP10:%.*]] = select i1 [[TMP8]], i32 1, i32 0
-; UNROLL-NOSIMPLIFY-NEXT:    store i32 [[TMP9]], ptr [[TMP1]], align 4, !alias.scope [[META12:![0-9]+]], !noalias [[META9]]
-; UNROLL-NOSIMPLIFY-NEXT:    store i32 [[TMP10]], ptr [[TMP2]], align 4, !alias.scope [[META12]], !noalias [[META9]]
 ; UNROLL-NOSIMPLIFY-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
-; UNROLL-NOSIMPLIFY-NEXT:    [[TMP11:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
-; UNROLL-NOSIMPLIFY-NEXT:    br i1 [[TMP11]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP14:![0-9]+]]
+; UNROLL-NOSIMPLIFY-NEXT:    [[TMP1:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
+; UNROLL-NOSIMPLIFY-NEXT:    br i1 [[TMP1]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP9:![0-9]+]]
 ; UNROLL-NOSIMPLIFY:       [[MIDDLE_BLOCK]]:
+; UNROLL-NOSIMPLIFY-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 1
+; UNROLL-NOSIMPLIFY-NEXT:    [[TMP2:%.*]] = getelementptr i32, ptr [[A]], i64 [[TMP0]]
+; UNROLL-NOSIMPLIFY-NEXT:    [[TMP4:%.*]] = getelementptr i32, ptr [[B]], i64 [[TMP0]]
+; UNROLL-NOSIMPLIFY-NEXT:    [[TMP6:%.*]] = load i32, ptr [[TMP4]], align 4, !alias.scope [[META10:![0-9]+]]
+; UNROLL-NOSIMPLIFY-NEXT:    [[TMP8:%.*]] = icmp ne i32 [[TMP6]], 0
+; UNROLL-NOSIMPLIFY-NEXT:    [[TMP10:%.*]] = select i1 [[TMP8]], i32 1, i32 0
+; UNROLL-NOSIMPLIFY-NEXT:    store i32 [[TMP10]], ptr [[TMP2]], align 4, !alias.scope [[META13:![0-9]+]], !noalias [[META10]]
 ; UNROLL-NOSIMPLIFY-NEXT:    br label %[[SCALAR_PH]]
 ; UNROLL-NOSIMPLIFY:       [[SCALAR_PH]]:
 ; UNROLL-NOSIMPLIFY-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 100, %[[MIDDLE_BLOCK]] ], [ 0, %[[VECTOR_MEMCHECK]] ]
@@ -1038,12 +1026,12 @@ define void @hoistable_predicated_store(ptr %A, ptr %B, ptr %C, ptr %D) {
 ; UNROLL-NEXT:    br label %[[VECTOR_BODY:.*]]
 ; UNROLL:       [[VECTOR_BODY]]:
 ; UNROLL-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
-; UNROLL-NEXT:    store i32 0, ptr [[C]], align 4, !alias.scope [[META19:![0-9]+]], !noalias [[META21:![0-9]+]]
-; UNROLL-NEXT:    store i32 [[TMP0]], ptr [[B]], align 4, !alias.scope [[META24:![0-9]+]], !noalias [[META25:![0-9]+]]
 ; UNROLL-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
 ; UNROLL-NEXT:    [[TMP1:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
-; UNROLL-NEXT:    br i1 [[TMP1]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP26:![0-9]+]]
+; UNROLL-NEXT:    br i1 [[TMP1]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP19:![0-9]+]]
 ; UNROLL:       [[MIDDLE_BLOCK]]:
+; UNROLL-NEXT:    store i32 0, ptr [[C]], align 4, !alias.scope [[META20:![0-9]+]], !noalias [[META22:![0-9]+]]
+; UNROLL-NEXT:    store i32 [[TMP0]], ptr [[B]], align 4, !alias.scope [[META25:![0-9]+]], !noalias [[META26:![0-9]+]]
 ; UNROLL-NEXT:    br label %[[SCALAR_PH]]
 ; UNROLL:       [[SCALAR_PH]]:
 ; UNROLL-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 100, %[[MIDDLE_BLOCK]] ], [ 0, %[[VECTOR_MEMCHECK]] ]
@@ -1104,12 +1092,12 @@ define void @hoistable_predicated_store(ptr %A, ptr %B, ptr %C, ptr %D) {
 ; UNROLL-NOSIMPLIFY-NEXT:    br label %[[VECTOR_BODY:.*]]
 ; UNROLL-NOSIMPLIFY:       [[VECTOR_BODY]]:
 ; UNROLL-NOSIMPLIFY-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
-; UNROLL-NOSIMPLIFY-NEXT:    store i32 0, ptr [[C]], align 4, !alias.scope [[META19:![0-9]+]], !noalias [[META21:![0-9]+]]
-; UNROLL-NOSIMPLIFY-NEXT:    store i32 [[TMP0]], ptr [[B]], align 4, !alias.scope [[META24:![0-9]+]], !noalias [[META25:![0-9]+]]
 ; UNROLL-NOSIMPLIFY-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
 ; UNROLL-NOSIMPLIFY-NEXT:    [[TMP1:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
-; UNROLL-NOSIMPLIFY-NEXT:    br i1 [[TMP1]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP26:![0-9]+]]
+; UNROLL-NOSIMPLIFY-NEXT:    br i1 [[TMP1]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP19:![0-9]+]]
 ; UNROLL-NOSIMPLIFY:       [[MIDDLE_BLOCK]]:
+; UNROLL-NOSIMPLIFY-NEXT:    store i32 0, ptr [[C]], align 4, !alias.scope [[META20:![0-9]+]], !noalias [[META22:![0-9]+]]
+; UNROLL-NOSIMPLIFY-NEXT:    store i32 [[TMP0]], ptr [[B]], align 4, !alias.scope [[META25:![0-9]+]], !noalias [[META26:![0-9]+]]
 ; UNROLL-NOSIMPLIFY-NEXT:    br label %[[SCALAR_PH]]
 ; UNROLL-NOSIMPLIFY:       [[SCALAR_PH]]:
 ; UNROLL-NOSIMPLIFY-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 100, %[[MIDDLE_BLOCK]] ], [ 0, %[[VECTOR_MEMCHECK]] ]
@@ -1170,12 +1158,12 @@ define void @hoistable_predicated_store(ptr %A, ptr %B, ptr %C, ptr %D) {
 ; VEC-NEXT:    br label %[[VECTOR_BODY:.*]]
 ; VEC:       [[VECTOR_BODY]]:
 ; VEC-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
-; VEC-NEXT:    store i32 0, ptr [[C]], align 4, !alias.scope [[META19:![0-9]+]], !noalias [[META21:![0-9]+]]
-; VEC-NEXT:    store i32 [[TMP0]], ptr [[B]], align 4, !alias.scope [[META24:![0-9]+]], !noalias [[META25:![0-9]+]]
 ; VEC-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
 ; VEC-NEXT:    [[TMP1:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
-; VEC-NEXT:    br i1 [[TMP1]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP26:![0-9]+]]
+; VEC-NEXT:    br i1 [[TMP1]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP19:![0-9]+]]
 ; VEC:       [[MIDDLE_BLOCK]]:
+; VEC-NEXT:    store i32 0, ptr [[C]], align 4, !alias.scope [[META20:![0-9]+]], !noalias [[META22:![0-9]+]]
+; VEC-NEXT:    store i32 [[TMP0]], ptr [[B]], align 4, !alias.scope [[META25:![0-9]+]], !noalias [[META26:![0-9]+]]
 ; VEC-NEXT:    br label %[[SCALAR_PH]]
 ; VEC:       [[SCALAR_PH]]:
 ; VEC-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 100, %[[MIDDLE_BLOCK]] ], [ 0, %[[VECTOR_MEMCHECK]] ]
