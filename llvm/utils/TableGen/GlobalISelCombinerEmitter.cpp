@@ -2592,7 +2592,8 @@ void GICombinerEmitter::emitCanMatchOpcodeFn(raw_ostream &OS,
 }
 
 void GICombinerEmitter::emitAdditionalImpl(raw_ostream &OS) {
-  std::string CanMatchOpcodeFnName = (getClassName() + "::canMatchOpcode").str();
+  std::string CanMatchOpcodeFnName =
+      (getClassName() + "::canMatchOpcode").str();
   emitCanMatchOpcodeFn(OS, CanMatchOpcodeFnName);
   OS << "bool " << getClassName() << "::" << getCombineAllMethodName()
      << "(MachineInstr &I) const {\n"
