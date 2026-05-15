@@ -8663,6 +8663,24 @@ ScalarEvolution::getPredicatedBackedgeTakenInfo(const Loop *L) {
   if (!Pair.second)
     return Pair.first->second;
 
+  // AddRec flags may have been strengthened (through range computation,
+  // StrengthenNoWrapFlags, etc.) since the non-predicated BTI was cached
+  // in getBackedgeTakenInfo. Recompute the non-predicated BTI to pick up
+  // these improvements before computing the predicated version. This
+  // ensures consistency: if the non-predicated BTI can now compute an exit
+  // without predicates, it does so, avoiding assertion failures from
+  // having predicated != non-predicated with no predicates.
+  {
+    BackedgeTakenInfo FreshBTI = computeBackedgeTakenCount(L);
+    BackedgeTakenCounts.find(L)->second = std::move(FreshBTI);
+    auto &RefreshedBTI = BackedgeTakenCounts.find(L)->second;
+    if (RefreshedBTI.hasFullInfo()) {
+      // All exits now computable — no need for predicates.
+      PredicatedBackedgeTakenCounts.erase(L);
+      return RefreshedBTI;
+    }
+  }
+
   BackedgeTakenInfo Result =
       computeBackedgeTakenCount(L, /*AllowPredicates=*/true);
 
@@ -8685,6 +8703,22 @@ ScalarEvolution::getBackedgeTakenInfo(const Loop *L) {
   // into the BackedgeTakenCounts map transfers ownership. Otherwise, the result
   // must be cleared in this scope.
   BackedgeTakenInfo Result = computeBackedgeTakenCount(L);
+
+  // Collect AddRecs from the loop BEFORE forgetMemoizedResults clears
+  // ValueExprMap. We need these for post-cache flag stabilization below.
+  SmallVector<SCEVAddRecExpr *, 4> LoopAddRecs;
+  for (BasicBlock *BB : L->blocks()) {
+    for (Instruction &I : *BB) {
+      if (!isSCEVable(I.getType()))
+        continue;
+      const SCEV *S = getExistingSCEV(&I);
+      if (!S)
+        continue;
+      auto *AR = dyn_cast<SCEVAddRecExpr>(S);
+      if (AR && AR->getLoop() == L)
+        LoopAddRecs.push_back(const_cast<SCEVAddRecExpr *>(AR));
+    }
+  }
 
   // Now that we know more about the trip count for this loop, forget any
   // existing SCEV values for PHI nodes in this loop since they are only
@@ -8709,7 +8743,52 @@ ScalarEvolution::getBackedgeTakenInfo(const Loop *L) {
   // recusive call to getBackedgeTakenInfo (on a different
   // loop), which would invalidate the iterator computed
   // earlier.
-  return BackedgeTakenCounts.find(L)->second = std::move(Result);
+  auto &CachedBTI = BackedgeTakenCounts.find(L)->second;
+  CachedBTI = std::move(Result);
+
+  // Stabilize AddRec flags: now that ConstantMax is cached,
+  // proveNoWrapViaConstantRanges can infer nuw/nsw flags that were
+  // unprovable during the first computation (when the sentinel blocked
+  // getConstantMaxBackedgeTakenCount). If flags change, recompute the
+  // BTI so it reflects the strengthened flags.
+  //
+  // We loop because flag inference is multi-step: proving NW (no self-wrap)
+  // tightens ranges, which can then enable proving NUW/NSW. The loop is
+  // bounded because flags can only grow (3 independent bits).
+  {
+    bool AnyFlagsChanged = false;
+    for (unsigned Iter = 0; Iter < 3; ++Iter) {
+      bool FlagsChanged = false;
+      for (SCEVAddRecExpr *AR : LoopAddRecs) {
+        auto OldFlags = AR->getNoWrapFlags();
+        auto NewFlags = static_cast<SCEV::NoWrapFlags>(
+            OldFlags | proveNoWrapViaConstantRanges(AR));
+        if (NewFlags != OldFlags) {
+          setNoWrapFlags(AR, NewFlags);
+          FlagsChanged = true;
+        }
+      }
+      if (!FlagsChanged)
+        break;
+      AnyFlagsChanged = true;
+    }
+    if (AnyFlagsChanged) {
+      // Recompute BTI with strengthened flags. The second computation
+      // sees the strengthened AddRecs and the cached ConstantMax
+      // (from the first result, still in the map).
+      BackedgeTakenInfo Result2 = computeBackedgeTakenCount(L);
+      if (Result2.hasAnyInfo()) {
+        SmallVector<SCEVUse, 8> ToForget;
+        auto LoopUsersIt = LoopUsers.find(L);
+        if (LoopUsersIt != LoopUsers.end())
+          append_range(ToForget, LoopUsersIt->second);
+        forgetMemoizedResults(ToForget);
+      }
+      return BackedgeTakenCounts.find(L)->second = std::move(Result2);
+    }
+  }
+
+  return CachedBTI;
 }
 
 void ScalarEvolution::forgetAllLoops() {
@@ -11655,11 +11734,10 @@ ScalarEvolution::getLoopInvariantExitCondDuringFirstIterationsImpl(
   if (!ICmpInst::isRelational(Pred))
     return std::nullopt;
 
-  // TODO: Support steps other than +/- 1.
   const SCEV *Step = AR->getStepRecurrence(*this);
-  auto *One = getOne(Step->getType());
-  auto *MinusOne = getNegativeSCEV(One);
-  if (Step != One && Step != MinusOne)
+  bool StepIsPositive = isKnownPositive(Step);
+  bool StepIsNegative = isKnownNegative(Step);
+  if (!StepIsPositive && !StepIsNegative)
     return std::nullopt;
 
   // Type mismatch here means that MaxIter is potentially larger than max
@@ -11673,18 +11751,36 @@ ScalarEvolution::getLoopInvariantExitCondDuringFirstIterationsImpl(
   // Does it still meet the requirement?
   if (!isLoopBackedgeGuardedByCond(L, Pred, Last, RHS))
     return std::nullopt;
-  // Because step is +/- 1 and MaxIter has same type as Start (i.e. it does
-  // not exceed max unsigned value of this type), this effectively proves
-  // that there is no wrap during the iteration. To prove that there is no
-  // signed/unsigned wrap, we need to check that
-  // Start <= Last for step = 1 or Start >= Last for step = -1.
-  ICmpInst::Predicate NoOverflowPred =
-      CmpInst::isSigned(Pred) ? ICmpInst::ICMP_SLE : ICmpInst::ICMP_ULE;
-  if (Step == MinusOne)
-    NoOverflowPred = ICmpInst::getSwappedPredicate(NoOverflowPred);
+
+  // For step ±1, Start <= Last suffices (every value visited).
+  // For |step| > 1, Start <= Last  check AddRec nuw/nsw flags .
+  auto *One = getOne(Step->getType());
+  auto *MinusOne = getNegativeSCEV(One);
   const SCEV *Start = AR->getStart();
-  if (!isKnownPredicateAt(NoOverflowPred, Start, Last, CtxI))
-    return std::nullopt;
+  if (Step == One || Step == MinusOne) {
+    ICmpInst::Predicate NoOverflowPred =
+        CmpInst::isSigned(Pred) ? ICmpInst::ICMP_SLE : ICmpInst::ICMP_ULE;
+    if (Step == MinusOne)
+      NoOverflowPred = ICmpInst::getSwappedPredicate(NoOverflowPred);
+    if (!isKnownPredicateAt(NoOverflowPred, Start, Last, CtxI))
+      return std::nullopt;
+  } else {
+    if (CmpInst::isSigned(Pred)) {
+      if (!AR->hasNoSignedWrap())
+        return std::nullopt;
+    } else {
+      if (!AR->hasNoUnsignedWrap())
+        return std::nullopt;
+    }
+    // Verify monotonicity: positive step → Last >= Start,
+    //                      negative step → Last <= Start.
+    ICmpInst::Predicate MonotonePred =
+        CmpInst::isSigned(Pred) ? ICmpInst::ICMP_SLE : ICmpInst::ICMP_ULE;
+    if (StepIsNegative)
+      MonotonePred = ICmpInst::getSwappedPredicate(MonotonePred);
+    if (!isKnownPredicateAt(MonotonePred, Start, Last, CtxI))
+      return std::nullopt;
+  }
 
   // Everything is fine.
   return ScalarEvolution::LoopInvariantPredicate(Pred, Start, RHS);
@@ -13426,8 +13522,16 @@ ScalarEvolution::howManyLessThans(const SCEV *LHS, const SCEV *RHS,
   } else if (!NoWrap) {
     // Avoid proven overflow cases: this will ensure that the backedge taken
     // count will not generate any unsigned overflow.
-    if (canIVOverflowOnLT(RHS, Stride, IsSigned))
-      return getCouldNotCompute();
+    if (canIVOverflowOnLT(RHS, Stride, IsSigned)) {
+      // canIVOverflowOnLT uses range analysis on RHS and Stride. For symbolic
+      // RHS it can be overly conservative (assumes full unsigned range).
+      // If the AddRec has nuw/nsw flags, the IV is guaranteed not to wrap on
+      // any iteration where the increment executes. Since a precondition of
+      // this method is that the exit condition dominates the latch, the
+      // increment executes on every backedge iteration.
+      if (!IV->getNoWrapFlags(WrapType))
+        return getCouldNotCompute();
+    }
   }
 
   // On all paths just preceeding, we established the following invariant:
@@ -13437,6 +13541,8 @@ ScalarEvolution::howManyLessThans(const SCEV *LHS, const SCEV *RHS,
   //      1a) canIVOverflowOnLT, and b) step of one
   //   2) We can show that if overflow occurs, the loop must execute UB
   //      before any possible exit.
+  //   3) The IV's AddRec has nuw/nsw flags, guaranteeing no wrap for all
+  //      iterations where the increment executes.
   // Note that we have not yet proved RHS invariant (in general).
 
   const SCEV *Start = IV->getStart();
@@ -13741,7 +13847,8 @@ ScalarEvolution::ExitLimit ScalarEvolution::howManyGreaterThans(
   // behaviors like the case of C language.
   if (!Stride->isOne() && !NoWrap)
     if (canIVOverflowOnGT(RHS, Stride, IsSigned))
-      return getCouldNotCompute();
+      if (!IV->getNoWrapFlags(WrapType))
+        return getCouldNotCompute();
 
   const SCEV *Start = IV->getStart();
   const SCEV *End = RHS;
@@ -14143,6 +14250,10 @@ static void PrintLoopInfo(raw_ostream &OS, ScalarEvolution *SE,
 
   SmallVector<const SCEVPredicate *, 4> Preds;
   auto *PBT = SE->getPredicatedBackedgeTakenCount(L, Preds);
+  // Re-read BTC: getPredicatedBackedgeTakenCount may have refreshed the
+  // non-predicated cache when AddRec flags were strengthened since the
+  // original computation.
+  BTC = SE->getBackedgeTakenCount(L);
   if (PBT != BTC) {
     assert(!Preds.empty() && "Different predicated BTC, but no predicates");
     OS << "Loop ";
@@ -14162,6 +14273,7 @@ static void PrintLoopInfo(raw_ostream &OS, ScalarEvolution *SE,
 
   auto *PredConstantMax =
       SE->getPredicatedConstantMaxBackedgeTakenCount(L, Preds);
+  ConstantBTC = SE->getConstantMaxBackedgeTakenCount(L);
   if (PredConstantMax != ConstantBTC) {
     assert(!Preds.empty() &&
            "different predicated constant max BTC but no predicates");
@@ -14182,6 +14294,7 @@ static void PrintLoopInfo(raw_ostream &OS, ScalarEvolution *SE,
 
   auto *PredSymbolicMax =
       SE->getPredicatedSymbolicMaxBackedgeTakenCount(L, Preds);
+  SymbolicBTC = SE->getSymbolicMaxBackedgeTakenCount(L);
   if (SymbolicBTC != PredSymbolicMax) {
     assert(!Preds.empty() &&
            "Different predicated symbolic max BTC, but no predicates");
