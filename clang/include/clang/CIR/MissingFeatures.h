@@ -242,6 +242,7 @@ struct MissingFeatures {
   static bool ctorConstLvalueToRvalueConversion() { return false; }
   static bool ctorMemcpyizer() { return false; }
   static bool cudaSupport() { return false; }
+  static bool cudaTextureType() { return false; }
   static bool hipModuleCtor() { return false; }
   static bool globalRegistration() { return false; }
   static bool dataLayoutTypeIsSized() { return false; }
