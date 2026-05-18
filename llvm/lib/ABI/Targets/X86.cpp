@@ -14,7 +14,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/TypeSize.h"
-#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -36,16 +35,7 @@ static unsigned getNativeVectorSizeForAVXABI(X86AVXABILevel AVXLevel) {
 
 class X86_64TargetInfo : public TargetInfo {
 public:
-  enum Class {
-    Integer = 0,
-    SSE,
-    SSEUp,
-    X87,
-    X87UP,
-    Complex_X87,
-    NoClass,
-    Memory
-  };
+  enum Class { Integer, Sse, SseUp, X87, X87Up, ComplexX87, NoClass, Memory };
 
 private:
   TypeBuilder &TB;
@@ -88,9 +78,8 @@ private:
   const Type *useFirstFieldIfTransparentUnion(const Type *Ty) const;
 
 public:
-  X86_64TargetInfo(TypeBuilder &TypeBuilder, const Triple & /*Triple*/,
-                   X86AVXABILevel AVXABILevel, bool Has64BitPtrs,
-                   const ABICompatInfo &Compat)
+  X86_64TargetInfo(TypeBuilder &TypeBuilder, X86AVXABILevel AVXABILevel,
+                   bool Has64BitPtrs, const ABICompatInfo &Compat)
       : TargetInfo(Compat), TB(TypeBuilder), AVXLevel(AVXABILevel),
         Has64BitPointers(Has64BitPtrs) {}
 
@@ -140,7 +129,7 @@ void X86_64TargetInfo::postMerge(unsigned AggregateSize, Class &Lo,
   // (a) If one of the classes is Memory, the whole argument is passed in
   //     memory.
   //
-  // (b) If X87UP is not preceded by X87, the whole argument is passed in
+  // (b) If X87Up is not preceded by X87, the whole argument is passed in
   //     memory.
   //
   // (c) If the size of the aggregate exceeds two eightbytes and the first
@@ -158,12 +147,12 @@ void X86_64TargetInfo::postMerge(unsigned AggregateSize, Class &Lo,
 
   if (Hi == Memory)
     Lo = Memory;
-  if (Hi == X87UP && Lo != X87 && getABICompatInfo().HonorsRevision98)
+  if (Hi == X87Up && Lo != X87 && getABICompatInfo().HonorsRevision98)
     Lo = Memory;
-  if (AggregateSize > 128 && (Lo != SSE || Hi != SSEUp))
+  if (AggregateSize > 128 && (Lo != Sse || Hi != SseUp))
     Lo = Memory;
-  if (Hi == SSEUp && Lo != SSE)
-    Hi = SSE;
+  if (Hi == SseUp && Lo != Sse)
+    Hi = Sse;
 }
 X86_64TargetInfo::Class X86_64TargetInfo::merge(Class Accum, Class Field) {
   // AMD64-ABI 3.2.3p2: Rule 4. Each field of an object is
@@ -182,14 +171,14 @@ X86_64TargetInfo::Class X86_64TargetInfo::merge(Class Accum, Class Field) {
   // (d) If one of the classes is INTEGER, the result is the
   // INTEGER.
   //
-  // (e) If one of the classes is X87, X87UP, COMPLEX_X87 class,
+  // (e) If one of the classes is X87, X87Up, COMPLEX_X87 class,
   // MEMORY is used as class.
   //
   // (f) Otherwise class SSE is used.
 
   // Accum should never be memory (we should have returned) or
   // ComplexX87 (because this cannot be passed in a structure).
-  assert((Accum != Memory && Accum != Complex_X87) &&
+  assert((Accum != Memory && Accum != ComplexX87) &&
          "Invalid accumulated classification during merge.");
 
   if (Accum == Field || Field == NoClass)
@@ -200,11 +189,11 @@ X86_64TargetInfo::Class X86_64TargetInfo::merge(Class Accum, Class Field) {
     return Field;
   if (Accum == Integer || Field == Integer)
     return Integer;
-  if (Field == X87 || Field == X87UP || Field == Complex_X87 || Accum == X87 ||
-      Accum == X87UP)
+  if (Field == X87 || Field == X87Up || Field == ComplexX87 || Accum == X87 ||
+      Accum == X87Up)
     return Memory;
 
-  return SSE;
+  return Sse;
 }
 
 bool X86_64TargetInfo::containsMatrixField(const RecordType *RT) const {
@@ -256,15 +245,15 @@ void X86_64TargetInfo::classify(const Type *T, uint64_t OffsetBase, Class &Lo,
         FltSem == &llvm::APFloat::IEEEdouble() ||
         FltSem == &llvm::APFloat::IEEEhalf() ||
         FltSem == &llvm::APFloat::BFloat()) {
-      Current = SSE;
+      Current = Sse;
     } else if (FltSem == &llvm::APFloat::IEEEquad()) {
-      Lo = SSE;
-      Hi = SSEUp;
+      Lo = Sse;
+      Hi = SseUp;
     } else if (FltSem == &llvm::APFloat::x87DoubleExtended()) {
       Lo = X87;
-      Hi = X87UP;
+      Hi = X87Up;
     } else
-      Current = SSE;
+      Current = Sse;
     return;
   }
   if (T->isPointer()) {
@@ -321,9 +310,9 @@ void X86_64TargetInfo::classify(const Type *T, uint64_t OffsetBase, Class &Lo,
             (ElemBits == 64 || ElemBits == 32)) {
           Current = Integer;
         } else
-          Current = SSE;
+          Current = Sse;
       } else
-        Current = SSE;
+        Current = Sse;
       // If this type crosses an eightbyte boundary, it should be
       // split.
       if (OffsetBase && OffsetBase != 64)
@@ -352,8 +341,8 @@ void X86_64TargetInfo::classify(const Type *T, uint64_t OffsetBase, Class &Lo,
       //
       // Similarly, per 3.2.3. of the AVX512 draft, 512-bits ("named") args are
       // split into eight eightbyte chunks, one SSE and seven SSEUP.
-      Lo = SSE;
-      Hi = SSEUp;
+      Lo = Sse;
+      Hi = SseUp;
     }
     return;
   }
@@ -372,13 +361,13 @@ void X86_64TargetInfo::classify(const Type *T, uint64_t OffsetBase, Class &Lo,
       if (FltSem == &llvm::APFloat::IEEEhalf() ||
           FltSem == &llvm::APFloat::IEEEsingle() ||
           FltSem == &llvm::APFloat::BFloat())
-        Current = SSE;
+        Current = Sse;
       else if (FltSem == &llvm::APFloat::IEEEquad())
         Current = Memory;
       else if (FltSem == &llvm::APFloat::x87DoubleExtended())
-        Current = Complex_X87;
+        Current = ComplexX87;
       else if (FltSem == &llvm::APFloat::IEEEdouble())
-        Lo = Hi = SSE;
+        Lo = Hi = Sse;
       else
         llvm_unreachable("Unexpected long double representation!");
     }
@@ -423,7 +412,7 @@ void X86_64TargetInfo::classify(const Type *T, uint64_t OffsetBase, Class &Lo,
         break;
     }
     postMerge(Size, Lo, Hi);
-    assert((Hi != SSEUp || Lo == SSE) && "Invalid SSEUp array classification.");
+    assert((Hi != SseUp || Lo == Sse) && "Invalid SseUp array classification.");
     return;
   }
   if (const auto *RT = dyn_cast<RecordType>(T)) {
@@ -561,7 +550,7 @@ X86_64TargetInfo::classifyArgumentType(const Type *Ty, unsigned FreeIntRegs,
 
   // Check some invariants
   assert((Hi != Memory || Lo == Memory) && "Invalid memory classification.");
-  assert((Hi != SSEUp || Lo == SSE) && "Invalid SSEUp classification.");
+  assert((Hi != SseUp || Lo == Sse) && "Invalid SseUp classification.");
 
   NeededInt = 0;
   NeededSSE = 0;
@@ -573,23 +562,23 @@ X86_64TargetInfo::classifyArgumentType(const Type *Ty, unsigned FreeIntRegs,
       return ArgInfo::getIgnore();
     // If the low part is just padding, it takes no register, leave ResType
     // null.
-    assert((Hi == SSE || Hi == Integer || Hi == X87UP) &&
+    assert((Hi == Sse || Hi == Integer || Hi == X87Up) &&
            "Unknown missing lo part");
     break;
 
     // AMD64-ABI 3.2.3p3: Rule 1. If the class is MEMORY, pass the argument
     // on the stack.
   case Memory:
-    // AMD64-ABI 3.2.3p3: Rule 5. If the class is X87, X87UP or
+    // AMD64-ABI 3.2.3p3: Rule 5. If the class is X87, X87Up or
     // COMPLEX_X87, it is passed in memory.
   case X87:
-  case Complex_X87:
+  case ComplexX87:
     if (getRecordArgABI(Ty) == RAA_Indirect)
       ++NeededInt;
     return getIndirectResult(Ty, FreeIntRegs);
 
-  case SSEUp:
-  case X87UP:
+  case SseUp:
+  case X87Up:
     llvm_unreachable("Invalid classification for lo word.");
 
     // AMD64-ABI 3.2.3p3: Rule 2. If the class is INTEGER, the next
@@ -618,7 +607,7 @@ X86_64TargetInfo::classifyArgumentType(const Type *Ty, unsigned FreeIntRegs,
     // AMD64-ABI 3.2.3p3: Rule 3. If the class is SSE, the next
     // available SSE register is used, the registers are taken in the
     // order from %xmm0 to %xmm7.
-  case SSE:
+  case Sse:
     ResType = getSSETypeAtOffset(Ty, 0, Ty, 0);
     ++NeededSSE;
     break;
@@ -626,12 +615,12 @@ X86_64TargetInfo::classifyArgumentType(const Type *Ty, unsigned FreeIntRegs,
 
   const Type *HighPart = nullptr;
   switch (Hi) {
-    // Memory was handled previously, Complex_X87 and X87 should
-    // never occur as hi classes, and X87UP must be preceded by X87,
+    // Memory was handled previously, ComplexX87 and X87 should
+    // never occur as hi classes, and X87Up must be preceded by X87,
     // which is passed in memory.
   case Memory:
   case X87:
-  case Complex_X87:
+  case ComplexX87:
     llvm_unreachable("Invalid classification for hi word.");
 
   case NoClass:
@@ -646,10 +635,10 @@ X86_64TargetInfo::classifyArgumentType(const Type *Ty, unsigned FreeIntRegs,
       return ArgInfo::getDirect(HighPart, 8);
     break;
 
-    // X87UP generally doesn't occur here (long double is passed in
+    // X87Up generally doesn't occur here (long double is passed in
     // memory), except in situations involving unions.
-  case X87UP:
-  case SSE:
+  case X87Up:
+  case Sse:
     ++NeededSSE;
     HighPart = getSSETypeAtOffset(Ty, 8, Ty, 8);
 
@@ -660,8 +649,8 @@ X86_64TargetInfo::classifyArgumentType(const Type *Ty, unsigned FreeIntRegs,
     // AMD64-ABI 3.2.3p3: Rule 4. If the class is SSEUP, the
     // eightbyte is passed in the upper half of the last used SSE
     // register. This only happens when 128-bit vectors are passed.
-  case SSEUp:
-    assert(Lo == SSE && "Unexpected SSEUp classification");
+  case SseUp:
+    assert(Lo == Sse && "Unexpected SseUp classification");
     ResType = getByteVectorType(Ty);
     break;
   }
@@ -684,7 +673,7 @@ ArgInfo X86_64TargetInfo::classifyReturnType(const Type *RetTy) const {
 
   // Check some invariants
   assert((Hi != Memory || Lo == Memory) && "Invalid memory classification.");
-  assert((Hi != SSEUp || Lo == SSE) && "Invalid SSEUp classification.");
+  assert((Hi != SseUp || Lo == Sse) && "Invalid SseUp classification.");
 
   const Type *ResType = nullptr;
   switch (Lo) {
@@ -693,11 +682,11 @@ ArgInfo X86_64TargetInfo::classifyReturnType(const Type *RetTy) const {
       return ArgInfo::getIgnore();
     // If the low part is just padding, it takes no register, leave ResType
     // null.
-    assert((Hi == SSE || Hi == Integer || Hi == X87UP) &&
+    assert((Hi == Sse || Hi == Integer || Hi == X87Up) &&
            "Unknown missing lo part");
     break;
-  case SSEUp:
-  case X87UP:
+  case SseUp:
+  case X87Up:
     llvm_unreachable("Invalid classification for lo word.");
 
     // AMD64-ABI 3.2.3p4: Rule 2. Types of class memory are returned via
@@ -725,7 +714,7 @@ ArgInfo X86_64TargetInfo::classifyReturnType(const Type *RetTy) const {
 
     // AMD64-ABI 3.2.3p4: Rule 4. If the class is SSE, the next
     // available SSE register of the sequence %xmm0, %xmm1 is used.
-  case SSE:
+  case Sse:
     ResType = getSSETypeAtOffset(RetTy, 0, RetTy, 0);
     break;
 
@@ -738,8 +727,8 @@ ArgInfo X86_64TargetInfo::classifyReturnType(const Type *RetTy) const {
     // AMD64-ABI 3.2.3p4: Rule 8. If the class is COMPLEX_X87, the real
     // part of the value is returned in %st0 and the imaginary part in
     // %st1.
-  case Complex_X87:
-    assert(Hi == Complex_X87 && "Unexpected ComplexX87 classification.");
+  case ComplexX87:
+    assert(Hi == ComplexX87 && "Unexpected ComplexX87 classification.");
     {
       const Type *X87Type =
           TB.getFloatType(APFloat::x87DoubleExtended(), Align(16));
@@ -757,7 +746,7 @@ ArgInfo X86_64TargetInfo::classifyReturnType(const Type *RetTy) const {
   case X87:
     llvm_unreachable("Invalid classification for hi word.");
 
-  case Complex_X87:
+  case ComplexX87:
   case NoClass:
     break;
 
@@ -767,7 +756,7 @@ ArgInfo X86_64TargetInfo::classifyReturnType(const Type *RetTy) const {
       return ArgInfo::getDirect(HighPart, 8);
     break;
 
-  case SSE:
+  case Sse:
     HighPart = getSSETypeAtOffset(RetTy, 8, RetTy, 8);
     if (Lo == NoClass)
       return ArgInfo::getDirect(HighPart, 8);
@@ -778,14 +767,14 @@ ArgInfo X86_64TargetInfo::classifyReturnType(const Type *RetTy) const {
     // vector register.
     //
     // SSEUP should always be preceded by SSE, just widen.
-  case SSEUp:
-    assert(Lo == SSE && "Unexpected SSEUp classification.");
+  case SseUp:
+    assert(Lo == Sse && "Unexpected SseUp classification.");
     ResType = getByteVectorType(RetTy);
     break;
 
-    // AMD64-ABI 3.2.3p4: Rule 7. If the class is X87UP, the value is
+    // AMD64-ABI 3.2.3p4: Rule 7. If the class is X87Up, the value is
     // returned together with the previous X87 value in %st0.
-  case X87UP:
+  case X87Up:
     // If X87Up is preceded by X87, we don't need to do
     // anything. However, in some cases with unions it may not be
     // preceded by X87. In such situations we follow gcc and pass the
@@ -859,7 +848,9 @@ const Type *X86_64TargetInfo::createPairType(const Type *Lo,
   assert((8 * 8) == Fields[1].OffsetInBits &&
          "High part must be at offset 8 bytes");
 
-  return TB.getRecordType(Fields, TypeSize::getFixed(128), Align(8),
+  uint64_t PairSizeInBits =
+      Fields[1].OffsetInBits + Hi->getSizeInBits().getFixedValue();
+  return TB.getRecordType(Fields, TypeSize::getFixed(PairSizeInBits), Align(8),
                           StructPacking::Default);
 }
 
@@ -1370,11 +1361,18 @@ static bool classifyCXXReturnType(FunctionInfo &FI) {
 void X86_64TargetInfo::computeInfo(FunctionInfo &FI) const {
   CallingConv::ID CallingConv = FI.getCallingConvention();
 
-  if (CallingConv == CallingConv::Win64 ||
-      CallingConv == CallingConv::X86_RegCall)
-    return;
-
-  bool IsRegCall = false;
+  switch (CallingConv) {
+  case CallingConv::Win64:
+  case CallingConv::X86_RegCall:
+  case CallingConv::X86_FastCall:
+  case CallingConv::X86_VectorCall:
+  case CallingConv::X86_StdCall:
+  case CallingConv::X86_ThisCall:
+    llvm_unreachable(
+        "calling convention not supported by the LLVMABI X86_64 classifier");
+  default:
+    break;
+  }
 
   unsigned FreeIntRegs = 6;
   unsigned FreeSSERegs = 8;
@@ -1398,7 +1396,7 @@ void X86_64TargetInfo::computeInfo(FunctionInfo &FI) const {
     NeededSSE = 0;
 
     ArgInfo AI = classifyArgumentType(ArgTy, FreeIntRegs, NeededInt, NeededSSE,
-                                      IsNamedArg, IsRegCall);
+                                      IsNamedArg);
 
     // AMD64-ABI 3.2.3p3: If there are no registers available for any
     // eightbyte of an argument, the whole argument is passed on the
@@ -1415,13 +1413,11 @@ void X86_64TargetInfo::computeInfo(FunctionInfo &FI) const {
   }
 }
 
-std::unique_ptr<TargetInfo> createX8664TargetInfo(TypeBuilder &TB,
-                                                  const Triple &TargetTriple,
-                                                  X86AVXABILevel AVXLevel,
-                                                  bool Has64BitPointers,
-                                                  const ABICompatInfo &Compat) {
-  return std::make_unique<X86_64TargetInfo>(TB, TargetTriple, AVXLevel,
-                                            Has64BitPointers, Compat);
+std::unique_ptr<TargetInfo>
+createX86_64TargetInfo(TypeBuilder &TB, X86AVXABILevel AVXLevel,
+                       bool Has64BitPointers, const ABICompatInfo &Compat) {
+  return std::make_unique<X86_64TargetInfo>(TB, AVXLevel, Has64BitPointers,
+                                            Compat);
 }
 
 } // namespace abi

@@ -339,13 +339,29 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
   return *TheTargetCodeGenInfo;
 }
 
-bool CodeGenModule::shouldUseLLVMABILowering() const {
+bool CodeGenModule::shouldUseLLVMABILowering(unsigned CallingConv) const {
   if (!CodeGenOpts.ExperimentalABILowering)
     return false;
-  // Only opt in for targets that have an LLVMABI implementation; others
-  // continue through the legacy ABIInfo path.
+
   const llvm::Triple &T = getTriple();
-  return T.isBPF() || (T.getArch() == llvm::Triple::x86_64 && T.isOSLinux());
+  if (T.isBPF())
+    return true;
+
+  if (T.getArch() == llvm::Triple::x86_64 && !T.isOSWindows() &&
+      !T.isOSDarwin() && !T.isOSCygMing()) {
+    switch (CallingConv) {
+    case llvm::CallingConv::Win64:
+    case llvm::CallingConv::X86_RegCall:
+    case llvm::CallingConv::X86_FastCall:
+    case llvm::CallingConv::X86_VectorCall:
+    case llvm::CallingConv::X86_StdCall:
+    case llvm::CallingConv::X86_ThisCall:
+      return false;
+    default:
+      return true;
+    }
+  }
+  return false;
 }
 
 const llvm::abi::TargetInfo &
@@ -381,8 +397,8 @@ CodeGenModule::getLLVMABITargetInfo(llvm::abi::TypeBuilder &TB) {
 
     bool Has64BitPointers = getTarget().getPointerWidth(LangAS::Default) == 64;
 
-    TheLLVMABITargetInfo = llvm::abi::createX8664TargetInfo(
-        TB, T, AVXLevel, Has64BitPointers, CompatInfo);
+    TheLLVMABITargetInfo = llvm::abi::createX86_64TargetInfo(
+        TB, AVXLevel, Has64BitPointers, CompatInfo);
     return *TheLLVMABITargetInfo;
   }
 
