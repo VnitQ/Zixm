@@ -65,8 +65,9 @@ void arith::ConstantOp::inferResultRanges(ArrayRef<ConstantIntRanges> argRanges,
 
 void arith::AddIOp::inferResultRanges(ArrayRef<ConstantIntRanges> argRanges,
                                       SetIntRangeFn setResultRange) {
-  setResultRange(getResult(), inferAdd(argRanges, convertArithOverflowFlags(
-                                                      getOverflowFlags())));
+  OverflowFlags declaredFlags = convertArithOverflowFlags(getOverflowFlags());
+  setResultRange(getResult(),
+                 inferAddWithOverflowFlags(argRanges, declaredFlags));
 }
 
 //===----------------------------------------------------------------------===//
@@ -75,8 +76,9 @@ void arith::AddIOp::inferResultRanges(ArrayRef<ConstantIntRanges> argRanges,
 
 void arith::SubIOp::inferResultRanges(ArrayRef<ConstantIntRanges> argRanges,
                                       SetIntRangeFn setResultRange) {
-  setResultRange(getResult(), inferSub(argRanges, convertArithOverflowFlags(
-                                                      getOverflowFlags())));
+  OverflowFlags declaredFlags = convertArithOverflowFlags(getOverflowFlags());
+  setResultRange(getResult(),
+                 inferSubWithOverflowFlags(argRanges, declaredFlags));
 }
 
 //===----------------------------------------------------------------------===//
@@ -85,8 +87,9 @@ void arith::SubIOp::inferResultRanges(ArrayRef<ConstantIntRanges> argRanges,
 
 void arith::MulIOp::inferResultRanges(ArrayRef<ConstantIntRanges> argRanges,
                                       SetIntRangeFn setResultRange) {
-  setResultRange(getResult(), inferMul(argRanges, convertArithOverflowFlags(
-                                                      getOverflowFlags())));
+  OverflowFlags declaredFlags = convertArithOverflowFlags(getOverflowFlags());
+  setResultRange(getResult(),
+                 inferMulWithOverflowFlags(argRanges, declaredFlags));
 }
 
 //===----------------------------------------------------------------------===//
