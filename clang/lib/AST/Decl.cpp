@@ -2588,7 +2588,7 @@ APValue *VarDecl::evaluateValueImpl(SmallVectorImpl<PartialDiagnosticAt> &Notes,
       (Ctx.getLangOpts().CPlusPlus ||
        (isConstexpr() && Ctx.getLangOpts().C23)) &&
       !Notes.empty()) {
-    if (!Ctx.maybeFoldMSConstexpr(Notes))
+    if (!Ctx.maybeFoldMSConstexpr(Eval->Evaluated, Notes))
       Result = false;
   }
 
