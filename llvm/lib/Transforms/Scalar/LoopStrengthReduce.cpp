@@ -6186,9 +6186,6 @@ void LSRInstance::ImplementSolution(
   // instructions.
   Rewriter.clear();
 
-  Changed |= RecursivelyDeleteTriviallyDeadInstructionsPermissive(DeadInsts,
-                                                                  &TLI, MSSAU);
-
   // In our cost analysis above, we assume that each addrec consumes exactly
   // one register, and arrange to have increments inserted just before the
   // latch to maximimize the chance this is true.  However, if we reused
@@ -6231,7 +6228,35 @@ void LSRInstance::ImplementSolution(
     Changed = true;
   }
 
+  // Simplify only the rewritten instructions and their immediate users.
+  // Placed after IV inc hoisting to avoid erasing instructions still
+  // referenced by the hoisting logic.
+  SmallVector<Instruction *> Worklist;
+  llvm::copy_if(RewrittenInsts, std::back_inserter(Worklist),
+                [](Instruction *I) { return I->getParent(); });
 
+  SmallPtrSet<Instruction *, 16> Visited;
+  while (!Worklist.empty()) {
+    auto *I = cast<Instruction>(Worklist.pop_back_val());
+    if (!Visited.insert(I).second)
+      continue;
+
+    // Don't simplify instructions outside the loop.
+    if (!L->contains(I))
+      continue;
+
+    Value *Res = simplifyInstruction(I, {I->getDataLayout(), &TLI, &DT, &AC});
+    if (Res && LI.replacementPreservesLCSSAForm(I, Res)) {
+      for (User *U : I->users())
+        Worklist.push_back(cast<Instruction>(U));
+      I->replaceAllUsesWith(Res);
+      DeadInsts.emplace_back(I);
+      Changed = true;
+    }
+  }
+
+  Changed |= RecursivelyDeleteTriviallyDeadInstructionsPermissive(DeadInsts,
+                                                                  &TLI, MSSAU);
 }
 
 LSRInstance::LSRInstance(Loop *L, IVUsers &IU, ScalarEvolution &SE,

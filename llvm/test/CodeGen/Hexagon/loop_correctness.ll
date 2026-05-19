@@ -73,18 +73,6 @@ define void @f2(ptr nocapture %a0, i32 %a1, i32 %a2) #0 {
 ; CHECK-LABEL: f2:
 ; CHECK:       // %bb.0: // %b0
 ; CHECK-NEXT:    {
-; CHECK-NEXT:     loop0(.LBB2_1,#1)
-; CHECK-NEXT:    }
-; CHECK-NEXT:    .p2align 4
-; CHECK-NEXT:  .LBB2_1: // Block address taken
-; CHECK-NEXT:    // %b2
-; CHECK-NEXT:    // =>This Inner Loop Header: Depth=1
-; CHECK-NEXT:    {
-; CHECK-NEXT:     nop
-; CHECK-NEXT:     nop
-; CHECK-NEXT:    } :endloop0
-; CHECK-NEXT:  // %bb.2: // %b3
-; CHECK-NEXT:    {
 ; CHECK-NEXT:     jumpr r31
 ; CHECK-NEXT:    }
 b0:

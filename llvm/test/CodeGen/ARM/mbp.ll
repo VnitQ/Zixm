@@ -40,14 +40,14 @@ define i1 @foo(ptr %ha, i32 %he) !prof !39 {
 ; CHECK-NEXT:  .LBB0_5: @ %for.cond.i
 ; CHECK-NEXT:    @ Parent Loop BB0_3 Depth=1
 ; CHECK-NEXT:    @ => This Inner Loop Header: Depth=2
-; CHECK-NEXT:    cmp r3, #1
+; CHECK-NEXT:    subs.w lr, r3, #1
 ; CHECK-NEXT:    blt .LBB0_2
 ; CHECK-NEXT:  @ %bb.6: @ %for.body.i
 ; CHECK-NEXT:    @ in Loop: Header=BB0_5 Depth=2
-; CHECK-NEXT:    ldr.w lr, [r12, r3, lsl #2]
-; CHECK-NEXT:    subs r3, #1
+; CHECK-NEXT:    ldr.w r3, [r12, r3, lsl #2]
 ; CHECK-NEXT:    movs r0, #1
-; CHECK-NEXT:    cmp lr, r1
+; CHECK-NEXT:    cmp r3, r1
+; CHECK-NEXT:    mov r3, lr
 ; CHECK-NEXT:    bne .LBB0_5
 ; CHECK-NEXT:  @ %bb.7:
 ; CHECK-NEXT:    pop {r7, pc}

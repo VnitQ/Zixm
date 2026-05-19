@@ -23,9 +23,7 @@ define void @test_no_inttoptr_casts(ptr %base1, ptr %base2, ptr %base3, i64 %n) 
 ; CHECK-NEXT:    [[CMP_EXIT:%.*]] = icmp eq i64 [[TMP0]], [[LSR_IV]]
 ; CHECK-NEXT:    br i1 [[CMP_EXIT]], label [[CHECK:%.*]], label [[BODY:%.*]]
 ; CHECK:       check:
-; CHECK-NEXT:    [[CMP3:%.*]] = icmp ne i64 [[TMP0]], [[LSR_IV]]
-; CHECK-NEXT:    [[SEL:%.*]] = select i1 [[CMP3]], i1 true, i1 [[CMP3]]
-; CHECK-NEXT:    br i1 [[SEL]], label [[BODY]], label [[EXIT:%.*]]
+; CHECK-NEXT:    br i1 false, label [[BODY]], label [[EXIT:%.*]]
 ; CHECK:       body:
 ; CHECK-NEXT:    [[V1:%.*]] = load i64, ptr [[SCEVGEP]], align 8
 ; CHECK-NEXT:    [[V2:%.*]] = load i64, ptr [[SCEVGEP1]], align 8

@@ -37,15 +37,9 @@ define void @memset_1(ptr %a, i128 %value) nounwind {
 ; RV32-BOTH-NEXT:    ret
 ;
 ; RV64-BOTH-LABEL: memset_1:
-; RV64-BOTH:       # %bb.0:
-; RV64-BOTH-NEXT:    addi a3, a0, 16
-; RV64-BOTH-NEXT:  .LBB0_1: # %memset.pattern-expansion-main-body
-; RV64-BOTH-NEXT:    # =>This Inner Loop Header: Depth=1
+; RV64-BOTH:       # %bb.0: # %memset.pattern-expansion-main-body
 ; RV64-BOTH-NEXT:    sd a1, 0(a0)
 ; RV64-BOTH-NEXT:    sd a2, 8(a0)
-; RV64-BOTH-NEXT:    addi a0, a0, 16
-; RV64-BOTH-NEXT:    bne a0, a3, .LBB0_1
-; RV64-BOTH-NEXT:  # %bb.2: # %memset.pattern-post-expansion
 ; RV64-BOTH-NEXT:    ret
   tail call void @llvm.experimental.memset.pattern(ptr align 8 %a, i128 %value, i64 1, i1 0)
   ret void
@@ -115,51 +109,37 @@ define void @memset_1_noalign(ptr %a, i128 %value) nounwind {
 ; RV32-NEXT:    ret
 ;
 ; RV64-LABEL: memset_1_noalign:
-; RV64:       # %bb.0:
-; RV64-NEXT:    addi sp, sp, -32
-; RV64-NEXT:    sd s0, 24(sp) # 8-byte Folded Spill
-; RV64-NEXT:    sd s1, 16(sp) # 8-byte Folded Spill
-; RV64-NEXT:    sd s2, 8(sp) # 8-byte Folded Spill
-; RV64-NEXT:    srli a3, a1, 56
-; RV64-NEXT:    addi a4, a0, 16
-; RV64-NEXT:    srli a5, a1, 48
-; RV64-NEXT:    srli a6, a1, 40
-; RV64-NEXT:    srli a7, a1, 32
-; RV64-NEXT:    srli t0, a1, 24
-; RV64-NEXT:    srli t1, a1, 16
-; RV64-NEXT:    srli t2, a1, 8
-; RV64-NEXT:    srli t3, a2, 56
-; RV64-NEXT:    srli t4, a2, 48
-; RV64-NEXT:    srli t5, a2, 40
-; RV64-NEXT:    srli t6, a2, 32
-; RV64-NEXT:    srli s0, a2, 24
-; RV64-NEXT:    srli s1, a2, 16
-; RV64-NEXT:    srli s2, a2, 8
-; RV64-NEXT:  .LBB1_1: # %memset.pattern-expansion-main-body
-; RV64-NEXT:    # =>This Inner Loop Header: Depth=1
-; RV64-NEXT:    sb a7, 4(a0)
-; RV64-NEXT:    sb a6, 5(a0)
-; RV64-NEXT:    sb a5, 6(a0)
-; RV64-NEXT:    sb a3, 7(a0)
-; RV64-NEXT:    sb a1, 0(a0)
-; RV64-NEXT:    sb t2, 1(a0)
-; RV64-NEXT:    sb t1, 2(a0)
-; RV64-NEXT:    sb t0, 3(a0)
-; RV64-NEXT:    sb t6, 12(a0)
-; RV64-NEXT:    sb t5, 13(a0)
-; RV64-NEXT:    sb t4, 14(a0)
-; RV64-NEXT:    sb t3, 15(a0)
+; RV64:       # %bb.0: # %memset.pattern-expansion-main-body
+; RV64-NEXT:    srli a3, a2, 56
+; RV64-NEXT:    srli a4, a2, 48
+; RV64-NEXT:    srli a5, a2, 40
+; RV64-NEXT:    srli a6, a2, 32
+; RV64-NEXT:    sb a6, 12(a0)
+; RV64-NEXT:    sb a5, 13(a0)
+; RV64-NEXT:    sb a4, 14(a0)
+; RV64-NEXT:    sb a3, 15(a0)
+; RV64-NEXT:    srli a3, a2, 24
+; RV64-NEXT:    srli a4, a2, 16
+; RV64-NEXT:    srli a5, a2, 8
 ; RV64-NEXT:    sb a2, 8(a0)
-; RV64-NEXT:    sb s2, 9(a0)
-; RV64-NEXT:    sb s1, 10(a0)
-; RV64-NEXT:    sb s0, 11(a0)
-; RV64-NEXT:    addi a0, a0, 16
-; RV64-NEXT:    bne a0, a4, .LBB1_1
-; RV64-NEXT:  # %bb.2: # %memset.pattern-post-expansion
-; RV64-NEXT:    ld s0, 24(sp) # 8-byte Folded Reload
-; RV64-NEXT:    ld s1, 16(sp) # 8-byte Folded Reload
-; RV64-NEXT:    ld s2, 8(sp) # 8-byte Folded Reload
-; RV64-NEXT:    addi sp, sp, 32
+; RV64-NEXT:    sb a5, 9(a0)
+; RV64-NEXT:    sb a4, 10(a0)
+; RV64-NEXT:    sb a3, 11(a0)
+; RV64-NEXT:    srli a2, a1, 56
+; RV64-NEXT:    srli a3, a1, 48
+; RV64-NEXT:    srli a4, a1, 32
+; RV64-NEXT:    srli a5, a1, 40
+; RV64-NEXT:    sb a4, 4(a0)
+; RV64-NEXT:    sb a5, 5(a0)
+; RV64-NEXT:    sb a3, 6(a0)
+; RV64-NEXT:    sb a2, 7(a0)
+; RV64-NEXT:    srli a2, a1, 24
+; RV64-NEXT:    srli a3, a1, 16
+; RV64-NEXT:    srli a4, a1, 8
+; RV64-NEXT:    sb a1, 0(a0)
+; RV64-NEXT:    sb a4, 1(a0)
+; RV64-NEXT:    sb a3, 2(a0)
+; RV64-NEXT:    sb a2, 3(a0)
 ; RV64-NEXT:    ret
 ;
 ; RV32-FAST-LABEL: memset_1_noalign:
@@ -187,15 +167,9 @@ define void @memset_1_noalign(ptr %a, i128 %value) nounwind {
 ; RV32-FAST-NEXT:    ret
 ;
 ; RV64-FAST-LABEL: memset_1_noalign:
-; RV64-FAST:       # %bb.0:
-; RV64-FAST-NEXT:    addi a3, a0, 16
-; RV64-FAST-NEXT:  .LBB1_1: # %memset.pattern-expansion-main-body
-; RV64-FAST-NEXT:    # =>This Inner Loop Header: Depth=1
+; RV64-FAST:       # %bb.0: # %memset.pattern-expansion-main-body
 ; RV64-FAST-NEXT:    sd a1, 0(a0)
 ; RV64-FAST-NEXT:    sd a2, 8(a0)
-; RV64-FAST-NEXT:    addi a0, a0, 16
-; RV64-FAST-NEXT:    bne a0, a3, .LBB1_1
-; RV64-FAST-NEXT:  # %bb.2: # %memset.pattern-post-expansion
 ; RV64-FAST-NEXT:    ret
   tail call void @llvm.experimental.memset.pattern(ptr %a, i128 %value, i64 1, i1 0)
   ret void

@@ -156,10 +156,8 @@ define fastcc void @test3(ptr nocapture %u, i1 %arg) nounwind uwtable ssp {
 ; CHECK:       for.inc8.us.i:
 ; CHECK-NEXT:    br i1 [[ARG]], label [[MESHBB1_LOOPEXIT:%.*]], label [[MESHBB:%.*]]
 ; CHECK:       for.body3.us.i:
-; CHECK-NEXT:    [[TMP:%.*]] = phi i32 [ [[LSR_IV_NEXT:%.*]], [[MESHBB]] ], [ [[TMP3:%.*]], [[FOR_BODY3_LR_PH_US_I:%.*]] ]
-; CHECK-NEXT:    [[SCEVGEP:%.*]] = phi ptr [ [[SCEVGEP1:%.*]], [[MESHBB]] ], [ [[U:%.*]], [[FOR_BODY3_LR_PH_US_I]] ]
+; CHECK-NEXT:    [[SCEVGEP:%.*]] = phi ptr [ [[SCEVGEP1:%.*]], [[MESHBB]] ], [ [[U:%.*]], [[FOR_BODY3_LR_PH_US_I:%.*]] ]
 ; CHECK-NEXT:    [[OPQ_SA_CALC12:%.*]] = sub i32 undef, 227
-; CHECK-NEXT:    [[MUL_I_US_I:%.*]] = mul nsw i32 0, [[TMP]]
 ; CHECK-NEXT:    [[TMP2:%.*]] = load double, ptr [[SCEVGEP]], align 8
 ; CHECK-NEXT:    br i1 [[ARG]], label [[FOR_INC8_US_I:%.*]], label [[MESHBB]]
 ; CHECK:       for.body3.lr.ph.us.i.loopexit:
@@ -168,7 +166,6 @@ define fastcc void @test3(ptr nocapture %u, i1 %arg) nounwind uwtable ssp {
 ; CHECK-NEXT:    [[LSR_IV:%.*]] = phi i64 [ undef, [[MESHBB1]] ], [ [[INDVARS_IV8_I_SV_PHI24:%.*]], [[FOR_BODY3_LR_PH_US_I_LOOPEXIT:%.*]] ]
 ; CHECK-NEXT:    [[ARRAYIDX_US_I:%.*]] = getelementptr inbounds double, ptr undef, i64 [[LSR_IV]]
 ; CHECK-NEXT:    [[TMP1:%.*]] = add i64 [[LSR_IV]], 1
-; CHECK-NEXT:    [[TMP3]] = trunc i64 [[LSR_IV]] to i32
 ; CHECK-NEXT:    br label [[FOR_BODY3_US_I:%.*]]
 ; CHECK:       for.inc8.us.i2:
 ; CHECK-NEXT:    unreachable
@@ -178,7 +175,6 @@ define fastcc void @test3(ptr nocapture %u, i1 %arg) nounwind uwtable ssp {
 ; CHECK-NEXT:    [[INDVARS_IV8_I_SV_PHI24]] = phi i64 [ undef, [[FOR_BODY3_US_I]] ], [ [[TMP1]], [[FOR_INC8_US_I]] ]
 ; CHECK-NEXT:    [[MESHSTACKVARIABLE_PHI:%.*]] = phi i32 [ [[OPQ_SA_CALC12]], [[FOR_BODY3_US_I]] ], [ undef, [[FOR_INC8_US_I]] ]
 ; CHECK-NEXT:    [[SCEVGEP1]] = getelementptr i8, ptr [[SCEVGEP]], i64 8
-; CHECK-NEXT:    [[LSR_IV_NEXT]] = add i32 [[TMP]], 1
 ; CHECK-NEXT:    br i1 [[ARG]], label [[FOR_BODY3_LR_PH_US_I_LOOPEXIT]], label [[FOR_BODY3_US_I]]
 ; CHECK:       meshBB1.loopexit:
 ; CHECK-NEXT:    br label [[MESHBB1]]
