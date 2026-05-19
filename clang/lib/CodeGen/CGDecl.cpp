@@ -1637,9 +1637,9 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
     }
 
     if (Bypasses.IsBypassed(&D) && !emission.IsEscapingByRef &&
-        !emission.NRVOFlag && !Ty->isVariablyModifiedType()) {
+        !Ty->isVariablyModifiedType()) {
       if (getAutoVarInitKind(Ty, D) !=
-              LangOptions::TrivialAutoVarInitKind::Uninitialized) {
+          LangOptions::TrivialAutoVarInitKind::Uninitialized) {
         // Record this bypassed var's address for switch-case init emission.
         BypassedVarInits.insert({&D, address});
 
