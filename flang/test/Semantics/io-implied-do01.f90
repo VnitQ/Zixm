@@ -56,9 +56,31 @@ program test
   !WARNING: I/O implied DO index 'k' appears in an enclosing I/O implied DO loop and should not have the same name [-Wio-implied-do-index-conflict]
   write(*,*) (((cube(i,j,k), k=1,5), j=1,5), k=1,5)
 
+  ! Bad: sibling implied-DOs both conflicting with outer k (first sibling diagnosed)
+  !WARNING: I/O implied DO index 'k' appears in an enclosing I/O implied DO loop and should not have the same name [-Wio-implied-do-index-conflict]
+  write(*,*) (((cube(i,j,k), k=1,5), (cube(i,j,k), k=1,5), j=1,5), k=1,5)
+
   ! Bad: ASSOCIATE — x is associated with j
   associate(x => j)
     !WARNING: I/O implied DO index 'x' should not be associated with do-variable 'j' of an enclosing I/O implied DO loop [-Wio-implied-do-index-conflict]
     write(*,'(10i5)') ((matrix(i,x), x=1,10), j=1,10)
   end associate
 end program test
+
+subroutine host()
+  implicit none
+  integer :: matrix(10,10), i, j
+contains
+  subroutine nested()
+    ! Bad: j is host-associated from host()
+    !WARNING: I/O implied DO index 'j' appears in an enclosing I/O implied DO loop and should not have the same name [-Wio-implied-do-index-conflict]
+    write(*,'(10i5)') ((matrix(i,j), j=1,10), j=1,10)
+  end subroutine
+end subroutine
+
+subroutine implicit_test()
+  ! No implicit none — i, j are implicitly integer
+  integer :: matrix(10,10)
+  !WARNING: I/O implied DO index 'j' appears in an enclosing I/O implied DO loop and should not have the same name [-Wio-implied-do-index-conflict]
+  write(*,'(10i5)') ((matrix(i,j), j=1,10), j=1,10)
+end subroutine
