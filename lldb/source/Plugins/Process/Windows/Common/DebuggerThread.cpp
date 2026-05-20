@@ -25,6 +25,7 @@
 
 #include "Plugins/Process/Windows/Common/ProcessWindowsLog.h"
 
+#include "lldb/Utility/LLDBLog.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/Threading.h"
@@ -40,9 +41,45 @@
 using namespace lldb;
 using namespace lldb_private;
 
+typedef BOOL WINAPI WaitForDebugEventFn(LPDEBUG_EVENT, DWORD);
+static WaitForDebugEventFn *g_wait_for_debug_event = nullptr;
+
+static WaitForDebugEventFn *GetWaitForDebugEventEx() {
+  HMODULE h_kernel32 = LoadLibraryW(L"kernel32.dll");
+  if (!h_kernel32) {
+    llvm::Error err = llvm::errorCodeToError(
+        std::error_code(GetLastError(), std::system_category()));
+    LLDB_LOG_ERROR(GetLog(LLDBLog::Host), std::move(err),
+                   "Could not load kernel32: {0}");
+    return nullptr;
+  }
+
+  return reinterpret_cast<WaitForDebugEventFn *>(
+      GetProcAddress(h_kernel32, "WaitForDebugEventEx"));
+}
+
+/// WaitForDebugEventEx is only available on Windows 10+. This lazily checks if
+/// the function is available and falls back to WaitForDebugEvent if
+/// unavailable. The -Ex version ensures correct forwarding of
+/// OutputDebugStringW events.
+static void InitializeWaitForDebugEvent() {
+  if (g_wait_for_debug_event)
+    return;
+
+  g_wait_for_debug_event = GetWaitForDebugEventEx();
+  if (!g_wait_for_debug_event) {
+    LLDB_LOG(
+        GetLog(LLDBLog::Host),
+        "WaitForDebugEventEx unavailable, using WaitForDebugEvent instead. "
+        "Unicode strings from OutputDebugStringW might show incorrectly.");
+    g_wait_for_debug_event = &WaitForDebugEvent;
+  }
+}
+
 DebuggerThread::DebuggerThread(DebugDelegateSP debug_delegate)
     : m_debug_delegate(debug_delegate), m_pid_to_detach(0),
       m_is_shutting_down(false) {
+  InitializeWaitForDebugEvent();
   m_debugging_ended_event = ::CreateEvent(nullptr, TRUE, FALSE, nullptr);
 }
 
@@ -236,7 +273,7 @@ void DebuggerThread::DebugLoop() {
   LLDB_LOG_VERBOSE(log, "Entering WaitForDebugEvent loop");
   while (should_debug) {
     LLDB_LOG_VERBOSE(log, "Calling WaitForDebugEvent");
-    BOOL wait_result = WaitForDebugEvent(&dbe, INFINITE);
+    BOOL wait_result = g_wait_for_debug_event(&dbe, INFINITE);
     if (wait_result) {
       DWORD continue_status = DBG_CONTINUE;
       bool shutting_down = m_is_shutting_down;
@@ -314,7 +351,7 @@ void DebuggerThread::DebugLoop() {
           // target threads are running at this time, there is possibility to
           // have some breakpoint exception between last WaitForDebugEvent and
           // DebugActiveProcessStop but ignore for now.
-          while (WaitForDebugEvent(&dbe, 0)) {
+          while (g_wait_for_debug_event(&dbe, 0)) {
             continue_status = DBG_CONTINUE;
             if (dbe.dwDebugEventCode == EXCEPTION_DEBUG_EVENT &&
                 !(dbe.u.Exception.ExceptionRecord.ExceptionCode ==
@@ -446,6 +483,37 @@ DebuggerThread::HandleExitProcessEvent(const EXIT_PROCESS_DEBUG_INFO &info,
   return DBG_CONTINUE;
 }
 
+static std::optional<std::string>
+ConvertNtDevicePathToDosPath(llvm::ArrayRef<wchar_t> nt_path) {
+  std::array<wchar_t, 512> drive_strings;
+  drive_strings[0] = L'\0';
+  if (!::GetLogicalDriveStringsW(drive_strings.size(), drive_strings.data()))
+    return std::nullopt;
+
+  std::array<wchar_t, 3> drive = {L"_:"};
+  for (const wchar_t *it = drive_strings.data(); *it != L'\0';
+       it += wcslen(it) + 1) {
+    drive[0] = it[0];
+    std::array<wchar_t, MAX_PATH> device_name;
+    if (!::QueryDosDeviceW(drive.data(), device_name.data(),
+                           device_name.size()))
+      continue;
+    size_t device_name_len = wcslen(device_name.data());
+    if (device_name_len >= nt_path.size())
+      continue;
+    bool match =
+        _wcsnicmp(nt_path.data(), device_name.data(), device_name_len) == 0;
+    if (match && nt_path[device_name_len] == L'\\') {
+      std::wstring rebuilt_path(drive.data());
+      rebuilt_path.append(&nt_path[device_name_len]);
+      std::string path_utf8;
+      llvm::convertWideToUTF8(rebuilt_path, path_utf8);
+      return path_utf8;
+    }
+  }
+  return std::nullopt;
+}
+
 static std::optional<std::string> GetFileNameFromHandleFallback(HANDLE hFile) {
   // Check that file is not empty as we cannot map a file with zero length.
   DWORD dwFileSizeHi = 0;
@@ -469,36 +537,7 @@ static std::optional<std::string> GetFileNameFromHandleFallback(HANDLE hFile) {
                             mapped_filename.data(), mapped_filename.size()))
     return std::nullopt;
 
-  // A series of null-terminated strings, plus an additional null character
-  std::array<wchar_t, 512> drive_strings;
-  drive_strings[0] = L'\0';
-  if (!::GetLogicalDriveStringsW(drive_strings.size(), drive_strings.data()))
-    return std::nullopt;
-
-  std::array<wchar_t, 3> drive = {L"_:"};
-  for (const wchar_t *it = drive_strings.data(); *it != L'\0';
-       it += wcslen(it) + 1) {
-    // Copy the drive letter to the template string
-    drive[0] = it[0];
-    std::array<wchar_t, MAX_PATH> device_name;
-    if (::QueryDosDeviceW(drive.data(), device_name.data(),
-                          device_name.size())) {
-      size_t device_name_len = wcslen(device_name.data());
-      if (device_name_len < mapped_filename.size()) {
-        bool match = _wcsnicmp(mapped_filename.data(), device_name.data(),
-                               device_name_len) == 0;
-        if (match && mapped_filename[device_name_len] == L'\\') {
-          // Replace device path with its drive letter
-          std::wstring rebuilt_path(drive.data());
-          rebuilt_path.append(&mapped_filename[device_name_len]);
-          std::string path_utf8;
-          llvm::convertWideToUTF8(rebuilt_path, path_utf8);
-          return path_utf8;
-        }
-      }
-    }
-  }
-  return std::nullopt;
+  return ConvertNtDevicePathToDosPath(mapped_filename);
 }
 
 DWORD
