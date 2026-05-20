@@ -516,6 +516,8 @@ Improvements to Clang's diagnostics
   
 - The diagnostics around ``__block`` now explain why a variable cannot be marked ``__block``. (#GH197213)
 
+- ``-Wimplicit-fallthrough`` was added to ``-Wextra`` for GCC compatibility.
+
 Improvements to Clang's time-trace
 ----------------------------------
 
