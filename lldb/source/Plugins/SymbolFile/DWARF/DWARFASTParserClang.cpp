@@ -1216,7 +1216,7 @@ std::pair<bool, TypeSP> DWARFASTParserClang::ParseCXXMethod(
     else
       dwarf->GetObjectFile()->GetModule()->ReportWarning(
           "{0:x8}: DW_AT_specification({1:x16}"
-          ") has no decl\n",
+          ") has no decl",
           die.GetID(), spec_die.GetOffset());
 
     return {true, nullptr};
@@ -1236,7 +1236,7 @@ std::pair<bool, TypeSP> DWARFASTParserClang::ParseCXXMethod(
     else
       dwarf->GetObjectFile()->GetModule()->ReportWarning(
           "{0:x8}: DW_AT_abstract_origin({1:x16}"
-          ") has no decl\n",
+          ") has no decl",
           die.GetID(), abs_die.GetOffset());
 
     return {true, nullptr};
@@ -2497,11 +2497,6 @@ Function *DWARFASTParserClang::ParseFunctionFromDWARF(
       func_name.SetValue(ConstString(name));
 
     FunctionSP func_sp;
-    std::unique_ptr<Declaration> decl_up;
-    if (decl_file || decl_line || decl_column)
-      decl_up = std::make_unique<Declaration>(
-          die.GetCU()->GetFile(decl_file.value_or(0)), decl_line.value_or(0),
-          decl_column.value_or(0));
 
     SymbolFileDWARF *dwarf = die.GetDWARF();
     // Supply the type _only_ if it has already been parsed
@@ -3024,7 +3019,7 @@ void DWARFASTParserClang::ParseSingleMember(
           "{0:x16}: {1} ({2}) bitfield named \"{3}\" has invalid "
           "bit offset ({4:x8}) member will be ignored. Please file a bug "
           "against the "
-          "compiler and include the preprocessed output for {5}\n",
+          "compiler and include the preprocessed output for {5}",
           die.GetID(), DW_TAG_value_to_name(tag), tag, attrs.name,
           this_field_info.bit_offset, GetUnitName(parent_die).c_str());
       return;
