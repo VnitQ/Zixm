@@ -546,8 +546,8 @@ Improvements to Clang's diagnostics
 
 - Extended ``-Wnonportable-include-path`` to warn about trailing whitespace and dots in ``#include`` paths. (#GH190610)
 
-- Added warnings for floating-point exception function calls (fenv.h) without enabling
-  floating-point exception behavior via the appropriate flags or pragmas. (#GH128239)
+- Added warnings for floating-point exception function calls (fenv.h) without enabling floating-point
+  exception behavior via the appropriate flags or pragmas on supported targets. (#GH128239)
 
 Improvements to Clang's time-trace
 ----------------------------------
