@@ -630,8 +630,9 @@ unsigned VPInstruction::getNumOperandsForOpcode() const {
   llvm_unreachable("all cases should be handled above");
 }
 
-bool VPInstruction::doesGeneratePerAllLanes() const {
-  return Opcode == VPInstruction::PtrAdd && !vputils::onlyFirstLaneUsed(this);
+bool VPInstruction::mustReplicate() const {
+  return Opcode == VPInstruction::Unpack ||
+         (Opcode == VPInstruction::PtrAdd && !vputils::onlyFirstLaneUsed(this));
 }
 
 bool VPInstruction::canGenerateScalarForFirstLane() const {
@@ -1266,7 +1267,7 @@ InstructionCost VPInstruction::computeCost(ElementCount VF,
       return 0;
     }
 
-    assert(!doesGeneratePerAllLanes() &&
+    assert(!mustReplicate() &&
            "Should only generate a vector value or single scalar, not scalars "
            "for all lanes.");
     return getCostForRecipeWithOpcode(
