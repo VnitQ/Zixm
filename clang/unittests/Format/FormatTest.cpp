@@ -14383,6 +14383,8 @@ TEST_F(FormatTest, IncorrectCodeUnbalancedBraces) {
                 "};");
   verifyNoCrash("decltype( {\n"
                 "  {");
+  // Issue #199017
+  verifyNoCrash("{{ < ? } a} b");
 }
 
 TEST_F(FormatTest, IncorrectUnbalancedBracesInMacrosWithUnicode) {

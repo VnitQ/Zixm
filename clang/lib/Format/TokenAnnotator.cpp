@@ -1297,6 +1297,11 @@ private:
         next();
         return true;
       }
+      // Avoid consuming an unbalanced `}` here: it would pop a Scopes frame
+      // owned by an enclosing parseBrace and trip its `!Scopes.empty()`
+      // assertion. See Issue #199017.
+      if (CurrentToken->is(tok::r_brace))
+        return false;
       if (!consumeToken())
         return false;
     }
