@@ -1186,6 +1186,7 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
   setTargetDAGCombine(ISD::GlobalAddress);
 
   setTargetDAGCombine(ISD::CTLZ);
+  setTargetDAGCombine({ISD::CTTZ, ISD::CTTZ_ZERO_POISON});
 
   setTargetDAGCombine(ISD::GET_ACTIVE_LANE_MASK);
 
@@ -26247,6 +26248,99 @@ static SDValue vectorToScalarBitmask(SDNode *N, SelectionDAG &DAG) {
   return DAG.getNode(ISD::VECREDUCE_ADD, DL, ResultVT, RepresentativeBits);
 }
 
+// When taking the trailing-zero count of a bitcast from <N x i1> to scalar
+// iN, we can pack each lane into a small bit-slot of a 64-bit scalar
+// with shrn (for byte lanes) or xtn (for wider lanes) then run a
+// scalar cttz on the result.
+static SDValue performCTTZCombine(SDNode *N,
+                                  TargetLowering::DAGCombinerInfo &DCI,
+                                  SelectionDAG &DAG) {
+  // Run before vectorToScalarBitmask() expands it.
+  if (!DCI.isBeforeLegalize())
+    return SDValue();
+
+  EVT VT = N->getValueType(0);
+  if (!VT.isScalarInteger())
+    return SDValue();
+  SDValue BitcastNode = N->getOperand(0);
+  if (BitcastNode.getOpcode() != ISD::BITCAST)
+    return SDValue();
+  SDValue Predicate = BitcastNode.getOperand(0);
+  EVT PredVT = Predicate.getValueType();
+  if (!PredVT.isFixedLengthVector() || PredVT.getVectorElementType() != MVT::i1)
+    return SDValue();
+
+  unsigned NumLanes = PredVT.getVectorNumElements();
+  if (!isPowerOf2_32(NumLanes) || NumLanes < 2 || NumLanes > 32)
+    return SDValue();
+
+  bool IsBigEndian = !DAG.getDataLayout().isLittleEndian();
+
+  constexpr unsigned DRegBits = 64;
+  constexpr unsigned QRegBits = 128;
+  constexpr unsigned MinLaneBits = 8;
+
+  // Pick a lane width to sext the predicate to. Prefer the original
+  // compare input width if we can find it and it fits in at most two NEON
+  // registers but otherwise pick a minimum-width type that fits.
+  EVT MaskVT = tryGetOriginalBoolVectorType(Predicate);
+  if (!MaskVT.isSimple() ||
+      MaskVT.changeVectorElementTypeToInteger().getSizeInBits() >
+          2 * QRegBits ||
+      MaskVT.changeVectorElementTypeToInteger().getSizeInBits() < DRegBits) {
+    unsigned LaneBits = std::max(DRegBits / NumLanes, MinLaneBits);
+    MaskVT = MVT::getVectorVT(MVT::getIntegerVT(LaneBits), NumLanes);
+  }
+  MaskVT = MaskVT.changeVectorElementTypeToInteger();
+
+  unsigned MaskBits = MaskVT.getSizeInBits();
+  if (MaskBits != DRegBits && MaskBits != QRegBits && MaskBits != 2 * QRegBits)
+    return SDValue();
+
+  // Wider inputs compress to i128, narrower to i64.
+  unsigned CompressedBits = (MaskBits == 2 * QRegBits) ? QRegBits : DRegBits;
+  EVT ScalarVT = (CompressedBits == QRegBits) ? MVT::i128 : MVT::i64;
+
+  SDLoc DL(N);
+  SDValue Mask = DAG.getSExtOrTrunc(Predicate, DL, MaskVT);
+
+  LLVMContext &Ctx = *DAG.getContext();
+  SDValue Compressed;
+  if (MaskBits == CompressedBits) {
+    Compressed = DAG.getBitcast(ScalarVT, Mask);
+  } else {
+    unsigned LaneBits = MaskVT.getScalarSizeInBits();
+    SDValue ToTrunc = Mask;
+    EVT NarrowVT;
+    if (LaneBits == MinLaneBits) {
+      // NEON's smallest vector lane type is i8 so we can't narrow further.
+      // Instead, bitcast the mask to i16 lanes and shrn by 4 to pack each
+      // input byte into 4 bits of the output
+      NarrowVT = MaskVT.getHalfNumVectorElementsVT(Ctx);
+      EVT PairedVT = NarrowVT.widenIntegerVectorElementType(Ctx);
+      SDValue Paired = DAG.getBitcast(PairedVT, Mask);
+      SDValue ShAmt = DAG.getConstant(LaneBits / 2, DL, PairedVT);
+      ToTrunc = DAG.getNode(ISD::SRL, DL, PairedVT, Paired, ShAmt);
+    } else {
+      // For wider lanes, xtn each lane down to half its width.
+      NarrowVT = MaskVT.changeVectorElementType(
+          Ctx, EVT::getIntegerVT(Ctx, LaneBits / 2));
+    }
+    SDValue Narrowed = DAG.getNode(ISD::TRUNCATE, DL, NarrowVT, ToTrunc);
+    Compressed = DAG.getBitcast(ScalarVT, Narrowed);
+  }
+
+  // BE puts lane 0 at the high end of the scalar after the bitcast, so we use
+  // clz instead of cttz to find the first match.
+  unsigned CountOpcode = IsBigEndian ? ISD::CTLZ : ISD::CTTZ;
+  SDValue Ctz = DAG.getNode(CountOpcode, DL, ScalarVT, Compressed);
+  unsigned LaneIndexShift = Log2_32(CompressedBits / NumLanes);
+  if (LaneIndexShift)
+    Ctz = DAG.getNode(ISD::SRL, DL, ScalarVT, Ctz,
+                      DAG.getShiftAmountConstant(LaneIndexShift, ScalarVT, DL));
+  return DAG.getSExtOrTrunc(Ctz, DL, VT);
+}
+
 static SDValue combineBoolVectorAndTruncateStore(SelectionDAG &DAG,
                                                  StoreSDNode *Store) {
   if (!Store->isTruncatingStore())
@@ -29722,6 +29816,9 @@ SDValue AArch64TargetLowering::PerformDAGCombine(SDNode *N,
     return performMINMAXCombine(N, DAG, *this);
   case ISD::TRUNCATE:
     return performTruncateCombine(N, DAG, DCI);
+  case ISD::CTTZ:
+  case ISD::CTTZ_ZERO_POISON:
+    return performCTTZCombine(N, DCI, DAG);
   case AArch64ISD::ANDS:
     return performANDSCombine(N, DCI);
   case AArch64ISD::ADC:
