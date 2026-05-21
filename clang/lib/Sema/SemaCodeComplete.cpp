@@ -4429,7 +4429,10 @@ CXCursorKind clang::getCursorKindForDecl(const Decl *D) {
   case Decl::TypeAliasTemplate:
     return CXCursor_TypeAliasTemplateDecl;
   case Decl::Var:
+  case Decl::VarTemplateSpecialization:
     return CXCursor_VarDecl;
+  case Decl::VarTemplatePartialSpecialization:
+    return CXCursor_VarTemplatePartialSpecialization;
   case Decl::Namespace:
     return CXCursor_Namespace;
   case Decl::NamespaceAlias:
@@ -4444,6 +4447,8 @@ CXCursorKind clang::getCursorKindForDecl(const Decl *D) {
     return CXCursor_FunctionTemplate;
   case Decl::ClassTemplate:
     return CXCursor_ClassTemplate;
+  case Decl::VarTemplate:
+    return CXCursor_VarTemplate;
   case Decl::AccessSpec:
     return CXCursor_CXXAccessSpecifier;
   case Decl::ClassTemplatePartialSpecialization:
