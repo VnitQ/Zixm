@@ -1875,6 +1875,9 @@ CodeGenFunction::getAutoVarInitKind(QualType type, const VarDecl &D) {
   return getContext().getLangOpts().getTrivialAutoVarInit();
 }
 
+// Re-emitting at the goto source covers backward gotos too: per C6.2.4p6, if
+// an initialization is specified, it runs each time the declaration is
+// reached. This synthesized auto-init counts as that initialization.
 void CodeGenFunction::emitBypassedVarInitsForSource(const Stmt *Source) {
   const auto *Vars = Bypasses.getBypassedVarsForSource(Source);
   if (!Vars)
