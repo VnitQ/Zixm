@@ -1,31 +1,79 @@
+"""
+Platform assumptions:
+  Linux - x86-64, Intel CPU, clang+lld, sudo; use --skip-env-setup if unsupported
+  macOS - Apple Silicon (arm64), caffeinate
+  Windows - x86-64 MSVC, x64 Native Tools prompt, env setup requires Administrator
+"""
+
 import argparse
-import platform
+import logging
 import shutil
 import subprocess
 import sys
-from abc import ABC, abstractmethod
+from abc import ABC
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from platform import system
+from typing import Dict, List, Optional, Tuple
 
-SYSTEM = platform.system()
+SYSTEM = system()
+IS_LINUX = SYSTEM == "Linux"
+IS_MAC = SYSTEM == "Darwin"
+IS_WINDOWS = SYSTEM == "Windows"
 
-def sudo_write(path: Path, value: str) -> None:
+log = logging.getLogger("benchmark")
+
+
+class _LevelFormatter(logging.Formatter):
+    """Plain message for INFO (status banners); WARN: prefix for warnings."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        msg = record.getMessage()
+        return f"WARN: {msg}" if record.levelno >= logging.WARNING else msg
+
+
+def _configure_logging() -> None:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(_LevelFormatter())
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
+
+
+# Windows power setting GUIDs for CPU boost mode
+W_SUB_PROC = "54533251-82be-4824-96c1-47b60b740d00"
+W_BOOST = "be337238-0d82-4146-a960-4f3749d470c7"
+
+
+def _sudo_write(path: Path, value: str) -> None:
     """Write value to sysfs path via sudo tee and suppressing echo"""
     subprocess.run(
         ["sudo", "tee", str(path)],
-        input=value, text=True, check=True, stdout=subprocess.DEVNULL,
+        input=value,
+        text=True,
+        check=True,
+        stdout=subprocess.DEVNULL,
     )
 
 
-def is_windows_admin() -> bool:
-    if SYSTEM != "Windows":
+def _is_windows_admin() -> bool:
+    if not IS_WINDOWS:
         return False
     try:
         import ctypes
+
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
         return False
+
+
+CGROUP_V2_HINT = """\
+cset shield failed (likely cgroup v2); falling back to taskset.
+      cgroup v1 cpuset workarounds: https://documentation.ubuntu.com/real-time/latest/how-to/isolate-workload-cpusets/
+      Suppress this warning with --disable-cset."""
+
+
+def _print_cgroup_v2_hint() -> None:
+    """Warn that cset needs cgroup v1 and that we fell back to taskset."""
+    log.warning(CGROUP_V2_HINT)
 
 
 class EnvironmentSetup(ABC):
@@ -39,249 +87,384 @@ class EnvironmentSetup(ABC):
 
     def __exit__(self, *_):
         self.restore()
-    
-    @abstractmethod
-    def setup(self) -> None: ...
 
-    @abstractmethod
-    def restore(self) -> None: ...
+    def setup(self) -> None:
+        self.set_cpu_performance()
+        self.disable_turbo()
+        self.shield_cpus()
+        self.disable_smt()
+        self.disable_aslr()
+
+    def restore(self) -> None:
+        self.restore_smt()
+        self.unshield_cpus()
+        self.restore_turbo()
+        self.restore_cpu_performance()
+        self.restore_aslr()
+
+    def set_cpu_performance(self) -> None:
+        pass
+
+    def restore_cpu_performance(self) -> None:
+        pass
+
+    def disable_turbo(self) -> None:
+        pass
+
+    def restore_turbo(self) -> None:
+        pass
+
+    def disable_smt(self) -> None:
+        pass
+
+    def restore_smt(self) -> None:
+        pass
+
+    def disable_aslr(self) -> None:
+        pass
+
+    def restore_aslr(self) -> None:
+        pass
+
+    def shield_cpus(self) -> None:
+        pass
+
+    def unshield_cpus(self) -> None:
+        pass
 
 
 class LinuxEnvironmentSetup(EnvironmentSetup):
-    """cpu performance governor, turbo disable, smt disable, cset, aslr disable, tmpfs, stop noisy services"""
-    BEGIN = [
-        "snapd", "apt-daily.timer", "apt-daily-upgrade.timer",
-        "apt-daily.service", "apt-daily-upgrade.service", "unattended-updates"
-    ]
-    END = ["snapd", "apt-daily.timer", "apt-daily-upgrade.timer", "unattended-upgrades"]
+    """Stabilise a Linux benchmark environment.
 
-    def __init__(self, benchmark_cpus : str, test_path: Path, bin_dir: Path) -> None:
+    Limitations: Intel CPU only for turbo (AMD boost at cpufreq/boost is TODO);
+    requires cpupower and sudo; cset optional.
+    """
+
+    GOV_PATH = Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+    TURBO_PATH = Path("/sys/devices/system/cpu/intel_pstate/no_turbo")
+    SMT_PATH = Path("/sys/devices/system/cpu/smt/control")
+    ASLR_PATH = Path("/proc/sys/kernel/randomize_va_space")
+
+    def __init__(
+        self, benchmark_cpus: str, use_cset: bool, cset_available: bool
+    ) -> None:
         self.benchmark_cpus = benchmark_cpus
-        self.saved_governor = "powersave"
-        self.turbo_path: Optional[Path] = None
-        self.saved_turbo: Optional[str] = None
-        self.smt_path = Path("/sys/devices/system/cpu/smt/control")
-        self.saved_smt : Optional[str] = None
-        self.aslr_path = Path("/proc/sys/kernel/randomize_va_space")
-        self.saved_aslr : Optional[str] = None
-        self.test_path = test_path
-        self.bin_dir = bin_dir
+        self.saved: Dict[str, str] = {}
+        self.use_cset: bool = use_cset
+        self.cset_available: bool = cset_available
 
-    def setup(self) -> None:
-        gov_path = Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
-        if gov_path.exists():
-            self.saved_governor = gov_path.read_text().strip()
-        subprocess.run(
-            ["sudo", "cpupower", "frequency-set", "-g", "performance"],
-            check=True,
-        )
+    def sysfs_set(self, key: str, path: Path, value: str) -> None:
+        if not path.exists():
+            log.warning(f"could not write {path}")
+            return
+        self.saved[key] = path.read_text().strip()
+        try:
+            _sudo_write(path, value)
+            log.info(f"=== {key} Disabled ===")
+        except subprocess.CalledProcessError:
+            log.warning(f"could not write {path}")
+
+    def sysfs_restore(self, key: str, path: Path) -> None:
+        if path.exists() and key in self.saved:
+            try:
+                _sudo_write(path, self.saved[key])
+                log.info(f"=== {key} Restored ===")
+            except subprocess.CalledProcessError:
+                log.warning(f"could not restore {path}")
+
+    def set_cpu_performance(self) -> None:
+        if self.GOV_PATH.exists():
+            self.saved["governor"] = self.GOV_PATH.read_text().strip()
+        try:
+            subprocess.run(
+                ["sudo", "cpupower", "frequency-set", "-g", "performance"], check=True
+            )
+        except subprocess.CalledProcessError:
+            log.warning("could not set cpu power")
+
+    def restore_cpu_performance(self) -> None:
+        try:
+            subprocess.run(
+                [
+                    "sudo",
+                    "cpupower",
+                    "frequency-set",
+                    "-g",
+                    self.saved.get("governor", "powersave"),
+                ],
+                check=False,
+            )
+        except subprocess.CalledProcessError:
+            log.warning("could not restore cpu power")
+
+    def disable_turbo(self) -> None:
         # TODO: disable boost mode for AMD also
         # Skipping for now, as we currently don't have access to AMD CPU
         # https://www.kernel.org/doc/html/latest/admin-guide/pm/cpufreq.html#the-boost-file-in-sysfs
-        intel = Path("/sys/devices/system/cpu/intel_pstate/no_turbo")
-        if intel.exists():
-            self.turbo_path, turbo_disable, self.saved_turbo = intel, "1", "0"
-        # Disable turbo
-        if self.turbo_path and turbo_disable:
-            try:
-                sudo_write(self.turbo_path, turbo_disable)
-            except subprocess.CalledProcessError:
-                print(f"WARN: could not write {self.turbo_path}")
-        # Stop noisy services
-        subprocess.run(["sudo", "systemctl", "stop", *self.BEGIN], check=False)
-        # Shield cpus
-        if shutil.which("cset"):
-            subprocess.run(["sudo", "cset", "shield", "-c", self.benchmark_cpus, "-k", "on"])
-        # Disable SMT
-        if self.smt_path.exists():
-            self.saved_smt = self.smt_path.read_text().strip()
-            if self.saved_smt == "on":
-                try:
-                    sudo_write(self.smt_path, "off")
-                except subprocess.CalledProcessError:
-                    print(f"WARN: could not write {self.smt_path}")
-        # Disable ASLR
-        if self.aslr_path.exists():
-            self.saved_aslr = self.aslr_path.read_text().strip()
-            try:
-                sudo_write(self.aslr_path, "0")
-            except subprocess.CalledProcessError:
-                print(f"WARN: could not write to {self.aslr_path}")
-        print("=== Linux env: performance governor, turbo off, services stopped")
-        if shutil.which("cset"):
-            print(f"=== LInux env: cset shield active on cpus {self.benchmark_cpus} ===")
+        self.sysfs_set("turbo", self.TURBO_PATH, "1")
 
-    def restore(self) -> None:
-        # Restore SMT
-        if self.smt_path.exists() and self.saved_smt:
-            try:
-                sudo_write(self.smt_path, self.saved_smt)
-            except subprocess.CalledProcessError:
-                print(f"WARN: could not write {self.smt_path}")
-        # Disable cpu shield
-        if shutil.which("cset"):
-            subprocess.run(["sudo", "cset", "shield", "--reset"], check=False)
-        # Restore cpu governor
-        subprocess.run(
-            ["sudo", "cpupower", "frequency-set", "-g", self.saved_governor],
-            check=True,
-        )
-        # Restore turbo
+    def restore_turbo(self) -> None:
         # TODO: restore boost mode for AMD here
-        if self.turbo_path and self.saved_turbo:
-            try:
-                sudo_write(self.turbo_path, self.saved_turbo)
-            except subprocess.CalledProcessError:
-                print(f"WARN: could not write {self.turbo_path}")
-        # Restore ASLR
-        if self.aslr_path.exists() and self.saved_aslr:
-            try:
-                sudo_write(self.aslr_path, self.saved_aslr)
-            except subprocess.CalledProcessError:
-                print(f"WARN: could not write {self.aslr_path}")
-        # Restart stopped services
-        subprocess.run(["sudo", "systemctl", "start", *self.END], check=False)
-        print("=== Linux env: restored ===")
+        self.sysfs_restore("turbo", self.TURBO_PATH)
+
+    def disable_smt(self) -> None:
+        if self.SMT_PATH.exists() and self.SMT_PATH.read_text().strip() == "on":
+            self.sysfs_set("smt", self.SMT_PATH, "off")
+
+    def restore_smt(self) -> None:
+        self.sysfs_restore("smt", self.SMT_PATH)
+
+    def disable_aslr(self) -> None:
+        self.sysfs_set("aslr", self.ASLR_PATH, "0")
+
+    def restore_aslr(self) -> None:
+        self.sysfs_restore("aslr", self.ASLR_PATH)
+
+    def shield_cpus(self) -> None:
+        if not self.use_cset or not self.cset_available:
+            return
+        result = subprocess.run(
+            ["sudo", "cset", "shield", "-c", self.benchmark_cpus, "-k", "on"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            stderr = result.stderr + result.stdout
+            if any(
+                msg in stderr
+                for msg in (
+                    "mount of cpuset filesystem failed",
+                    "Invalid argument",
+                    "failed to create shield",
+                    "cpuset not mounted",
+                )
+            ):
+                _print_cgroup_v2_hint()
+            else:
+                log.warning(f"cset shield failed: {stderr.strip()}")
+            self.use_cset = False
+        else:
+            log.info(f"=== cset shield on CPUs {self.benchmark_cpus} ===")
+
+    def unshield_cpus(self) -> None:
+        if self.use_cset and self.cset_available:
+            subprocess.run(["sudo", "cset", "shield", "--reset"], check=False)
+            log.info("=== cset shield removed ===")
 
 
 class MacEnvironmentSetup(EnvironmentSetup):
-    """caffeinate -dimsu keeps the system awake for the duration of benchmarking"""
+    """macOS: caffeinate only. No scriptable turbo/SMT/ASLR/shielding equivalents."""
+
+    def __init__(self) -> None:
+        self.proc = None
+
     def setup(self) -> None:
         self.proc = subprocess.Popen(["caffeinate", "-dimsu"])
-        print("=== Mac env: caffeinate started")
+        log.info("=== Mac env: caffeinate started ===")
 
     def restore(self) -> None:
-        self.proc.terminate()
-        self.proc.wait()
-        print("=== Mac env: caffeinate stopped ===")
-    
+        if self.proc is not None:
+            self.proc.terminate()
+            self.proc.wait()
+            log.info("=== Mac env: caffeinate stopped ===")
+
+
 class WindowsEnvironmentSetup(EnvironmentSetup):
-    """Ultimate/high performance plan, defender exclusions, services stopped"""
-    END = ["SysMain", "WSearch", "DoSvc", "BITS"]
+    """Windows: Ultimate performance plan, defender exclusions, PERFBOOSTMODE turbo
+
+    No runtime equivalent for SMT, ASLR, CPU shielding
+    """
+
+    THROTTLE = [
+        ("SUB_PROCESSOR", "PROCTHROTTLEMIN"),
+        ("SUB_PROCESSOR", "PROCTHROTTLEMAX"),
+        ("SUB_PROCESSOR", "CPMINCORES"),
+    ]
 
     def __init__(self, repo_root: Path) -> None:
         self.winmm = None
         self.repo_root = repo_root
+        self.saved_scheme: Optional[str] = None
+        self.saved: Dict[str, Dict[str, str]] = {}
 
     def setup(self) -> None:
-        if not is_windows_admin():
-            print("WARN: not running as Administrator, env setup may partially fail")
+        super().setup()
+        self.exclude_from_defender()
+
+    def restore(self) -> None:
+        self.restore_defender()
+        super().restore()
+
+    def exclude_from_defender(self) -> None:
         try:
-            subprocess.run(["powercfg", "/changename", "SCHEME_MIN", "Ultimate Performance"], check=True)
-            subprocess.run(["powercfg", "/setactive", "SCHEME_MIN"], check=True)
-        except subprocess.CalledProcessError:
-            try:
-                subprocess.run(["powercfg", "/setactive", "SCHEME_MIN"])
-            except subprocess.CalledProcessError as e:
-                pass
-        for cmd in [
-            ["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMIN", "100"],
-            ["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMAX", "100"],
-            ["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "0"],
-            ["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "CPMINCORES", "100"],
-            ["powercfg", "/setactive", "SCHEME_CURRENT"],
-        ]:
-            try:
-                subprocess.run(cmd, check=True)
-            except subprocess.CalledProcessError as e:
-                print(f"WARN: {e}")
-        try:
-            subprocess.run(["powershell", "-Command", f"Add-MpPreference -ExclusionPath '{self.repo_root}'"], check=True)
+            subprocess.run(
+                [
+                    "powershell",
+                    "-Command",
+                    f"Add-MpPreference -ExclusionPath '{self.repo_root}'",
+                ],
+                check=True,
+            )
         except subprocess.CalledProcessError as e:
-            print(f"WARN: could not add Defender exclusion: {e}")
-        for svc in self.END:
-            subprocess.run(["sc", "stop", svc], capture_output=True)
+            log.warning(f"could not add Defender exclusion: {e}")
+
+    def restore_defender(self) -> None:
+        if not _is_windows_admin():
+            return
+        try:
+            subprocess.run(
+                [
+                    "powershell",
+                    "-Command",
+                    f"Remove-MpPreference -ExclusionPath '{self.repo_root}'",
+                ],
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            log.warning(f"could not remove Defender exclusion: {e}")
+
+    def query_setting(self, sub: str, setting: str) -> Dict[str, str]:
+        r = subprocess.run(
+            ["powercfg", "/query", "SCHEME_CURRENT", sub, setting],
+            capture_output=True,
+            text=True,
+        )
+        result: Dict[str, str] = {}
+        for line in r.stdout.splitlines():
+            if "Current AC Power Setting Index:" in line:
+                result["ac"] = str(int(line.split(":")[-1].strip(), 16))
+            elif "Current DC Power Setting Index:" in line:
+                result["dc"] = str(int(line.split(":")[-1].strip(), 16))
+        return result
+
+    def apply_setting(self, sub: str, setting: str, val: str) -> None:
+        for flag in ("/setacvalueindex", "/setdcvalueindex"):
+            try:
+                subprocess.run(
+                    ["powercfg", flag, "SCHEME_CURRENT", sub, setting, val], check=True
+                )
+            except subprocess.CalledProcessError as e:
+                log.warning(f"{e}")
+
+    def restore_setting(self, key: str, sub: str, setting: str) -> None:
+        saved = self.saved.get(key, {})
+        for flag, idx in (("/setacvalueindex", "ac"), ("/setdcvalueindex", "dc")):
+            if idx in saved:
+                subprocess.run(
+                    ["powercfg", flag, "SCHEME_CURRENT", sub, setting, saved[idx]],
+                    capture_output=True,
+                )
+
+    def set_cpu_performance(self) -> None:
+        if not _is_windows_admin():
+            log.warning("not Administrator; environment setup may partially fail")
+        r = subprocess.run(
+            ["powercfg", "/getactivescheme"], capture_output=True, text=True
+        )
+        parts = r.stdout.split()
+        if len(parts) >= 4:
+            self.saved_scheme = parts[3]
+        try:
+            subprocess.run(["powercfg", "/setactive", "SCHEME_MIN"], check=True)
+        except subprocess.CalledProcessError as e:
+            log.warning(f"could not activate Ultimate Performance plan: {e}")
+            log.warning("continuing; throttle settings will still be applied")
+        for sub, setting in self.THROTTLE:
+            self.saved[setting] = self.query_setting(sub, setting)
+        for sub, setting in self.THROTTLE:
+            self.apply_setting(sub, setting, "100")
+        subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"], check=False)
         try:
             import ctypes
+
             self.winmm = ctypes.WinDLL("winmm")
             self.winmm.timeBeginPeriod(1)
         except Exception as e:
-            print(f"WARN: could not set 1ms timer resolution: {e}")
-        print("=== Windows env: Performance plan, Defender exclusions, services stopped, 1ms timer ===")
-    
-    def restore(self) -> None:
-        for cmd in [
-            ["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PERFBOOSTMODE", "1"],
-            ["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMIN", "5"],
-            ["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "PROCTHROTTLEMAX", "100"],
-            ["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_PROCESSOR", "CPMINCORES", "0"],
-            ["powercfg", "/setactive", "SCHEME_CURRENT"],
-            ["powercfg", "/setactive", "SCHEME_BALANCED"],
-        ]:
-            subprocess.run(cmd, capture_output=True)
-        if is_windows_admin():
-            try:
-                subprocess.run(["powershell", "-Command", f"Remove-MpPreference -ExclusionPath '{self.repo_root}'"], check=True)
-            except subprocess.CalledProcessError:
-                pass
-        for svc in self.END:
-            subprocess.run(["sc", "start", svc], capture_output=True)
+            log.warning(f"could not set 1 ms timer resolution: {e}")
+
+    def restore_cpu_performance(self) -> None:
+        for sub, setting in self.THROTTLE:
+            self.restore_setting(setting, sub, setting)
+        scheme = self.saved_scheme or "SCHEME_BALANCED"
+        subprocess.run(["powercfg", "/setactive", scheme], capture_output=True)
         if self.winmm:
             try:
                 self.winmm.timeEndPeriod(1)
             except Exception:
                 pass
-        print("=== Windows env: restored ===")
+
+    def disable_turbo(self) -> None:
+        self.saved["boost"] = self.query_setting(W_SUB_PROC, W_BOOST)
+        self.apply_setting(W_SUB_PROC, W_BOOST, "0")
+        subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"], check=False)
+
+    def restore_turbo(self) -> None:
+        self.restore_setting("boost", W_SUB_PROC, W_BOOST)
+        subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"], check=False)
 
 
 class NullEnvironmentSetup(EnvironmentSetup):
-    def setup(self) -> None: pass
-    def restore(self) -> None: pass
+    pass
 
 
-def make_env(args) -> EnvironmentSetup:
+def _make_env(
+    args, repo_root: Path, use_cset: bool, cset_available: bool
+) -> EnvironmentSetup:
     if args.skip_env_setup:
         return NullEnvironmentSetup()
-    if SYSTEM=="Linux":
-        # |--llvm-project
-        # |----llvm
-        # |--build
-        repo_root = Path(args.repo_root).resolve() if args.repo_root else Path.cwd().parents[4]
-        build_dir = Path(args.build_dir).resolve() if args.build_dir else repo_root / "build"
-        benchmark_cpus = args.benchmark_cpus or "2,4,6,8"
+    if IS_LINUX:
         return LinuxEnvironmentSetup(
-            benchmark_cpus=benchmark_cpus,
-            test_path=repo_root/Path(args.test_path),
-            bin_dir=build_dir/"bin"
+            benchmark_cpus=args.benchmark_cpus,
+            use_cset=use_cset,
+            cset_available=cset_available,
         )
-    if SYSTEM=="Darwin":
+    if IS_MAC:
         return MacEnvironmentSetup()
-    if SYSTEM=="Windows":
-        repo_root = Path(args.repo_root).resolve() if args.repo_root else Path.cwd()
+    if IS_WINDOWS:
         return WindowsEnvironmentSetup(repo_root=repo_root)
     return NullEnvironmentSetup()
 
 
 class BenchmarkRunner(ABC):
     """Platform-specific hyperfine execution wrapper"""
+
     def run(
-            self, lit: Path, test_path: Path, workers: int,
-            warmup: int, runs: int, results_file: Path
+        self,
+        lit: Path,
+        test_path: Path,
+        workers: int,
+        warmup: int,
+        runs: int,
+        results_file: Path,
     ) -> None:
         cmd_str = self.lit_cmd_str(lit, test_path, workers)
         hyp = self.build_hyperfine_cmd(cmd_str, warmup, runs, results_file)
-        print(f"=== Benchmarking: {test_path} (j{workers}) ===")
+        log.info(f"=== Benchmarking: {test_path} (j{workers}) ===")
         subprocess.run(self.wrap_command(hyp), check=True)
 
     def build_hyperfine_cmd(
-            self, cmd_str: str, warmup: int, runs: int, results_file: Path
+        self, cmd_str: str, warmup: int, runs: int, results_file: Path
     ) -> list:
         return [
             "hyperfine",
             "--ignore-failure",
-            "--warmup", str(warmup),
-            "--runs", str(runs),
-            "--export-markdown", str(results_file),
-            cmd_str
+            "--warmup",
+            str(warmup),
+            "--runs",
+            str(runs),
+            "--export-json",
+            str(results_file),
+            cmd_str,
         ]
 
     def lit_cmd_str(self, lit: Path, test_path: Path, workers: int) -> str:
-        if SYSTEM=="Windows":
-            return f"python '{lit}' '{test_path}' -j{workers} --no-progress-bar"
+        if IS_WINDOWS:
+            return f'python "{lit}" "{test_path}" -j{workers} --no-progress-bar'
         return f"'{lit}' '{test_path}' -j{workers} --no-progress-bar"
 
-    @abstractmethod
-    def wrap_command(self, cmd: list) -> list: ...
+    def wrap_command(self, cmd: list) -> list:
+        return cmd
 
 
 class LinuxBenchmarkRunner(BenchmarkRunner):
@@ -293,183 +476,213 @@ class LinuxBenchmarkRunner(BenchmarkRunner):
         if self.use_cset:
             return ["sudo", "cset", "shield", "--exec", "--"] + cmd
         return ["sudo", "nice", "-n", "-20", "taskset", "-c", self.cpus] + cmd
-    
+
 
 class MacBenchmarkRunner(BenchmarkRunner):
-    def wrap_command(self, cmd: list) -> list:
-        return cmd # TODO: use nice(??)
+    pass
 
 
 class WindowsBenchmarkRunner(BenchmarkRunner):
     def __init__(self, affinity_mask: str = "FFF") -> None:
-        self.affinity_mask = affinity_mask
+        self.affinity_mask = int(affinity_mask, 16)
+
+    def run(
+        self,
+        lit: Path,
+        test_path: Path,
+        workers: int,
+        warmup: int,
+        runs: int,
+        results_file: Path,
+    ):
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        HIGH_PRIORITY_CLASS = 0x00000080
+        PROCESS_SET_INFORMATION = 0x0200
+        cmd_str = self.lit_cmd_str(lit, test_path, workers)
+        hyp = self.build_hyperfine_cmd(cmd_str, warmup, runs, results_file)
+        log.info(f"=== Benchmarking: {test_path} (j{workers}) ===")
+        proc = subprocess.Popen(hyp, creationflags=HIGH_PRIORITY_CLASS)
+        h = kernel32.OpenProcess(PROCESS_SET_INFORMATION, False, proc.pid)
+        if h:
+            try:
+                if not kernel32.SetProcessAffinityMask(
+                    h, ctypes.c_size_t(self.affinity_mask)
+                ):
+                    log.warning(
+                        f"SetProcessAffinityMask failed (err={ctypes.GetLastError()})"
+                    )
+            finally:
+                kernel32.CloseHandle(h)
+        else:
+            log.warning(
+                f"OpenProcess failed (err={ctypes.GetLastError()}); affinity not set"
+            )
+        proc.wait()
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(proc.returncode, hyp)
 
     def wrap_command(self, cmd: list) -> list:
-        inner = " ".join(str(c) for c in cmd)
-        return ["cmd", "/c", f"start '' /B /Wait /High /Affinity {self.affinity_mask} {inner}"]
+        return cmd
 
 
-def make_runner(args, cset_available: bool) -> BenchmarkRunner:
-    if SYSTEM=="Linux":
-        benchmark_cpus = args.benchmark_cpus or "2,4,6,8"
-        if not cset_available:
-            print("WARN: cset not found; using taskset (install: sudo apt install cpuset)")
-        return LinuxBenchmarkRunner(benchmark_cpus, use_cset=cset_available)
-    if SYSTEM=="Darwin":
+def _make_runner(args, use_cset: bool, cset_available: bool) -> BenchmarkRunner:
+    if IS_LINUX:
+        if cset_available and not use_cset:
+            log.info("cset available but disabled; using taskset")
+        elif not cset_available:
+            log.warning(
+                "cset not found; using taskset (install: sudo apt install cpuset)"
+            )
+        return LinuxBenchmarkRunner(args.benchmark_cpus, use_cset=use_cset)
+    if IS_MAC:
         return MacBenchmarkRunner()
-    if SYSTEM=="Windows":
+    if IS_WINDOWS:
         return WindowsBenchmarkRunner(affinity_mask=args.affinity_mask)
+    return BenchmarkRunner()
 
 
-def cmake_cmd(build_dir: Path, llvm_src: Path, compiler_rt: bool) -> list:
-    runtimes = "compiler-rt" if compiler_rt else ""
-    targets = "X86;Aarch64" if (SYSTEM=="Darwin" and platform.machine()=="arm64") else "X86"
-    cmd = [
-        "cmake", "-S", str(llvm_src), "-B", str(build_dir),
-        "-G", "Ninja",
-        "-DCMAKE_BUILD_TYPE=Release",
-        f"-DLLVM_TARGETS_TO_BUILD={targets}",
-        f"-DLLVM_ENABLE_PROJECTS={'clang' if compiler_rt else ''}",
-        f"-DLLVM_ENABLE_RUNTIMES={runtimes}",
-        "-DLLVM_INCLUDE_TESTS=ON",
-        "-DLLVM_BUILD_TESTS=OFF",
-        "-DLLVM_ENABLE_ASSERTIONS=OFF"
-    ]
-    if compiler_rt:
-        cmd.append("-DCOMPILER_RT_BUILD_SANITIZERS=ON")
-    if SYSTEM=="Linux":
-        cmd += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++", "-DLLVM_ENABLE_LLD=ON"]
-    elif SYSTEM=="Windows":
-        cmd += ["-DCMAKE_C_COMPILER=cl", "-DCMAKE_CXX_COMPILER=cl"]
-    return cmd
-
-def build(build_dir: Path, llvm_src: Path, compiler_rt: bool, workers: int) -> None:
-    if (build_dir / "build.ninja").exists():
-        print(f"=== Build already configured (delete {build_dir} to reconfigure) ===")
-    else:
-        print("=== Configuring build ===")
-        subprocess.run(cmake_cmd(build_dir, llvm_src, compiler_rt), check=True)
-    print(f"=== Building tools (-j{workers}) ===")
-    ninja_targets = ["llvm-test-depends"]
-    if compiler_rt:
-        ninja_targets = ["clang", "llvm-test-depends", "runtimes"]
-    for target in ninja_targets:
-        subprocess.run(["ninja", "-C", str(build_dir), f"-j{workers}", target], check=True)
-    llc = build_dir / "bin" / ("llc.exe" if SYSTEM == "Windows" else "llc")
-    if llc.exists():
-        r = subprocess.run([str(llc), "--version"], capture_output=True, text=True)
-        if r.stdout:
-            print(r.stdout.splitlines()[0])
-    lit = lit_path(build_dir)
-    subprocess.run([sys.executable, str(lit), "--version"] if SYSTEM == "Windows" else [str(lit), "--version"], check=True)
-
-
-def lit_path(build_dir: Path) -> Path:
+def _lit_path(build_dir: Path) -> Path:
+    if IS_WINDOWS:
+        return build_dir / "bin" / "llvm-lit.py"
     return build_dir / "bin" / "llvm-lit"
 
-def check_tools(skip_build: bool) -> None:
-    needed = ["hyperfine"]
-    if not skip_build:
-        needed += ["cmake", "ninja"]
-        if SYSTEM=="Linux":
-            needed.append("clang")
-    missing = [t for t in needed if not shutil.which(t)]
-    if missing:
-        sys.exit(f"ERROR: missing required dtools: {', '.join(missing)}")
-    if SYSTEM=="Windows" and not skip_build and not shutil.which("cl"):
-        print("WARN: cl.exe not found; must run from x64 Native Tools Command Prompt")
 
-def os_defaults() -> Tuple[int, int]:
+def _check_tools() -> List[str]:
+    """Return required tools that are missing (empty list = all present)."""
+    return [t for t in ["hyperfine"] if not shutil.which(t)]
+
+
+def _os_defaults() -> Tuple[int, int]:
     """(warmup, runs)"""
     return 5, 10
 
+
 def main() -> None:
-    default_warmup, default_runs = os_defaults()
+    _configure_logging()
+    default_warmup, default_runs = _os_defaults()
     parser = argparse.ArgumentParser(
         description="lit benchmarking script",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=("Examples:\n"
-                "\tpython benchmark.py --test-path llvm-project/llvm/test/CodeGen/X86 --workers 4\n"
-                "\tpython benchmark.py --test-path llvm-project/llvm/test/CodeGen/X86 --workers 4 --label baseline\n"
-                "\tpython benchmark.py --test-path llvm-project/llvm/test/CodeGen/X86 --workers 4 --skip-build\n"
-                f"\nPlatform: {SYSTEM} Defaults: --warmup {default_warmup} --runs {default_runs}")
+        epilog=f"""\
+Examples:
+  python benchmark.py --test-path llvm-project/llvm/test/CodeGen/X86 --build-dir build --workers 4
+  python benchmark.py --test-path llvm-project/llvm/test/CodeGen/X86 --build-dir build --workers 4 --label baseline
+
+Notes:
+  Linux env setup needs cpupower + sudo and assumes an Intel CPU (turbo); cset optional.
+  Use --skip-env-setup if those are unavailable and isolate manually.
+  On cgroup v2 systems pass --disable-cset if cset fails.
+
+Platform: {SYSTEM} Defaults: --warmup {default_warmup} --runs {default_runs}""",
     )
     parser.add_argument(
-        "--test-path", required=True, metavar="PATH",
+        "--test-path",
+        required=True,
+        metavar="PATH",
         help="Lit test directory, relative to --repo-root",
     )
     parser.add_argument(
-        "--workers", type=int, default=4, metavar="N",
+        "--repo-root",
+        required=True,
+        metavar="PATH",
+        help="Repo root; parent directory of llvm-project/",
+    )
+    parser.add_argument(
+        "--build-dir",
+        required=True,
+        metavar="PATH",
+        help="Pre-built LLVM build directory (must already contain lit)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        metavar="N",
         help="Parallel lit workers (default: 4)",
     )
     parser.add_argument(
-        "--label", default="run", metavar="STR",
-        help='Results directory suffix; use "baseline" before changes (default: run)',
+        "--label",
+        default="run",
+        metavar="STR",
+        help="Results directory suffix (default: run)",
     )
     parser.add_argument(
-        "--warmup", type=int, default=default_warmup, metavar="N",
-        help=f"Hyperfine warmup runs (default: {default_warmup} on {SYSTEM})",
+        "--warmup",
+        type=int,
+        default=default_warmup,
+        metavar="N",
+        help=f"Hyperfine warmup runs (default: {default_warmup})",
     )
     parser.add_argument(
-        "--runs", type=int, default=default_runs, metavar="N",
-        help=f"Hyperfine benchmark runs (default: {default_runs} on {SYSTEM})",
+        "--runs",
+        type=int,
+        default=default_runs,
+        metavar="N",
+        help=f"Hyperfine benchmark runs (default: {default_runs})",
     )
     parser.add_argument(
-        "--build-dir", default=None, metavar="PATH",
-        help="Build directory (default: <repo-root>/build)",
+        "--skip-env-setup", action="store_true", help="Skip CPU/service isolation"
     )
     parser.add_argument(
-        "--repo-root", default=None, metavar="PATH",
-        help="Repo root; must contain llvm-project/ (default: cwd)",
-    )
-    parser.add_argument(
-        "--compiler-rt", action="store_true",
-        help="Include compiler-rt in build via LLVM_ENABLE_RUNTIMES (needed for asan benchmark)",
-    )
-    parser.add_argument(
-        "--skip-build", action="store_true",
-        help="Skip cmake/ninja; assume build/ dir is already built",
-    )
-    parser.add_argument(
-        "--skip-env-setup", action="store_true",
-        help="Skip CPU scaling and service changes",
-    )
-    parser.add_argument(
-        "--benchmark-cpus", default=None, metavar="RANGE",
+        "--benchmark-cpus",
+        default="2,4,6,8",
+        metavar="RANGE",
         help="Linux: CPU range for taskset/cset shield (default: '2,4,6,8')",
     )
     parser.add_argument(
-        "--affinity-mask", default="FFF", metavar="HEX",
-        help="Windows: CPU affinity mask in hex (default: 'FFF' for P-cores 0-11)",
+        "--affinity-mask",
+        default="FFF",
+        metavar="HEX",
+        help="Windows: CPU affinity mask in hex (default: 'FFF' = P-cores 0-11)",
+    )
+    parser.add_argument(
+        "--disable-cset",
+        action="store_true",
+        help=(
+            "Linux: skip cset/cpuset shielding even if cset is installed; "
+            "use taskset instead. Use this on cgroup v2 systems (Ubuntu 22.04+, "
+            "Fedora 31+) where cset fails with 'mount of cpuset filesystem failed' "
+            "or 'Invalid argument'"
+        ),
     )
     args = parser.parse_args()
-    repo_root = Path(args.repo_root).resolve() if args.repo_root else Path.cwd().parents[4]
-    build_dir = Path(args.build_dir).resolve() if args.build_dir else repo_root / "build"
-    llvm_src = repo_root / "llvm-project" / "llvm"
+    repo_root = Path(args.repo_root).resolve()
+    build_dir = Path(args.build_dir).resolve()
     test_path = repo_root / args.test_path
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    results_dir = repo_root / "results" / f"{timestamp}-{args.label}"
-    check_tools(args.skip_build)
-    if not args.skip_build:
-        if not llvm_src.exists():
-            sys.exit(f"ERROR: llvm source not found at {llvm_src}\n")
-        build(build_dir, llvm_src, args.compiler_rt, args.workers)
-    lit = lit_path(build_dir)
-    if args.skip_build and not lit.exists():
-        sys.exit(f"ERROR: lit binary not found at {lit}. Build first and check --build-dir.")
-    results_dir.mkdir(parents=True, exist_ok=True)
-    cset_available = SYSTEM=="Linux" and bool(shutil.which("cset"))
-    runner = make_runner(args, cset_available)
-    with make_env(args):
-        runner.run(
-            lit, test_path, args.workers,
-            args.warmup, args.runs,
-            results_dir/"hyperfine.md"
+    results_dir = repo_root / "results" / f"{args.label}-{timestamp}"
+    missing_tools = _check_tools()
+    if missing_tools:
+        sys.exit(f"ERROR: missing required tools: {', '.join(missing_tools)}")
+    lit = _lit_path(build_dir)
+    if not lit.exists():
+        sys.exit(
+            f"ERROR: lit binary not found at {lit}. "
+            "Build LLVM first and check --build-dir."
         )
-    print("\n=== Done ===")
-    print(f"Results: {results_dir}")
+    results_dir.mkdir(parents=True, exist_ok=True)
+    cset_available = IS_LINUX and bool(shutil.which("cset"))
+    use_cset = cset_available and not args.disable_cset and not args.skip_env_setup
+    with _make_env(args, repo_root, use_cset, cset_available) as env:
+        if IS_LINUX and hasattr(env, "use_cset") and not env.use_cset:
+            runner = _make_runner(args, False, cset_available)
+        else:
+            runner = _make_runner(args, use_cset, cset_available)
+        runner.run(
+            lit,
+            test_path,
+            args.workers,
+            args.warmup,
+            args.runs,
+            results_dir / "hyperfine.json",
+        )
+    log.info("\n=== Done ===")
+    log.info(f"Results: {results_dir}")
     for f in sorted(results_dir.iterdir()):
-        print(f"\t{f.name}")
-    
-if __name__=="__main__":
+        log.info(f"\t{f.name}")
+
+
+if __name__ == "__main__":
     main()
