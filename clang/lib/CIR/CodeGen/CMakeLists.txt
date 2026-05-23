@@ -54,6 +54,7 @@ add_clang_library(clangCIR
   CIRGenVTables.cpp
   TargetInfo.cpp
   Targets/AMDGPU.cpp
+  Targets/NVPTX.cpp
 
   DEPENDS
   MLIRCIR
