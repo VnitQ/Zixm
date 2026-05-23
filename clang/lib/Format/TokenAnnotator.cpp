@@ -1214,9 +1214,11 @@ private:
 
     unsigned CommaCount = 0;
     while (CurrentToken) {
-      assert(!Scopes.empty());
+      if (Scopes.empty())
+        return false;
       if (CurrentToken->is(tok::r_brace)) {
-        assert(Scopes.back() == getScopeType(OpeningBrace));
+        if (Scopes.back() != getScopeType(OpeningBrace))
+          return false;
         Scopes.pop_back();
         assert(OpeningBrace.Optional == CurrentToken->Optional);
         OpeningBrace.MatchingParen = CurrentToken;
@@ -1297,11 +1299,6 @@ private:
         next();
         return true;
       }
-      // A `}` here would be consumed by consumeToken's r_brace branch
-      // and pop a Scopes frame owned by the enclosing parseBrace, leaving
-      // the Scopes stack out of sync with the actual brace nesting.
-      if (CurrentToken->is(tok::r_brace))
-        return false;
       if (!consumeToken())
         return false;
     }
