@@ -22510,6 +22510,7 @@ TEST_F(FormatTest, DoNotCrashOnInvalidInput) {
                 "LY52:                   ! [internal]");
   verifyNoCrash("operator foo *;");
   verifyNoCrash("{{ < ? } a} b");
+  verifyNoCrash("enum E { { ? } a }");
 }
 
 TEST_F(FormatTest, FormatsTableGenCode) {
