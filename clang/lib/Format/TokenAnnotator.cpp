@@ -1297,9 +1297,9 @@ private:
         next();
         return true;
       }
-      // Avoid consuming an unbalanced `}` here: it would pop a Scopes frame
-      // owned by an enclosing parseBrace and trip its `!Scopes.empty()`
-      // assertion. See Issue #199017.
+      // A `}` here would be consumed by consumeToken's r_brace branch
+      // and pop a Scopes frame owned by the enclosing parseBrace, leaving
+      // the Scopes stack out of sync with the actual brace nesting.
       if (CurrentToken->is(tok::r_brace))
         return false;
       if (!consumeToken())

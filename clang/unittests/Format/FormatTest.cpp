@@ -14383,8 +14383,6 @@ TEST_F(FormatTest, IncorrectCodeUnbalancedBraces) {
                 "};");
   verifyNoCrash("decltype( {\n"
                 "  {");
-  // Issue #199017
-  verifyNoCrash("{{ < ? } a} b");
 }
 
 TEST_F(FormatTest, IncorrectUnbalancedBracesInMacrosWithUnicode) {
@@ -22510,6 +22508,7 @@ TEST_F(FormatTest, DoNotCrashOnInvalidInput) {
   verifyNoCrash("        tst     %o5     ! are we doing the gray case?\n"
                 "LY52:                   ! [internal]");
   verifyNoCrash("operator foo *;");
+  verifyNoCrash("{{ < ? } a} b");
 }
 
 TEST_F(FormatTest, FormatsTableGenCode) {
