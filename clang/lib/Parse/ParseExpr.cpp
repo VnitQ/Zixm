@@ -2941,8 +2941,9 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool StopIfCastExpr,
     // Parse the expression-list.
     InMessageExpressionRAIIObject InMessage(*this, false);
     ExprVector ArgExprs;
+    SmallVector<SourceLocation, 4> CommaLocs;
 
-    if (!ParseSimpleExpressionList(ArgExprs)) {
+    if (!ParseSimpleExpressionList(ArgExprs, &CommaLocs)) {
       // FIXME: If we ever support comma expressions as operands to
       // fold-expressions, we'll need to allow multiple ArgExprs here.
       if (ExprType >= ParenParseOption::FoldExpr && ArgExprs.size() == 1 &&
@@ -2952,8 +2953,8 @@ Parser::ParseParenExpression(ParenParseOption &ExprType, bool StopIfCastExpr,
       }
 
       ExprType = ParenParseOption::SimpleExpr;
-      Result = Actions.ActOnParenListExpr(OpenLoc, Tok.getLocation(),
-                                          ArgExprs);
+      Result = Actions.ActOnParenListExpr(OpenLoc, Tok.getLocation(), ArgExprs,
+                                          CommaLocs);
     }
   } else if (getLangOpts().OpenMP >= 50 && OpenMPDirectiveParsing &&
              ExprType == ParenParseOption::CastExpr && Tok.is(tok::l_square) &&
@@ -3277,7 +3278,9 @@ bool Parser::ParseExpressionList(SmallVectorImpl<Expr *> &Exprs,
   return SawError;
 }
 
-bool Parser::ParseSimpleExpressionList(SmallVectorImpl<Expr *> &Exprs) {
+bool Parser::ParseSimpleExpressionList(
+    SmallVectorImpl<Expr *> &Exprs,
+    SmallVectorImpl<SourceLocation> *CommaLocs) {
   while (true) {
     ExprResult Expr = ParseAssignmentExpression();
     if (Expr.isInvalid())
@@ -3292,6 +3295,9 @@ bool Parser::ParseSimpleExpressionList(SmallVectorImpl<Expr *> &Exprs) {
 
     // Move to the next argument, remember where the comma was.
     Token Comma = Tok;
+    if (CommaLocs)
+      CommaLocs->push_back(Comma.getLocation());
+
     ConsumeToken();
     checkPotentialAngleBracketDelimiter(Comma);
   }
