@@ -18,13 +18,7 @@ define <4 x i1> @test_unsigned_v4i1_v4f32(<4 x float> %f) nounwind {
 ; CHECK-NEXT:    xorps %xmm1, %xmm1
 ; CHECK-NEXT:    maxps %xmm1, %xmm0
 ; CHECK-NEXT:    minps {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
-; CHECK-NEXT:    cvttps2dq %xmm0, %xmm1
-; CHECK-NEXT:    movdqa %xmm1, %xmm2
-; CHECK-NEXT:    psrad $31, %xmm2
-; CHECK-NEXT:    subps {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
 ; CHECK-NEXT:    cvttps2dq %xmm0, %xmm0
-; CHECK-NEXT:    pand %xmm2, %xmm0
-; CHECK-NEXT:    por %xmm1, %xmm0
 ; CHECK-NEXT:    retq
   %x = call <4 x i1> @llvm.fptoui.sat.v4i1.v4f32(<4 x float> %f)
   ret <4 x i1> %x
@@ -36,13 +30,7 @@ define <4 x i1> @test_freeze_unsigned_v4i1_v4f32(<4 x float> %f) nounwind {
 ; CHECK-NEXT:    xorps %xmm1, %xmm1
 ; CHECK-NEXT:    maxps %xmm1, %xmm0
 ; CHECK-NEXT:    minps {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
-; CHECK-NEXT:    cvttps2dq %xmm0, %xmm1
-; CHECK-NEXT:    movdqa %xmm1, %xmm2
-; CHECK-NEXT:    psrad $31, %xmm2
-; CHECK-NEXT:    subps {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0
 ; CHECK-NEXT:    cvttps2dq %xmm0, %xmm0
-; CHECK-NEXT:    pand %xmm2, %xmm0
-; CHECK-NEXT:    por %xmm1, %xmm0
 ; CHECK-NEXT:    retq
   %x = call <4 x i1> @llvm.fptoui.sat.v4i1.v4f32(<4 x float> %f)
   %y = freeze <4 x i1> %x
