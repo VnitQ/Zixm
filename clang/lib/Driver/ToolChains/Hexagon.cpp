@@ -582,14 +582,29 @@ void HexagonToolChain::getLibraryDir(const ArgList &Args,
     llvm::sys::path::append(Dir, "lib");
   }
   std::string CpuVer = GetTargetCPUVersion(Args).str();
-  llvm::sys::path::append(Dir, CpuVer);
-  if (auto G = toolchains::HexagonToolChain::getSmallDataThreshold(Args))
-    if (*G == 0)
-      llvm::sys::path::append(Dir, "G0");
-  bool IsStatic = Args.hasArg(options::OPT_static);
+  bool IsPicolibc = GetCStdlibType(Args) == ToolChain::CST_Picolibc;
+  bool IsG0 =
+      toolchains::HexagonToolChain::getSmallDataThreshold(Args).value_or(1) ==
+      0;
   bool IsShared = Args.hasArg(options::OPT_shared);
-  if (IsShared && !IsStatic)
-    llvm::sys::path::append(Dir, "pic");
+  // shared object must be -fPIC
+  bool IsPic = IsShared || Args.hasArg(options::OPT_fpic, options::OPT_fPIC);
+  if (IsPicolibc) {
+    // Flat layout: lib/v68-G0-pic, lib/v68-G0, lib/v68
+    std::string Variant = CpuVer;
+    if (IsG0)
+      Variant += "-G0";
+    if (IsPic)
+      Variant += "-pic";
+    llvm::sys::path::append(Dir, Variant);
+  } else {
+    // Nested layout (non-Picolibc): lib/v68/G0/pic
+    llvm::sys::path::append(Dir, CpuVer);
+    if (IsG0)
+      llvm::sys::path::append(Dir, "G0");
+    if (IsPic)
+      llvm::sys::path::append(Dir, "pic");
+  }
 }
 
 void HexagonToolChain::getBaseIncludeDir(const ArgList &Args,
@@ -659,14 +674,25 @@ void HexagonToolChain::getHexagonLibraryPaths(const ArgList &Args,
   if (auto G = getSmallDataThreshold(Args))
     HasG0 = *G == 0;
 
+  bool IsPicolibc = GetCStdlibType(Args) == ToolChain::CST_Picolibc;
   const std::string CpuVer = GetTargetCPUVersion(Args).str();
   for (auto &Dir : RootDirs) {
     std::string LibDir = Dir + "/lib";
     std::string LibDirCpu = LibDir + '/' + CpuVer;
-    if (HasG0) {
-      if (HasPIC)
-        LibPaths.push_back(LibDirCpu + "/G0/pic");
-      LibPaths.push_back(LibDirCpu + "/G0");
+    if (IsPicolibc) {
+      // Flat layout: lib/v68-G0-pic, lib/v68-G0, lib/v68
+      if (HasG0) {
+        if (HasPIC)
+          LibPaths.push_back(LibDir + "/" + CpuVer + "-G0-pic");
+        LibPaths.push_back(LibDir + "/" + CpuVer + "-G0");
+      }
+    } else {
+      // Nested layout (non-Picolibc): lib/v68/G0/pic, lib/v68/G0
+      if (HasG0) {
+        if (HasPIC)
+          LibPaths.push_back(LibDirCpu + "/G0/pic");
+        LibPaths.push_back(LibDirCpu + "/G0");
+      }
     }
     LibPaths.push_back(LibDirCpu);
     LibPaths.push_back(LibDir);
