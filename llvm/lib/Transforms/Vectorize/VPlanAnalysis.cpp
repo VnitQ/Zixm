@@ -255,12 +255,12 @@ Type *VPTypeAnalysis::inferScalarType(const VPValue *V) {
   if (Type *CachedTy = CachedTypes.lookup(V))
     return CachedTy;
 
-  if (isa<VPIRValue, VPRegionValue, VPSymbolicValue, VPMultiDefValue,
-          VPExpandSCEVRecipe, VPWidenPHIRecipe, VPPredInstPHIRecipe,
-          VPScalarIVStepsRecipe, VPWidenCanonicalIVRecipe, VPWidenCastRecipe,
-          VPWidenIntrinsicRecipe, VPWidenGEPRecipe, VPVectorPointerRecipe,
-          VPVectorEndPointerRecipe, VPWidenCallRecipe, VPWidenLoadRecipe,
-          VPWidenLoadEVLRecipe, VPDerivedIVRecipe, VPHeaderPHIRecipe>(V)) {
+  if (isa<VPIRValue, VPSymbolicValue, VPMultiDefValue, VPExpandSCEVRecipe,
+          VPWidenPHIRecipe, VPPredInstPHIRecipe, VPScalarIVStepsRecipe,
+          VPWidenCanonicalIVRecipe, VPWidenCastRecipe, VPWidenIntrinsicRecipe,
+          VPWidenGEPRecipe, VPVectorPointerRecipe, VPVectorEndPointerRecipe,
+          VPWidenCallRecipe, VPWidenLoadRecipe, VPWidenLoadEVLRecipe,
+          VPDerivedIVRecipe, VPHeaderPHIRecipe>(V)) {
     Type *Ty = V->getScalarType();
     assert(Ty && "Scalar type must be set by recipe construction");
     return Ty;
