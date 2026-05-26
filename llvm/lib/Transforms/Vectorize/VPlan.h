@@ -4454,12 +4454,15 @@ public:
   BasicBlock *getIRBasicBlock() const { return IRBB; }
 };
 
-/// Track information about the canonical IV value of a region.
+/// Track information about the canonical IV and header mask of a loop region.
 /// TODO: Have it also track the canonical IV increment, subject of NUW flag.
 class VPCanonicalIVInfo {
   /// VPRegionValue for the canonical IV, whose allocation is managed by
   /// VPCanonicalIVInfo.
   std::unique_ptr<VPRegionValue> CanIV;
+
+  /// Optional VPRegionValue for the header mask, set when tail folding.
+  std::unique_ptr<VPRegionValue> HeaderMask;
 
   /// Whether the increment of the canonical IV may unsigned wrap or not.
   bool HasNUW = true;
@@ -4470,6 +4473,18 @@ public:
 
   VPRegionValue *getRegionValue() { return CanIV.get(); }
   const VPRegionValue *getRegionValue() const { return CanIV.get(); }
+
+  VPRegionValue *getHeaderMask() const { return HeaderMask.get(); }
+
+  /// Create the header mask for the region and return it. Must only be called
+  /// when no header mask exists yet.
+  VPRegionValue *createHeaderMask() {
+    assert(!HeaderMask && "Header mask already created");
+    HeaderMask = std::make_unique<VPRegionValue>(
+        Type::getInt1Ty(CanIV->getType()->getContext()), DebugLoc(),
+        CanIV->getDefiningRegion());
+    return HeaderMask.get();
+  }
 
   bool hasNUW() const { return HasNUW; }
 
@@ -4606,6 +4621,29 @@ public:
   /// Return the type of the canonical IV for loop regions.
   Type *getCanonicalIVType() const {
     return CanIVInfo->getRegionValue()->getType();
+  }
+
+  /// Return the header mask of the region, or null if not set.
+  VPRegionValue *getHeaderMask() const {
+    return CanIVInfo ? CanIVInfo->getHeaderMask() : nullptr;
+  }
+
+  /// Create the header mask for the region and return it. Must only be called
+  /// on loop regions that don't already have a header mask.
+  VPRegionValue *createHeaderMask() {
+    assert(CanIVInfo && "Can only create header mask for loop regions");
+    return CanIVInfo->createHeaderMask();
+  }
+
+  /// Return the region values of the loop region (canonical IV, header mask)
+  /// or an empty vector for replicate regions.
+  SmallVector<VPRegionValue *, 2> getRegionValues() const {
+    if (!CanIVInfo)
+      return {};
+    SmallVector<VPRegionValue *, 2> R = {CanIVInfo->getRegionValue()};
+    if (auto *HM = CanIVInfo->getHeaderMask())
+      R.push_back(HM);
+    return R;
   }
 
   /// Indicates if NUW is set for the canonical IV increment, for loop regions.

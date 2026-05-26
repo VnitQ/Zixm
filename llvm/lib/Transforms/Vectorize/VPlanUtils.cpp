@@ -52,6 +52,10 @@ VPValue *vputils::getOrCreateVPValueForSCEVExpr(VPlan &Plan, const SCEV *Expr) {
 }
 
 bool vputils::isHeaderMask(const VPValue *V, const VPlan &Plan) {
+  if (auto *LR = Plan.getVectorLoopRegion())
+    if (V == LR->getHeaderMask())
+      return true;
+
   if (isa<VPActiveLaneMaskPHIRecipe>(V))
     return true;
 
@@ -162,13 +166,6 @@ const SCEV *vputils::getSCEVExprForVPValue(const VPValue *V,
                                            PredicatedScalarEvolution &PSE,
                                            const Loop *L) {
   ScalarEvolution &SE = *PSE.getSE();
-  if (isa<VPIRValue, VPSymbolicValue>(V)) {
-    Value *LiveIn = V->getUnderlyingValue();
-    if (LiveIn && SE.isSCEVable(LiveIn->getType()))
-      return SE.getSCEV(LiveIn);
-    return SE.getCouldNotCompute();
-  }
-
   if (auto *RV = dyn_cast<VPRegionValue>(V)) {
     assert(RV == RV->getDefiningRegion()->getCanonicalIV() &&
            "RegionValue must be canonical IV");
@@ -176,6 +173,13 @@ const SCEV *vputils::getSCEVExprForVPValue(const VPValue *V,
       return SE.getCouldNotCompute();
     return SE.getAddRecExpr(SE.getZero(RV->getType()), SE.getOne(RV->getType()),
                             L, SCEV::FlagAnyWrap);
+  }
+
+  if (isa<VPIRValue, VPSymbolicValue>(V)) {
+    Value *LiveIn = V->getUnderlyingValue();
+    if (LiveIn && SE.isSCEVable(LiveIn->getType()))
+      return SE.getSCEV(LiveIn);
+    return SE.getCouldNotCompute();
   }
 
   // Helper to create SCEVs for binary and unary operations.
@@ -387,8 +391,10 @@ static bool preservesUniformity(unsigned Opcode) {
 }
 
 bool vputils::isSingleScalar(const VPValue *VPV) {
-  // Live-in, symbolic and region-values represent single-scalar values.
-  if (isa<VPIRValue, VPSymbolicValue, VPRegionValue>(VPV))
+  // Live-in, symbolic and canonical-IV region values are single-scalar.
+  if (auto *RV = dyn_cast<VPRegionValue>(VPV))
+    return RV == RV->getDefiningRegion()->getCanonicalIV();
+  if (isa<VPIRValue, VPSymbolicValue>(VPV))
     return true;
 
   if (auto *Rep = dyn_cast<VPReplicateRecipe>(VPV)) {
@@ -424,8 +430,10 @@ bool vputils::isSingleScalar(const VPValue *VPV) {
 }
 
 bool vputils::isUniformAcrossVFsAndUFs(const VPValue *V) {
-  // Live-ins and region values are uniform.
-  if (isa<VPIRValue, VPSymbolicValue, VPRegionValue>(V))
+  // Live-ins, symbolic and canonical-IV region values are uniform.
+  if (auto *RV = dyn_cast<VPRegionValue>(V))
+    return RV == RV->getDefiningRegion()->getCanonicalIV();
+  if (isa<VPIRValue, VPSymbolicValue>(V))
     return true;
 
   const VPRecipeBase *R = V->getDefiningRecipe();
@@ -621,44 +629,6 @@ vputils::getRecipesForUncountableExit(SmallVectorImpl<VPInstruction *> &Recipes,
     return std::nullopt;
 
   return UncountableCondition;
-}
-
-VPSingleDefRecipe *vputils::findHeaderMask(VPlan &Plan) {
-  VPRegionBlock *LoopRegion = Plan.getVectorLoopRegion();
-  SmallVector<VPValue *> WideCanonicalIVs;
-  auto *WideCanonicalIV = vputils::findUserOf<VPWidenCanonicalIVRecipe>(
-      LoopRegion->getCanonicalIV());
-  assert(count_if(LoopRegion->getCanonicalIV()->users(),
-                  IsaPred<VPWidenCanonicalIVRecipe>) <= 1 &&
-         "Must have at most one VPWideCanonicalIVRecipe");
-  if (WideCanonicalIV)
-    WideCanonicalIVs.push_back(WideCanonicalIV);
-
-  // Also include VPWidenIntOrFpInductionRecipes that represent a widened
-  // version of the canonical induction.
-  VPBasicBlock *HeaderVPBB = LoopRegion->getEntryBasicBlock();
-  for (VPRecipeBase &Phi : HeaderVPBB->phis()) {
-    VPWidenIntOrFpInductionRecipe *WidenIV;
-    if (match(&Phi, m_CanonicalWidenIV(WidenIV)))
-      WideCanonicalIVs.push_back(WidenIV);
-  }
-
-  // Walk users of wide canonical IVs and find the single compare of the form
-  // (ICMP_ULE, WideCanonicalIV, backedge-taken-count).
-  VPSingleDefRecipe *HeaderMask = nullptr;
-  for (auto *Wide : WideCanonicalIVs) {
-    for (VPUser *U : Wide->users()) {
-      auto *VPI = dyn_cast<VPInstruction>(U);
-      if (!VPI || !vputils::isHeaderMask(VPI, Plan))
-        continue;
-
-      assert(VPI->getOperand(0) == Wide &&
-             "WidenCanonicalIV must be the first operand of the compare");
-      assert(!HeaderMask && "Multiple header masks found?");
-      HeaderMask = VPI;
-    }
-  }
-  return HeaderMask;
 }
 
 SmallVector<VPBasicBlock *>
