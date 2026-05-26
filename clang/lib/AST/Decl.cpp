@@ -2584,12 +2584,11 @@ APValue *VarDecl::evaluateValueImpl(SmallVectorImpl<PartialDiagnosticAt> &Notes,
   // a constant initializer if we produced notes. In that case, we can't keep
   // the result, because it may only be correct under the assumption that the
   // initializer is a constant context.
-  if (Result && IsConstantInitialization &&
+  if (IsConstantInitialization &&
       (Ctx.getLangOpts().CPlusPlus ||
        (isConstexpr() && Ctx.getLangOpts().C23)) &&
       !Notes.empty()) {
-    if (!Ctx.maybeFoldConstexprWithCast(Eval->Evaluated, Notes))
-      Result = false;
+    Result = false;
   }
 
   // Ensure the computed APValue is cleaned up later if evaluation succeeded,
