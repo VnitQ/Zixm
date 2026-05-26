@@ -1451,9 +1451,11 @@ RegBankLegalizeRules::RegBankLegalizeRules(const GCNSubtarget &_ST,
 
   using namespace Intrinsic;
 
+  // TODO: Divergent case can be expanded to VALU operations, however the
+  // results should probably be verified with a GPU execution test.
   addRulesForIOpcs({amdgcn_s_bitreplicate}, Standard)
       .Uni(S64, {{Sgpr64}, {IntrId, Sgpr32}})
-      .Div(S64, {{Vgpr64}, {IntrId, Vgpr32}, BitReplicateToVALU});
+      .Div(S64, {{Sgpr64ToVgprDst}, {IntrId, SgprB32_ReadFirstLane}});
 
   addRulesForIOpcs({amdgcn_s_getpc}).Any({{UniS64, _}, {{Sgpr64}, {None}}});
 
