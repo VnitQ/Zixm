@@ -17281,7 +17281,7 @@ static bool canLowerSRLToRoundingShiftForVT(SDValue Shift, EVT ResVT,
   return true;
 }
 
-static bool isNegativeShift(SDValue Op) {
+static bool isFreeToNegate(SDValue Op) {
   SDValue ShiftCount = Op;
   if (auto *BVN = dyn_cast<BuildVectorSDNode>(Op.getNode()))
     ShiftCount = BVN->getSplatValue();
@@ -17348,7 +17348,7 @@ SDValue AArch64TargetLowering::LowerVectorSRA_SRL_SHL(SDValue Op,
     }
 
     if (useSVEForFixedLengthVectorVT(VT, /*OverrideNEON=*/true) &&
-        !isNegativeShift(Op.getOperand(1))) {
+        !isFreeToNegate(Op.getOperand(1))) {
       unsigned Opc = Op.getOpcode() == ISD::SRA ? AArch64ISD::SRA_PRED
                                                 : AArch64ISD::SRL_PRED;
       return LowerToPredicatedOp(Op, DAG, Opc);
