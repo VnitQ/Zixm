@@ -4113,8 +4113,8 @@ bool PPCDAGToDAGISel::trySelectThreeWayCompare(SDNode *N) {
     return false;
 
   // Pattern matched! Generate optimal code:
-  // cmpd/cmpw cr7, LHS, RHS
-  // mfocrf r, 1
+  // cmpd/cmpw  LHS, RHS
+  // mfocrf RT, FXM
   // rldicl/rlwinm LT, r, 62/2, 63/31  (extract LT bit)
   // rldicl/rlwinm GT, r, 61/1, 63/31  (extract GT bit)
   // subf result, GT, LT   (LT - GT = -1/0/1)
@@ -4124,7 +4124,6 @@ bool PPCDAGToDAGISel::trySelectThreeWayCompare(SDNode *N) {
   EVT ResVT = N->getValueType(0);
   bool Is64BitRes = (ResVT == MVT::i64);
 
-  // Generate comparison to CR7
   unsigned CmpOpc = Is64BitCmp ? PPC::CMPD : PPC::CMPW;
   SDValue Cmp =
       SDValue(CurDAG->getMachineNode(CmpOpc, dl, MVT::i32, LHS, RHS), 0);
