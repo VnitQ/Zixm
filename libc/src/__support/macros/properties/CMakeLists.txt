@@ -48,3 +48,12 @@ add_header_library(
     libc.include.llvm-libc-types.cfloat16
     libc.include.llvm-libc-types.cfloat128
 )
+
+add_header_library(
+  fenv_support
+  HDRS
+    fenv_support.h
+  DEPENDS
+    .architectures
+    .compiler
+)
