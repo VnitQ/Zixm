@@ -908,6 +908,12 @@ CUDA/HIP Language Changes
   with ``llvm-profdata`` and fed back via ``-Xarch_host`` /
   ``-Xarch_<gpu-arch>`` ``-fprofile-use=``. See :doc:`HIPSupport` for
   the full workflow.
+- Added source-based code coverage support for HIP device code on AMD
+  GPUs. ``-fprofile-instr-generate -fcoverage-mapping`` now instruments
+  device code; running the instrumented binary writes per-GPU
+  architecture raw profiles that can be merged with ``llvm-profdata``
+  and reported by ``llvm-cov`` against the extracted device code
+  object. See :doc:`HIPSupport` for the full workflow.
 
 CUDA Support
 ^^^^^^^^^^^^
