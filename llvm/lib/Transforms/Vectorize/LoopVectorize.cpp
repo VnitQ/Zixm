@@ -2050,9 +2050,15 @@ static bool isIndvarOverflowCheckKnownFalse(
           getMaxVScale(*Cost->TheFunction, Cost->TTI);
       if (!MaxVScale)
         return false;
-      MaxVF *= *MaxVScale;
-      if (TC->isScalable())
-        MaxTC *= *MaxVScale;
+      bool Overflow;
+      MaxVF = SaturatingMultiply(MaxVF, *MaxVScale, &Overflow);
+      if (Overflow)
+        return false;
+      if (TC->isScalable()) {
+        MaxTC = SaturatingMultiply(MaxTC, *MaxVScale, &Overflow);
+        if (Overflow)
+          return false;
+      }
     }
 
     return (MaxUIntTripCount - MaxTC).ugt(MaxVF * MaxUF);
