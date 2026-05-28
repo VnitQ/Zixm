@@ -1679,7 +1679,8 @@ CXCompletionString clang_getCursorCompletionString(CXCursor cursor) {
           unit->getASTContext(), unit->getPreprocessor(),
           CodeCompletionContext::CCC_Other,
           unit->getCodeCompletionTUInfo().getAllocator(),
-          unit->getCodeCompletionTUInfo(), true, /*SuppressFuncParamType=*/false);
+          unit->getCodeCompletionTUInfo(), true,
+          /*SuppressFuncParamType=*/false);
       return String;
     }
   } else if (kind == CXCursor_MacroDefinition) {
@@ -1693,7 +1694,8 @@ CXCompletionString clang_getCursorCompletionString(CXCursor cursor) {
         unit->getASTContext(), unit->getPreprocessor(),
         CodeCompletionContext::CCC_Other,
         unit->getCodeCompletionTUInfo().getAllocator(),
-        unit->getCodeCompletionTUInfo(), false, /*SuppressFuncParamType=*/false);
+        unit->getCodeCompletionTUInfo(), false,
+        /*SuppressFuncParamType=*/false);
     return String;
   }
   return nullptr;
