@@ -4503,11 +4503,43 @@ static bool isCMN(SDValue Op, ISD::CondCode CC, SelectionDAG &DAG) {
           (isSignedIntSetCC(CC) && isSafeSignedCMN(Op, DAG)));
 }
 
+/// Returns how profitable it is to fold a comparison's operand's shift and/or
+/// extension operations.
+static unsigned getCmpOperandFoldingProfit(SDValue Op, const ARMSubtarget &ST) {
+  // Thumb-1 compare does not use the same shifted-second-operand forms as
+  // Thumb-2 / ARM-mode CMP/CMN.
+  if (ST.isThumb1Only())
+    return 0;
+
+  if (!Op.hasOneUse())
+    return 0;
+
+  unsigned Opc = Op.getOpcode();
+  if (Opc == ISD::SHL || Opc == ISD::SRL || Opc == ISD::SRA ||
+      Opc == ISD::ROTR) {
+    if (ConstantSDNode *Amnt = dyn_cast<ConstantSDNode>(Op.getOperand(1))) {
+      unsigned Shift = Amnt->getZExtValue();
+      if (Shift <= 31)
+        return 1;
+      return 0;
+    }
+  }
+
+  // Register-specified shift: ARM-mode CMP/CMN (so_reg_reg). Thumb-2
+  // t2_so_reg is immediate shift only.
+  if (ST.isThumb())
+    return 0;
+
+  return 1;
+}
+
 /// Returns appropriate ARM CMP (cmp) and corresponding condition code for
 /// the given operands.
 SDValue ARMTargetLowering::getARMCmp(SDValue LHS, SDValue RHS, ISD::CondCode CC,
                                      SDValue &ARMcc, SelectionDAG &DAG,
                                      const SDLoc &dl) const {
+
+  bool SwapProfitGuard = false;
   if (ConstantSDNode *RHSC = dyn_cast<ConstantSDNode>(RHS.getNode())) {
     unsigned C = RHSC->getZExtValue();
     if (!isLegalICmpImmediate((int32_t)C)) {
@@ -4544,12 +4576,37 @@ SDValue ARMTargetLowering::getARMCmp(SDValue LHS, SDValue RHS, ISD::CondCode CC,
         break;
       }
     }
-  } else if ((ARM_AM::getShiftOpcForNode(LHS.getOpcode()) != ARM_AM::no_shift) &&
-             (ARM_AM::getShiftOpcForNode(RHS.getOpcode()) == ARM_AM::no_shift)) {
+  } else if (!Subtarget->isThumb1Only() &&
+             (ARM_AM::getShiftOpcForNode(LHS.getOpcode()) !=
+              ARM_AM::no_shift) &&
+             (ARM_AM::getShiftOpcForNode(RHS.getOpcode()) ==
+              ARM_AM::no_shift)) {
     // In ARM and Thumb-2, the compare instructions can shift their second
     // operand.
     CC = ISD::getSetCCSwappedOperands(CC);
     std::swap(LHS, RHS);
+    SwapProfitGuard = true;
+  }
+
+  // Prefer folding shifts / CMN into the cmp/cmn second operand (so_reg /
+  // t2_so_reg). When both sides compete, pick the higher
+  // getCmpOperandFoldingProfit (operands are peeled if CMN). Only when RHS
+  // is not a legal icmp immediate: otherwise keep the canonical (reg, imm)
+  // form.
+  if (!SwapProfitGuard) {
+    bool RHSFitsICmpImmediate = false;
+    if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(RHS.getNode()))
+      RHSFitsICmpImmediate = isLegalICmpImmediate(C->getSExtValue());
+    if (!isa<ConstantSDNode>(RHS) || !RHSFitsICmpImmediate) {
+      SDValue TheLHS = isCMN(LHS, CC, DAG) ? LHS.getOperand(1) : LHS;
+      SDValue TheRHS = isCMN(RHS, CC, DAG) ? RHS.getOperand(1) : RHS;
+
+      if (getCmpOperandFoldingProfit(TheLHS, *Subtarget) >
+          getCmpOperandFoldingProfit(TheRHS, *Subtarget)) {
+        std::swap(LHS, RHS);
+        CC = ISD::getSetCCSwappedOperands(CC);
+      }
+    }
   }
 
   // Thumb1 has very limited immediate modes, so turning an "and" into a
@@ -4610,21 +4667,6 @@ SDValue ARMTargetLowering::getARMCmp(SDValue LHS, SDValue RHS, ISD::CondCode CC,
 
   ARMCC::CondCodes CondCode = IntCCToARMCC(CC);
 
-  // If the RHS is a constant zero then the V (overflow) flag will never be
-  // set. This can allow us to simplify GE to PL or LT to MI, which can be
-  // simpler for other passes (like the peephole optimiser) to deal with.
-  if (isNullConstant(RHS)) {
-    switch (CondCode) {
-      default: break;
-      case ARMCC::GE:
-        CondCode = ARMCC::PL;
-        break;
-      case ARMCC::LT:
-        CondCode = ARMCC::MI;
-        break;
-    }
-  }
-
   unsigned CompareType;
   switch (CondCode) {
   default:
@@ -4649,6 +4691,22 @@ SDValue ARMTargetLowering::getARMCmp(SDValue LHS, SDValue RHS, ISD::CondCode CC,
     CompareType = ARMISD::CMN;
     LHS = LHS.getOperand(1);
     CondCode = IntCCToARMCC(ISD::getSetCCSwappedOperands(CC));
+  }
+
+  // If the RHS is a constant zero then the V (overflow) flag will never be
+  // set. This can allow us to simplify GE to PL or LT to MI, which can be
+  // simpler for other passes (like the peephole optimiser) to deal with.
+  if (isNullConstant(RHS)) {
+    switch (CondCode) {
+    default:
+      break;
+    case ARMCC::GE:
+      CondCode = ARMCC::PL;
+      break;
+    case ARMCC::LT:
+      CondCode = ARMCC::MI;
+      break;
+    }
   }
 
   ARMcc = DAG.getConstant(CondCode, dl, MVT::i32);
@@ -13760,8 +13818,6 @@ ARMTargetLowering::isDesirableToCommuteWithShift(const SDNode *N,
     // Avoid making expensive immediates by commuting shifts. (This logic
     // only applies to Thumb1 because ARM and Thumb2 immediates can be shifted
     // for free.)
-    if (N->getOpcode() != ISD::SHL)
-      return true;
     SDValue N1 = N->getOperand(0);
     if (N1->getOpcode() != ISD::ADD && N1->getOpcode() != ISD::AND &&
         N1->getOpcode() != ISD::OR && N1->getOpcode() != ISD::XOR)
@@ -13877,14 +13933,14 @@ static SDValue PerformSHLSimplify(SDNode *N,
   // b + ((a << 1) ^ 510)
   // b + ((a << 1) + 510)
 
-  // Many instructions can  perform the shift for free, but it requires both
+  // Many instructions can perform the shift for free, but it requires both
   // the operands to be registers. If c1 << c2 is too large, a mov immediate
   // instruction will needed. So, unfold back to the original pattern if:
   // - if c1 and c2 are small enough that they don't require mov imms.
   // - the user(s) of the node can perform an shl
 
   // No shifted operands for 16-bit instructions.
-  if (ST->isThumb() && ST->isThumb1Only())
+  if (ST->isThumb1Only())
     return SDValue();
 
   // Check that all the users could perform the shl themselves.

@@ -66,9 +66,8 @@ define i16 @unsigned_sat_base_16bit(i16 %x) #0 {
 ; V4T-NEXT:    mov r2, #255
 ; V4T-NEXT:    lsl r1, r0, #16
 ; V4T-NEXT:    orr r2, r2, #1792
-; V4T-NEXT:    asr r1, r1, #16
-; V4T-NEXT:    cmp r1, r2
-; V4T-NEXT:    movlt r2, r0
+; V4T-NEXT:    cmp r2, r1, asr #16
+; V4T-NEXT:    movgt r2, r0
 ; V4T-NEXT:    lsl r0, r2, #16
 ; V4T-NEXT:    bic r0, r2, r0, asr #31
 ; V4T-NEXT:    bx lr
@@ -78,8 +77,8 @@ define i16 @unsigned_sat_base_16bit(i16 %x) #0 {
 ; V6-NEXT:    mov r2, #255
 ; V6-NEXT:    sxth r1, r0
 ; V6-NEXT:    orr r2, r2, #1792
-; V6-NEXT:    cmp r1, r2
-; V6-NEXT:    movlt r2, r0
+; V6-NEXT:    cmp r2, r1
+; V6-NEXT:    movgt r2, r0
 ; V6-NEXT:    sxth r0, r2
 ; V6-NEXT:    bic r0, r2, r0, asr #15
 ; V6-NEXT:    bx lr
@@ -88,8 +87,8 @@ define i16 @unsigned_sat_base_16bit(i16 %x) #0 {
 ; V6T2:       @ %bb.0: @ %entry
 ; V6T2-NEXT:    sxth r1, r0
 ; V6T2-NEXT:    movw r2, #2047
-; V6T2-NEXT:    cmp r1, r2
-; V6T2-NEXT:    movlt r2, r0
+; V6T2-NEXT:    cmp r2, r1
+; V6T2-NEXT:    movgt r2, r0
 ; V6T2-NEXT:    sxth r0, r2
 ; V6T2-NEXT:    bic r0, r2, r0, asr #15
 ; V6T2-NEXT:    bx lr

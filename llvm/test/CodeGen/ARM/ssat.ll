@@ -52,9 +52,8 @@ define i16 @sat_base_16bit(i16 %x) #0 {
 ; V4T-NEXT:    mov r2, #255
 ; V4T-NEXT:    lsl r1, r0, #16
 ; V4T-NEXT:    orr r2, r2, #1792
-; V4T-NEXT:    asr r1, r1, #16
-; V4T-NEXT:    cmp r1, r2
-; V4T-NEXT:    movge r0, r2
+; V4T-NEXT:    cmp r2, r1, asr #16
+; V4T-NEXT:    movle r0, r2
 ; V4T-NEXT:    ldr r2, .LCPI1_0
 ; V4T-NEXT:    lsl r1, r0, #16
 ; V4T-NEXT:    asr r1, r1, #16
@@ -70,8 +69,8 @@ define i16 @sat_base_16bit(i16 %x) #0 {
 ; V6T2:       @ %bb.0: @ %entry
 ; V6T2-NEXT:    sxth r1, r0
 ; V6T2-NEXT:    movw r2, #2047
-; V6T2-NEXT:    cmp r1, r2
-; V6T2-NEXT:    movge r0, r2
+; V6T2-NEXT:    cmp r2, r1
+; V6T2-NEXT:    movle r0, r2
 ; V6T2-NEXT:    movw r2, #63488
 ; V6T2-NEXT:    sxth r1, r0
 ; V6T2-NEXT:    movt r2, #65535
