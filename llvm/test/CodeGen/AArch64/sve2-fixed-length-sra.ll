@@ -33,10 +33,9 @@ define void @usra_disjoint_or32xi8(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or32xi8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl32
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.b, z0.b, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.b, z1.b, #4
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i8>, ptr %a
@@ -52,25 +51,22 @@ define void @usra_disjoint_or64xi8(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.b, vl32
 ; VBITS_GE_256-NEXT:    mov w8, #32 // =0x20
-; VBITS_GE_256-NEXT:    ld1b { z0.b }, p0/z, [x1, x8]
-; VBITS_GE_256-NEXT:    ld1b { z1.b }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1b { z2.b }, p0/z, [x0, x8]
-; VBITS_GE_256-NEXT:    ld1b { z3.b }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    lsr z0.b, z0.b, #4
-; VBITS_GE_256-NEXT:    lsr z1.b, z1.b, #4
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    ld1b { z0.b }, p0/z, [x0, x8]
+; VBITS_GE_256-NEXT:    ld1b { z1.b }, p0/z, [x1, x8]
+; VBITS_GE_256-NEXT:    ld1b { z2.b }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1b { z3.b }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    usra z0.b, z1.b, #4
+; VBITS_GE_256-NEXT:    usra z2.b, z3.b, #4
 ; VBITS_GE_256-NEXT:    st1b { z0.b }, p0, [x0, x8]
-; VBITS_GE_256-NEXT:    st1b { z1.b }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1b { z2.b }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: usra_disjoint_or64xi8:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.b, vl64
-; VBITS_GE_512-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    lsr z0.b, z0.b, #4
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    usra z0.b, z1.b, #4
 ; VBITS_GE_512-NEXT:    st1b { z0.b }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <64 x i8>, ptr %a
@@ -85,10 +81,9 @@ define void @usra_disjoint_or128xi8(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or128xi8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl128
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.b, z0.b, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.b, z1.b, #4
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <128 x i8>, ptr %a
@@ -103,10 +98,9 @@ define void @usra_disjoint_or256xi8(ptr %a, ptr %b) vscale_range(16,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or256xi8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl256
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.b, z0.b, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.b, z1.b, #4
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <256 x i8>, ptr %a
@@ -141,10 +135,9 @@ define void @usra_disjoint_or16xi16(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or16xi16:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.h, vl16
-; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.h, z0.h, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.h, z1.h, #4
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <16 x i16>, ptr %a
@@ -160,25 +153,22 @@ define void @usra_disjoint_or32xi16(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.h, vl16
 ; VBITS_GE_256-NEXT:    mov x8, #16 // =0x10
-; VBITS_GE_256-NEXT:    ld1h { z0.h }, p0/z, [x1, x8, lsl #1]
-; VBITS_GE_256-NEXT:    ld1h { z1.h }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1h { z2.h }, p0/z, [x0, x8, lsl #1]
-; VBITS_GE_256-NEXT:    ld1h { z3.h }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    lsr z0.h, z0.h, #4
-; VBITS_GE_256-NEXT:    lsr z1.h, z1.h, #4
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    ld1h { z0.h }, p0/z, [x0, x8, lsl #1]
+; VBITS_GE_256-NEXT:    ld1h { z1.h }, p0/z, [x1, x8, lsl #1]
+; VBITS_GE_256-NEXT:    ld1h { z2.h }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1h { z3.h }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    usra z0.h, z1.h, #4
+; VBITS_GE_256-NEXT:    usra z2.h, z3.h, #4
 ; VBITS_GE_256-NEXT:    st1h { z0.h }, p0, [x0, x8, lsl #1]
-; VBITS_GE_256-NEXT:    st1h { z1.h }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1h { z2.h }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: usra_disjoint_or32xi16:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.h, vl32
-; VBITS_GE_512-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    lsr z0.h, z0.h, #4
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    usra z0.h, z1.h, #4
 ; VBITS_GE_512-NEXT:    st1h { z0.h }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <32 x i16>, ptr %a
@@ -193,10 +183,9 @@ define void @usra_disjoint_or64xi16(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or64xi16:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.h, vl64
-; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.h, z0.h, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.h, z1.h, #4
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <64 x i16>, ptr %a
@@ -211,10 +200,9 @@ define void @usra_disjoint_or128xi16(ptr %a, ptr %b) vscale_range(16,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or128xi16:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.h, vl128
-; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.h, z0.h, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.h, z1.h, #4
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <128 x i16>, ptr %a
@@ -249,10 +237,9 @@ define void @usra_disjoint_or8xi32(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or8xi32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.s, vl8
-; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.s, z0.s, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.s, z1.s, #4
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <8 x i32>, ptr %a
@@ -268,25 +255,22 @@ define void @usra_disjoint_or16xi32(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.s, vl8
 ; VBITS_GE_256-NEXT:    mov x8, #8 // =0x8
-; VBITS_GE_256-NEXT:    ld1w { z0.s }, p0/z, [x1, x8, lsl #2]
-; VBITS_GE_256-NEXT:    ld1w { z1.s }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1w { z2.s }, p0/z, [x0, x8, lsl #2]
-; VBITS_GE_256-NEXT:    ld1w { z3.s }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    lsr z0.s, z0.s, #4
-; VBITS_GE_256-NEXT:    lsr z1.s, z1.s, #4
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    ld1w { z0.s }, p0/z, [x0, x8, lsl #2]
+; VBITS_GE_256-NEXT:    ld1w { z1.s }, p0/z, [x1, x8, lsl #2]
+; VBITS_GE_256-NEXT:    ld1w { z2.s }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1w { z3.s }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    usra z0.s, z1.s, #4
+; VBITS_GE_256-NEXT:    usra z2.s, z3.s, #4
 ; VBITS_GE_256-NEXT:    st1w { z0.s }, p0, [x0, x8, lsl #2]
-; VBITS_GE_256-NEXT:    st1w { z1.s }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1w { z2.s }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: usra_disjoint_or16xi32:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.s, vl16
-; VBITS_GE_512-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    lsr z0.s, z0.s, #4
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    usra z0.s, z1.s, #4
 ; VBITS_GE_512-NEXT:    st1w { z0.s }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <16 x i32>, ptr %a
@@ -301,10 +285,9 @@ define void @usra_disjoint_or32xi32(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or32xi32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.s, vl32
-; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.s, z0.s, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.s, z1.s, #4
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i32>, ptr %a
@@ -319,10 +302,9 @@ define void @usra_disjoint_or64xi32(ptr %a, ptr %b) vscale_range(16,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or64xi32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.s, vl64
-; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.s, z0.s, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.s, z1.s, #4
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <64 x i32>, ptr %a
@@ -357,10 +339,9 @@ define void @usra_disjoint_or4xi64(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or4xi64:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.d, vl4
-; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.d, z0.d, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.d, z1.d, #4
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <4 x i64>, ptr %a
@@ -376,25 +357,22 @@ define void @usra_disjoint_or8xi64(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.d, vl4
 ; VBITS_GE_256-NEXT:    mov x8, #4 // =0x4
-; VBITS_GE_256-NEXT:    ld1d { z0.d }, p0/z, [x1, x8, lsl #3]
-; VBITS_GE_256-NEXT:    ld1d { z1.d }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1d { z2.d }, p0/z, [x0, x8, lsl #3]
-; VBITS_GE_256-NEXT:    ld1d { z3.d }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    lsr z0.d, z0.d, #4
-; VBITS_GE_256-NEXT:    lsr z1.d, z1.d, #4
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    ld1d { z0.d }, p0/z, [x0, x8, lsl #3]
+; VBITS_GE_256-NEXT:    ld1d { z1.d }, p0/z, [x1, x8, lsl #3]
+; VBITS_GE_256-NEXT:    ld1d { z2.d }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1d { z3.d }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    usra z0.d, z1.d, #4
+; VBITS_GE_256-NEXT:    usra z2.d, z3.d, #4
 ; VBITS_GE_256-NEXT:    st1d { z0.d }, p0, [x0, x8, lsl #3]
-; VBITS_GE_256-NEXT:    st1d { z1.d }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1d { z2.d }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: usra_disjoint_or8xi64:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.d, vl8
-; VBITS_GE_512-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    lsr z0.d, z0.d, #4
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    usra z0.d, z1.d, #4
 ; VBITS_GE_512-NEXT:    st1d { z0.d }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <8 x i64>, ptr %a
@@ -409,10 +387,9 @@ define void @usra_disjoint_or16xi64(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or16xi64:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.d, vl16
-; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.d, z0.d, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.d, z1.d, #4
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <16 x i64>, ptr %a
@@ -427,10 +404,9 @@ define void @usra_disjoint_or32xi64(ptr %a, ptr %b) vscale_range(16,0) #0 {
 ; CHECK-LABEL: usra_disjoint_or32xi64:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.d, vl32
-; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.d, z0.d, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.d, z1.d, #4
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i64>, ptr %a
@@ -449,10 +425,9 @@ define void @usra2_disjoint_or32i8(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: usra2_disjoint_or32i8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl32
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.b, z0.b, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.b, z1.b, #4
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i8>, ptr %a, align 32
@@ -468,16 +443,14 @@ define void @usra2_disjoint_or64i8(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl32
 ; CHECK-NEXT:    mov w8, #32 // =0x20
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1, x8]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z2.b }, p0/z, [x0, x8]
-; CHECK-NEXT:    ld1b { z3.b }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.b, z0.b, #4
-; CHECK-NEXT:    lsr z1.b, z1.b, #4
-; CHECK-NEXT:    orr z0.d, z2.d, z0.d
-; CHECK-NEXT:    orr z1.d, z3.d, z1.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0, x8]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1, x8]
+; CHECK-NEXT:    ld1b { z2.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z3.b }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.b, z1.b, #4
+; CHECK-NEXT:    usra z2.b, z3.b, #4
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0, x8]
-; CHECK-NEXT:    st1b { z1.b }, p0, [x0]
+; CHECK-NEXT:    st1b { z2.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <64 x i8>, ptr %a, align 32
   %vb = load <64 x i8>, ptr %b, align 32
@@ -494,26 +467,22 @@ define void @usra2_disjoint_or128i8(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-NEXT:    mov w8, #64 // =0x40
 ; CHECK-NEXT:    mov w9, #96 // =0x60
 ; CHECK-NEXT:    mov w10, #32 // =0x20
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1, x8]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1, x9]
-; CHECK-NEXT:    ld1b { z2.b }, p0/z, [x1, x10]
-; CHECK-NEXT:    ld1b { z4.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z3.b }, p0/z, [x0, x8]
-; CHECK-NEXT:    ld1b { z5.b }, p0/z, [x0, x9]
-; CHECK-NEXT:    ld1b { z6.b }, p0/z, [x0, x10]
-; CHECK-NEXT:    ld1b { z7.b }, p0/z, [x0]
-; CHECK-NEXT:    lsr z0.b, z0.b, #4
-; CHECK-NEXT:    lsr z1.b, z1.b, #4
-; CHECK-NEXT:    lsr z2.b, z2.b, #4
-; CHECK-NEXT:    lsr z4.b, z4.b, #4
-; CHECK-NEXT:    orr z0.d, z3.d, z0.d
-; CHECK-NEXT:    orr z1.d, z5.d, z1.d
-; CHECK-NEXT:    orr z2.d, z6.d, z2.d
-; CHECK-NEXT:    orr z3.d, z7.d, z4.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0, x8]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1, x8]
+; CHECK-NEXT:    ld1b { z2.b }, p0/z, [x0, x9]
+; CHECK-NEXT:    ld1b { z3.b }, p0/z, [x1, x9]
+; CHECK-NEXT:    ld1b { z4.b }, p0/z, [x0, x10]
+; CHECK-NEXT:    ld1b { z5.b }, p0/z, [x1, x10]
+; CHECK-NEXT:    ld1b { z6.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z7.b }, p0/z, [x1]
+; CHECK-NEXT:    usra z0.b, z1.b, #4
+; CHECK-NEXT:    usra z2.b, z3.b, #4
+; CHECK-NEXT:    usra z4.b, z5.b, #4
+; CHECK-NEXT:    usra z6.b, z7.b, #4
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0, x8]
-; CHECK-NEXT:    st1b { z1.b }, p0, [x0, x9]
-; CHECK-NEXT:    st1b { z2.b }, p0, [x0, x10]
-; CHECK-NEXT:    st1b { z3.b }, p0, [x0]
+; CHECK-NEXT:    st1b { z2.b }, p0, [x0, x9]
+; CHECK-NEXT:    st1b { z4.b }, p0, [x0, x10]
+; CHECK-NEXT:    st1b { z6.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <128 x i8>, ptr %a, align 32
   %vb = load <128 x i8>, ptr %b, align 32
@@ -551,10 +520,9 @@ define void @ssra_disjoint_or32xi8(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or32xi8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl32
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.b, z0.b, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.b, z1.b, #4
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i8>, ptr %a
@@ -570,25 +538,22 @@ define void @ssra_disjoint_or64xi8(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.b, vl32
 ; VBITS_GE_256-NEXT:    mov w8, #32 // =0x20
-; VBITS_GE_256-NEXT:    ld1b { z0.b }, p0/z, [x1, x8]
-; VBITS_GE_256-NEXT:    ld1b { z1.b }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1b { z2.b }, p0/z, [x0, x8]
-; VBITS_GE_256-NEXT:    ld1b { z3.b }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    asr z0.b, z0.b, #4
-; VBITS_GE_256-NEXT:    asr z1.b, z1.b, #4
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    ld1b { z0.b }, p0/z, [x0, x8]
+; VBITS_GE_256-NEXT:    ld1b { z1.b }, p0/z, [x1, x8]
+; VBITS_GE_256-NEXT:    ld1b { z2.b }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1b { z3.b }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    ssra z0.b, z1.b, #4
+; VBITS_GE_256-NEXT:    ssra z2.b, z3.b, #4
 ; VBITS_GE_256-NEXT:    st1b { z0.b }, p0, [x0, x8]
-; VBITS_GE_256-NEXT:    st1b { z1.b }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1b { z2.b }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: ssra_disjoint_or64xi8:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.b, vl64
-; VBITS_GE_512-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    asr z0.b, z0.b, #4
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    ssra z0.b, z1.b, #4
 ; VBITS_GE_512-NEXT:    st1b { z0.b }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <64 x i8>, ptr %a
@@ -603,10 +568,9 @@ define void @ssra_disjoint_or128xi8(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or128xi8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl128
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.b, z0.b, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.b, z1.b, #4
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <128 x i8>, ptr %a
@@ -621,10 +585,9 @@ define void @ssra_disjoint_or256xi8(ptr %a, ptr %b) vscale_range(16,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or256xi8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl256
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.b, z0.b, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.b, z1.b, #4
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <256 x i8>, ptr %a
@@ -659,10 +622,9 @@ define void @ssra_disjoint_or16xi16(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or16xi16:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.h, vl16
-; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.h, z0.h, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.h, z1.h, #4
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <16 x i16>, ptr %a
@@ -678,25 +640,22 @@ define void @ssra_disjoint_or32xi16(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.h, vl16
 ; VBITS_GE_256-NEXT:    mov x8, #16 // =0x10
-; VBITS_GE_256-NEXT:    ld1h { z0.h }, p0/z, [x1, x8, lsl #1]
-; VBITS_GE_256-NEXT:    ld1h { z1.h }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1h { z2.h }, p0/z, [x0, x8, lsl #1]
-; VBITS_GE_256-NEXT:    ld1h { z3.h }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    asr z0.h, z0.h, #4
-; VBITS_GE_256-NEXT:    asr z1.h, z1.h, #4
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    ld1h { z0.h }, p0/z, [x0, x8, lsl #1]
+; VBITS_GE_256-NEXT:    ld1h { z1.h }, p0/z, [x1, x8, lsl #1]
+; VBITS_GE_256-NEXT:    ld1h { z2.h }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1h { z3.h }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    ssra z0.h, z1.h, #4
+; VBITS_GE_256-NEXT:    ssra z2.h, z3.h, #4
 ; VBITS_GE_256-NEXT:    st1h { z0.h }, p0, [x0, x8, lsl #1]
-; VBITS_GE_256-NEXT:    st1h { z1.h }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1h { z2.h }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: ssra_disjoint_or32xi16:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.h, vl32
-; VBITS_GE_512-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    asr z0.h, z0.h, #4
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    ssra z0.h, z1.h, #4
 ; VBITS_GE_512-NEXT:    st1h { z0.h }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <32 x i16>, ptr %a
@@ -711,10 +670,9 @@ define void @ssra_disjoint_or64xi16(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or64xi16:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.h, vl64
-; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.h, z0.h, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.h, z1.h, #4
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <64 x i16>, ptr %a
@@ -729,10 +687,9 @@ define void @ssra_disjoint_or128xi16(ptr %a, ptr %b) vscale_range(16,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or128xi16:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.h, vl128
-; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.h, z0.h, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.h, z1.h, #4
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <128 x i16>, ptr %a
@@ -767,10 +724,9 @@ define void @ssra_disjoint_or8xi32(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or8xi32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.s, vl8
-; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.s, z0.s, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.s, z1.s, #4
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <8 x i32>, ptr %a
@@ -786,25 +742,22 @@ define void @ssra_disjoint_or16xi32(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.s, vl8
 ; VBITS_GE_256-NEXT:    mov x8, #8 // =0x8
-; VBITS_GE_256-NEXT:    ld1w { z0.s }, p0/z, [x1, x8, lsl #2]
-; VBITS_GE_256-NEXT:    ld1w { z1.s }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1w { z2.s }, p0/z, [x0, x8, lsl #2]
-; VBITS_GE_256-NEXT:    ld1w { z3.s }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    asr z0.s, z0.s, #4
-; VBITS_GE_256-NEXT:    asr z1.s, z1.s, #4
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    ld1w { z0.s }, p0/z, [x0, x8, lsl #2]
+; VBITS_GE_256-NEXT:    ld1w { z1.s }, p0/z, [x1, x8, lsl #2]
+; VBITS_GE_256-NEXT:    ld1w { z2.s }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1w { z3.s }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    ssra z0.s, z1.s, #4
+; VBITS_GE_256-NEXT:    ssra z2.s, z3.s, #4
 ; VBITS_GE_256-NEXT:    st1w { z0.s }, p0, [x0, x8, lsl #2]
-; VBITS_GE_256-NEXT:    st1w { z1.s }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1w { z2.s }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: ssra_disjoint_or16xi32:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.s, vl16
-; VBITS_GE_512-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    asr z0.s, z0.s, #4
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    ssra z0.s, z1.s, #4
 ; VBITS_GE_512-NEXT:    st1w { z0.s }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <16 x i32>, ptr %a
@@ -819,10 +772,9 @@ define void @ssra_disjoint_or32xi32(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or32xi32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.s, vl32
-; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.s, z0.s, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.s, z1.s, #4
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i32>, ptr %a
@@ -837,10 +789,9 @@ define void @ssra_disjoint_or64xi32(ptr %a, ptr %b) vscale_range(16,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or64xi32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.s, vl64
-; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.s, z0.s, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.s, z1.s, #4
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <64 x i32>, ptr %a
@@ -875,10 +826,9 @@ define void @ssra_disjoint_or4xi64(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or4xi64:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.d, vl4
-; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.d, z0.d, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.d, z1.d, #4
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <4 x i64>, ptr %a
@@ -894,25 +844,22 @@ define void @ssra_disjoint_or8xi64(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.d, vl4
 ; VBITS_GE_256-NEXT:    mov x8, #4 // =0x4
-; VBITS_GE_256-NEXT:    ld1d { z0.d }, p0/z, [x1, x8, lsl #3]
-; VBITS_GE_256-NEXT:    ld1d { z1.d }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1d { z2.d }, p0/z, [x0, x8, lsl #3]
-; VBITS_GE_256-NEXT:    ld1d { z3.d }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    asr z0.d, z0.d, #4
-; VBITS_GE_256-NEXT:    asr z1.d, z1.d, #4
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    ld1d { z0.d }, p0/z, [x0, x8, lsl #3]
+; VBITS_GE_256-NEXT:    ld1d { z1.d }, p0/z, [x1, x8, lsl #3]
+; VBITS_GE_256-NEXT:    ld1d { z2.d }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1d { z3.d }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    ssra z0.d, z1.d, #4
+; VBITS_GE_256-NEXT:    ssra z2.d, z3.d, #4
 ; VBITS_GE_256-NEXT:    st1d { z0.d }, p0, [x0, x8, lsl #3]
-; VBITS_GE_256-NEXT:    st1d { z1.d }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1d { z2.d }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: ssra_disjoint_or8xi64:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.d, vl8
-; VBITS_GE_512-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    asr z0.d, z0.d, #4
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    ssra z0.d, z1.d, #4
 ; VBITS_GE_512-NEXT:    st1d { z0.d }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <8 x i64>, ptr %a
@@ -927,10 +874,9 @@ define void @ssra_disjoint_or16xi64(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or16xi64:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.d, vl16
-; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.d, z0.d, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.d, z1.d, #4
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <16 x i64>, ptr %a
@@ -945,10 +891,9 @@ define void @ssra_disjoint_or32xi64(ptr %a, ptr %b) vscale_range(16,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_or32xi64:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.d, vl32
-; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; CHECK-NEXT:    asr z0.d, z0.d, #4
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; CHECK-NEXT:    ssra z0.d, z1.d, #4
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i64>, ptr %a
@@ -994,8 +939,7 @@ define void @usra_disjoint_shift_or32xi8(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
 ; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.b, z0.b, #7
-; CHECK-NEXT:    lsr z1.b, z1.b, #1
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.b, z1.b, #1
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i8>, ptr %a
@@ -1013,15 +957,13 @@ define void @usra_disjoint_shift_or64xi8(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256-NEXT:    ptrue p0.b, vl32
 ; VBITS_GE_256-NEXT:    mov w8, #32 // =0x20
 ; VBITS_GE_256-NEXT:    ld1b { z0.b }, p0/z, [x0, x8]
-; VBITS_GE_256-NEXT:    ld1b { z1.b }, p0/z, [x1, x8]
-; VBITS_GE_256-NEXT:    ld1b { z2.b }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1b { z1.b }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1b { z2.b }, p0/z, [x1, x8]
 ; VBITS_GE_256-NEXT:    ld1b { z3.b }, p0/z, [x1]
 ; VBITS_GE_256-NEXT:    lsl z0.b, z0.b, #7
-; VBITS_GE_256-NEXT:    lsr z1.b, z1.b, #1
-; VBITS_GE_256-NEXT:    lsl z2.b, z2.b, #7
-; VBITS_GE_256-NEXT:    lsr z3.b, z3.b, #1
-; VBITS_GE_256-NEXT:    orr z0.d, z0.d, z1.d
-; VBITS_GE_256-NEXT:    orr z1.d, z2.d, z3.d
+; VBITS_GE_256-NEXT:    lsl z1.b, z1.b, #7
+; VBITS_GE_256-NEXT:    usra z0.b, z2.b, #1
+; VBITS_GE_256-NEXT:    usra z1.b, z3.b, #1
 ; VBITS_GE_256-NEXT:    st1b { z0.b }, p0, [x0, x8]
 ; VBITS_GE_256-NEXT:    st1b { z1.b }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
@@ -1032,8 +974,7 @@ define void @usra_disjoint_shift_or64xi8(ptr %a, ptr %b) #0 {
 ; VBITS_GE_512-NEXT:    ld1b { z0.b }, p0/z, [x0]
 ; VBITS_GE_512-NEXT:    ld1b { z1.b }, p0/z, [x1]
 ; VBITS_GE_512-NEXT:    lsl z0.b, z0.b, #7
-; VBITS_GE_512-NEXT:    lsr z1.b, z1.b, #1
-; VBITS_GE_512-NEXT:    orr z0.d, z0.d, z1.d
+; VBITS_GE_512-NEXT:    usra z0.b, z1.b, #1
 ; VBITS_GE_512-NEXT:    st1b { z0.b }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <64 x i8>, ptr %a
@@ -1052,8 +993,7 @@ define void @usra_disjoint_shift_or128xi8(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
 ; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.b, z0.b, #7
-; CHECK-NEXT:    lsr z1.b, z1.b, #1
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.b, z1.b, #1
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <128 x i8>, ptr %a
@@ -1072,8 +1012,7 @@ define void @usra_disjoint_shift_or256xi8(ptr %a, ptr %b) vscale_range(16,0) #0 
 ; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
 ; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.b, z0.b, #7
-; CHECK-NEXT:    lsr z1.b, z1.b, #1
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.b, z1.b, #1
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <256 x i8>, ptr %a
@@ -1116,8 +1055,7 @@ define void @usra_disjoint_shift_or16xi16(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
 ; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.h, z0.h, #7
-; CHECK-NEXT:    lsr z1.h, z1.h, #9
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.h, z1.h, #9
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <16 x i16>, ptr %a
@@ -1135,15 +1073,13 @@ define void @usra_disjoint_shift_or32xi16(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256-NEXT:    ptrue p0.h, vl16
 ; VBITS_GE_256-NEXT:    mov x8, #16 // =0x10
 ; VBITS_GE_256-NEXT:    ld1h { z0.h }, p0/z, [x0, x8, lsl #1]
-; VBITS_GE_256-NEXT:    ld1h { z1.h }, p0/z, [x1, x8, lsl #1]
-; VBITS_GE_256-NEXT:    ld1h { z2.h }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1h { z1.h }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1h { z2.h }, p0/z, [x1, x8, lsl #1]
 ; VBITS_GE_256-NEXT:    ld1h { z3.h }, p0/z, [x1]
 ; VBITS_GE_256-NEXT:    lsl z0.h, z0.h, #7
-; VBITS_GE_256-NEXT:    lsr z1.h, z1.h, #9
-; VBITS_GE_256-NEXT:    lsl z2.h, z2.h, #7
-; VBITS_GE_256-NEXT:    lsr z3.h, z3.h, #9
-; VBITS_GE_256-NEXT:    orr z0.d, z0.d, z1.d
-; VBITS_GE_256-NEXT:    orr z1.d, z2.d, z3.d
+; VBITS_GE_256-NEXT:    lsl z1.h, z1.h, #7
+; VBITS_GE_256-NEXT:    usra z0.h, z2.h, #9
+; VBITS_GE_256-NEXT:    usra z1.h, z3.h, #9
 ; VBITS_GE_256-NEXT:    st1h { z0.h }, p0, [x0, x8, lsl #1]
 ; VBITS_GE_256-NEXT:    st1h { z1.h }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
@@ -1154,8 +1090,7 @@ define void @usra_disjoint_shift_or32xi16(ptr %a, ptr %b) #0 {
 ; VBITS_GE_512-NEXT:    ld1h { z0.h }, p0/z, [x0]
 ; VBITS_GE_512-NEXT:    ld1h { z1.h }, p0/z, [x1]
 ; VBITS_GE_512-NEXT:    lsl z0.h, z0.h, #7
-; VBITS_GE_512-NEXT:    lsr z1.h, z1.h, #9
-; VBITS_GE_512-NEXT:    orr z0.d, z0.d, z1.d
+; VBITS_GE_512-NEXT:    usra z0.h, z1.h, #9
 ; VBITS_GE_512-NEXT:    st1h { z0.h }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <32 x i16>, ptr %a
@@ -1174,8 +1109,7 @@ define void @usra_disjoint_shift_or64xi16(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
 ; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.h, z0.h, #7
-; CHECK-NEXT:    lsr z1.h, z1.h, #9
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.h, z1.h, #9
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <64 x i16>, ptr %a
@@ -1194,8 +1128,7 @@ define void @usra_disjoint_shift_or128xi16(ptr %a, ptr %b) vscale_range(16,0) #0
 ; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
 ; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.h, z0.h, #7
-; CHECK-NEXT:    lsr z1.h, z1.h, #9
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.h, z1.h, #9
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <128 x i16>, ptr %a
@@ -1238,8 +1171,7 @@ define void @usra_disjoint_shift_or8xi32(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
 ; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.s, z0.s, #7
-; CHECK-NEXT:    lsr z1.s, z1.s, #25
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.s, z1.s, #25
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <8 x i32>, ptr %a
@@ -1257,15 +1189,13 @@ define void @usra_disjoint_shift_or16xi32(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256-NEXT:    ptrue p0.s, vl8
 ; VBITS_GE_256-NEXT:    mov x8, #8 // =0x8
 ; VBITS_GE_256-NEXT:    ld1w { z0.s }, p0/z, [x0, x8, lsl #2]
-; VBITS_GE_256-NEXT:    ld1w { z1.s }, p0/z, [x1, x8, lsl #2]
-; VBITS_GE_256-NEXT:    ld1w { z2.s }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1w { z1.s }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1w { z2.s }, p0/z, [x1, x8, lsl #2]
 ; VBITS_GE_256-NEXT:    ld1w { z3.s }, p0/z, [x1]
 ; VBITS_GE_256-NEXT:    lsl z0.s, z0.s, #7
-; VBITS_GE_256-NEXT:    lsr z1.s, z1.s, #25
-; VBITS_GE_256-NEXT:    lsl z2.s, z2.s, #7
-; VBITS_GE_256-NEXT:    lsr z3.s, z3.s, #25
-; VBITS_GE_256-NEXT:    orr z0.d, z0.d, z1.d
-; VBITS_GE_256-NEXT:    orr z1.d, z2.d, z3.d
+; VBITS_GE_256-NEXT:    lsl z1.s, z1.s, #7
+; VBITS_GE_256-NEXT:    usra z0.s, z2.s, #25
+; VBITS_GE_256-NEXT:    usra z1.s, z3.s, #25
 ; VBITS_GE_256-NEXT:    st1w { z0.s }, p0, [x0, x8, lsl #2]
 ; VBITS_GE_256-NEXT:    st1w { z1.s }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
@@ -1276,8 +1206,7 @@ define void @usra_disjoint_shift_or16xi32(ptr %a, ptr %b) #0 {
 ; VBITS_GE_512-NEXT:    ld1w { z0.s }, p0/z, [x0]
 ; VBITS_GE_512-NEXT:    ld1w { z1.s }, p0/z, [x1]
 ; VBITS_GE_512-NEXT:    lsl z0.s, z0.s, #7
-; VBITS_GE_512-NEXT:    lsr z1.s, z1.s, #25
-; VBITS_GE_512-NEXT:    orr z0.d, z0.d, z1.d
+; VBITS_GE_512-NEXT:    usra z0.s, z1.s, #25
 ; VBITS_GE_512-NEXT:    st1w { z0.s }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <16 x i32>, ptr %a
@@ -1296,8 +1225,7 @@ define void @usra_disjoint_shift_or32xi32(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
 ; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.s, z0.s, #7
-; CHECK-NEXT:    lsr z1.s, z1.s, #25
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.s, z1.s, #25
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i32>, ptr %a
@@ -1316,8 +1244,7 @@ define void @usra_disjoint_shift_or64xi32(ptr %a, ptr %b) vscale_range(16,0) #0 
 ; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
 ; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.s, z0.s, #7
-; CHECK-NEXT:    lsr z1.s, z1.s, #25
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.s, z1.s, #25
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <64 x i32>, ptr %a
@@ -1360,8 +1287,7 @@ define void @usra_disjoint_shift_or4xi64(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
 ; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.d, z0.d, #7
-; CHECK-NEXT:    lsr z1.d, z1.d, #57
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.d, z1.d, #57
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <4 x i64>, ptr %a
@@ -1379,15 +1305,13 @@ define void @usra_disjoint_shift_or8xi64(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256-NEXT:    ptrue p0.d, vl4
 ; VBITS_GE_256-NEXT:    mov x8, #4 // =0x4
 ; VBITS_GE_256-NEXT:    ld1d { z0.d }, p0/z, [x0, x8, lsl #3]
-; VBITS_GE_256-NEXT:    ld1d { z1.d }, p0/z, [x1, x8, lsl #3]
-; VBITS_GE_256-NEXT:    ld1d { z2.d }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1d { z1.d }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1d { z2.d }, p0/z, [x1, x8, lsl #3]
 ; VBITS_GE_256-NEXT:    ld1d { z3.d }, p0/z, [x1]
 ; VBITS_GE_256-NEXT:    lsl z0.d, z0.d, #7
-; VBITS_GE_256-NEXT:    lsr z1.d, z1.d, #57
-; VBITS_GE_256-NEXT:    lsl z2.d, z2.d, #7
-; VBITS_GE_256-NEXT:    lsr z3.d, z3.d, #57
-; VBITS_GE_256-NEXT:    orr z0.d, z0.d, z1.d
-; VBITS_GE_256-NEXT:    orr z1.d, z2.d, z3.d
+; VBITS_GE_256-NEXT:    lsl z1.d, z1.d, #7
+; VBITS_GE_256-NEXT:    usra z0.d, z2.d, #57
+; VBITS_GE_256-NEXT:    usra z1.d, z3.d, #57
 ; VBITS_GE_256-NEXT:    st1d { z0.d }, p0, [x0, x8, lsl #3]
 ; VBITS_GE_256-NEXT:    st1d { z1.d }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
@@ -1398,8 +1322,7 @@ define void @usra_disjoint_shift_or8xi64(ptr %a, ptr %b) #0 {
 ; VBITS_GE_512-NEXT:    ld1d { z0.d }, p0/z, [x0]
 ; VBITS_GE_512-NEXT:    ld1d { z1.d }, p0/z, [x1]
 ; VBITS_GE_512-NEXT:    lsl z0.d, z0.d, #7
-; VBITS_GE_512-NEXT:    lsr z1.d, z1.d, #57
-; VBITS_GE_512-NEXT:    orr z0.d, z0.d, z1.d
+; VBITS_GE_512-NEXT:    usra z0.d, z1.d, #57
 ; VBITS_GE_512-NEXT:    st1d { z0.d }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <8 x i64>, ptr %a
@@ -1418,8 +1341,7 @@ define void @usra_disjoint_shift_or16xi64(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
 ; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.d, z0.d, #7
-; CHECK-NEXT:    lsr z1.d, z1.d, #57
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.d, z1.d, #57
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <16 x i64>, ptr %a
@@ -1438,8 +1360,7 @@ define void @usra_disjoint_shift_or32xi64(ptr %a, ptr %b) vscale_range(16,0) #0 
 ; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
 ; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
 ; CHECK-NEXT:    lsl z0.d, z0.d, #7
-; CHECK-NEXT:    lsr z1.d, z1.d, #57
-; CHECK-NEXT:    orr z0.d, z0.d, z1.d
+; CHECK-NEXT:    usra z0.d, z1.d, #57
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i64>, ptr %a
@@ -1487,12 +1408,11 @@ define void @ssra_disjoint_shift_or32xi8(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_shift_or32xi8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl32
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.b, z0.b, #7
-; CHECK-NEXT:    lsr z1.b, z1.b, #2
-; CHECK-NEXT:    asr z0.b, z0.b, #1
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.b, z0.b, #2
+; CHECK-NEXT:    lsl z1.b, z1.b, #7
+; CHECK-NEXT:    ssra z0.b, z1.b, #1
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i8>, ptr %a
@@ -1510,31 +1430,28 @@ define void @ssra_disjoint_shift_or64xi8(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.b, vl32
 ; VBITS_GE_256-NEXT:    mov w8, #32 // =0x20
-; VBITS_GE_256-NEXT:    ld1b { z0.b }, p0/z, [x1, x8]
-; VBITS_GE_256-NEXT:    ld1b { z1.b }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1b { z2.b }, p0/z, [x0, x8]
-; VBITS_GE_256-NEXT:    ld1b { z3.b }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    lsl z0.b, z0.b, #7
+; VBITS_GE_256-NEXT:    ld1b { z0.b }, p0/z, [x0, x8]
+; VBITS_GE_256-NEXT:    ld1b { z1.b }, p0/z, [x1, x8]
+; VBITS_GE_256-NEXT:    ld1b { z2.b }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1b { z3.b }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    lsr z0.b, z0.b, #2
 ; VBITS_GE_256-NEXT:    lsl z1.b, z1.b, #7
 ; VBITS_GE_256-NEXT:    lsr z2.b, z2.b, #2
-; VBITS_GE_256-NEXT:    lsr z3.b, z3.b, #2
-; VBITS_GE_256-NEXT:    asr z0.b, z0.b, #1
-; VBITS_GE_256-NEXT:    asr z1.b, z1.b, #1
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    lsl z3.b, z3.b, #7
+; VBITS_GE_256-NEXT:    ssra z0.b, z1.b, #1
+; VBITS_GE_256-NEXT:    ssra z2.b, z3.b, #1
 ; VBITS_GE_256-NEXT:    st1b { z0.b }, p0, [x0, x8]
-; VBITS_GE_256-NEXT:    st1b { z1.b }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1b { z2.b }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: ssra_disjoint_shift_or64xi8:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.b, vl64
-; VBITS_GE_512-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    lsl z0.b, z0.b, #7
-; VBITS_GE_512-NEXT:    lsr z1.b, z1.b, #2
-; VBITS_GE_512-NEXT:    asr z0.b, z0.b, #1
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    lsr z0.b, z0.b, #2
+; VBITS_GE_512-NEXT:    lsl z1.b, z1.b, #7
+; VBITS_GE_512-NEXT:    ssra z0.b, z1.b, #1
 ; VBITS_GE_512-NEXT:    st1b { z0.b }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <64 x i8>, ptr %a
@@ -1551,12 +1468,11 @@ define void @ssra_disjoint_shift_or128xi8(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_shift_or128xi8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl128
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.b, z0.b, #7
-; CHECK-NEXT:    lsr z1.b, z1.b, #2
-; CHECK-NEXT:    asr z0.b, z0.b, #1
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.b, z0.b, #2
+; CHECK-NEXT:    lsl z1.b, z1.b, #7
+; CHECK-NEXT:    ssra z0.b, z1.b, #1
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <128 x i8>, ptr %a
@@ -1573,12 +1489,11 @@ define void @ssra_disjoint_shift_or256xi8(ptr %a, ptr %b) vscale_range(16,0) #0 
 ; CHECK-LABEL: ssra_disjoint_shift_or256xi8:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.b, vl256
-; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x1]
-; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.b, z0.b, #7
-; CHECK-NEXT:    lsr z1.b, z1.b, #2
-; CHECK-NEXT:    asr z0.b, z0.b, #1
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1b { z0.b }, p0/z, [x0]
+; CHECK-NEXT:    ld1b { z1.b }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.b, z0.b, #2
+; CHECK-NEXT:    lsl z1.b, z1.b, #7
+; CHECK-NEXT:    ssra z0.b, z1.b, #1
 ; CHECK-NEXT:    st1b { z0.b }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <256 x i8>, ptr %a
@@ -1623,12 +1538,11 @@ define void @ssra_disjoint_shift_or16xi16(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_shift_or16xi16:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.h, vl16
-; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.h, z0.h, #15
-; CHECK-NEXT:    lsr z1.h, z1.h, #10
-; CHECK-NEXT:    asr z0.h, z0.h, #9
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.h, z0.h, #10
+; CHECK-NEXT:    lsl z1.h, z1.h, #15
+; CHECK-NEXT:    ssra z0.h, z1.h, #9
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <16 x i16>, ptr %a
@@ -1646,31 +1560,28 @@ define void @ssra_disjoint_shift_or32xi16(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.h, vl16
 ; VBITS_GE_256-NEXT:    mov x8, #16 // =0x10
-; VBITS_GE_256-NEXT:    ld1h { z0.h }, p0/z, [x1, x8, lsl #1]
-; VBITS_GE_256-NEXT:    ld1h { z1.h }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1h { z2.h }, p0/z, [x0, x8, lsl #1]
-; VBITS_GE_256-NEXT:    ld1h { z3.h }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    lsl z0.h, z0.h, #15
+; VBITS_GE_256-NEXT:    ld1h { z0.h }, p0/z, [x0, x8, lsl #1]
+; VBITS_GE_256-NEXT:    ld1h { z1.h }, p0/z, [x1, x8, lsl #1]
+; VBITS_GE_256-NEXT:    ld1h { z2.h }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1h { z3.h }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    lsr z0.h, z0.h, #10
 ; VBITS_GE_256-NEXT:    lsl z1.h, z1.h, #15
 ; VBITS_GE_256-NEXT:    lsr z2.h, z2.h, #10
-; VBITS_GE_256-NEXT:    lsr z3.h, z3.h, #10
-; VBITS_GE_256-NEXT:    asr z0.h, z0.h, #9
-; VBITS_GE_256-NEXT:    asr z1.h, z1.h, #9
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    lsl z3.h, z3.h, #15
+; VBITS_GE_256-NEXT:    ssra z0.h, z1.h, #9
+; VBITS_GE_256-NEXT:    ssra z2.h, z3.h, #9
 ; VBITS_GE_256-NEXT:    st1h { z0.h }, p0, [x0, x8, lsl #1]
-; VBITS_GE_256-NEXT:    st1h { z1.h }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1h { z2.h }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: ssra_disjoint_shift_or32xi16:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.h, vl32
-; VBITS_GE_512-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    lsl z0.h, z0.h, #15
-; VBITS_GE_512-NEXT:    lsr z1.h, z1.h, #10
-; VBITS_GE_512-NEXT:    asr z0.h, z0.h, #9
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    lsr z0.h, z0.h, #10
+; VBITS_GE_512-NEXT:    lsl z1.h, z1.h, #15
+; VBITS_GE_512-NEXT:    ssra z0.h, z1.h, #9
 ; VBITS_GE_512-NEXT:    st1h { z0.h }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <32 x i16>, ptr %a
@@ -1687,12 +1598,11 @@ define void @ssra_disjoint_shift_or64xi16(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_shift_or64xi16:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.h, vl64
-; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.h, z0.h, #15
-; CHECK-NEXT:    lsr z1.h, z1.h, #10
-; CHECK-NEXT:    asr z0.h, z0.h, #9
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.h, z0.h, #10
+; CHECK-NEXT:    lsl z1.h, z1.h, #15
+; CHECK-NEXT:    ssra z0.h, z1.h, #9
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <64 x i16>, ptr %a
@@ -1709,12 +1619,11 @@ define void @ssra_disjoint_shift_or128xi16(ptr %a, ptr %b) vscale_range(16,0) #0
 ; CHECK-LABEL: ssra_disjoint_shift_or128xi16:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.h, vl128
-; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x1]
-; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.h, z0.h, #15
-; CHECK-NEXT:    lsr z1.h, z1.h, #10
-; CHECK-NEXT:    asr z0.h, z0.h, #9
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1h { z0.h }, p0/z, [x0]
+; CHECK-NEXT:    ld1h { z1.h }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.h, z0.h, #10
+; CHECK-NEXT:    lsl z1.h, z1.h, #15
+; CHECK-NEXT:    ssra z0.h, z1.h, #9
 ; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <128 x i16>, ptr %a
@@ -1759,12 +1668,11 @@ define void @ssra_disjoint_shift_or8xi32(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_shift_or8xi32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.s, vl8
-; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.s, z0.s, #31
-; CHECK-NEXT:    lsr z1.s, z1.s, #26
-; CHECK-NEXT:    asr z0.s, z0.s, #25
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.s, z0.s, #26
+; CHECK-NEXT:    lsl z1.s, z1.s, #31
+; CHECK-NEXT:    ssra z0.s, z1.s, #25
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <8 x i32>, ptr %a
@@ -1782,31 +1690,28 @@ define void @ssra_disjoint_shift_or16xi32(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.s, vl8
 ; VBITS_GE_256-NEXT:    mov x8, #8 // =0x8
-; VBITS_GE_256-NEXT:    ld1w { z0.s }, p0/z, [x1, x8, lsl #2]
-; VBITS_GE_256-NEXT:    ld1w { z1.s }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1w { z2.s }, p0/z, [x0, x8, lsl #2]
-; VBITS_GE_256-NEXT:    ld1w { z3.s }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    lsl z0.s, z0.s, #31
+; VBITS_GE_256-NEXT:    ld1w { z0.s }, p0/z, [x0, x8, lsl #2]
+; VBITS_GE_256-NEXT:    ld1w { z1.s }, p0/z, [x1, x8, lsl #2]
+; VBITS_GE_256-NEXT:    ld1w { z2.s }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1w { z3.s }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    lsr z0.s, z0.s, #26
 ; VBITS_GE_256-NEXT:    lsl z1.s, z1.s, #31
 ; VBITS_GE_256-NEXT:    lsr z2.s, z2.s, #26
-; VBITS_GE_256-NEXT:    lsr z3.s, z3.s, #26
-; VBITS_GE_256-NEXT:    asr z0.s, z0.s, #25
-; VBITS_GE_256-NEXT:    asr z1.s, z1.s, #25
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    lsl z3.s, z3.s, #31
+; VBITS_GE_256-NEXT:    ssra z0.s, z1.s, #25
+; VBITS_GE_256-NEXT:    ssra z2.s, z3.s, #25
 ; VBITS_GE_256-NEXT:    st1w { z0.s }, p0, [x0, x8, lsl #2]
-; VBITS_GE_256-NEXT:    st1w { z1.s }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1w { z2.s }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: ssra_disjoint_shift_or16xi32:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.s, vl16
-; VBITS_GE_512-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    lsl z0.s, z0.s, #31
-; VBITS_GE_512-NEXT:    lsr z1.s, z1.s, #26
-; VBITS_GE_512-NEXT:    asr z0.s, z0.s, #25
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    lsr z0.s, z0.s, #26
+; VBITS_GE_512-NEXT:    lsl z1.s, z1.s, #31
+; VBITS_GE_512-NEXT:    ssra z0.s, z1.s, #25
 ; VBITS_GE_512-NEXT:    st1w { z0.s }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <16 x i32>, ptr %a
@@ -1823,12 +1728,11 @@ define void @ssra_disjoint_shift_or32xi32(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_shift_or32xi32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.s, vl32
-; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.s, z0.s, #31
-; CHECK-NEXT:    lsr z1.s, z1.s, #26
-; CHECK-NEXT:    asr z0.s, z0.s, #25
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.s, z0.s, #26
+; CHECK-NEXT:    lsl z1.s, z1.s, #31
+; CHECK-NEXT:    ssra z0.s, z1.s, #25
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i32>, ptr %a
@@ -1845,12 +1749,11 @@ define void @ssra_disjoint_shift_or64xi32(ptr %a, ptr %b) vscale_range(16,0) #0 
 ; CHECK-LABEL: ssra_disjoint_shift_or64xi32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.s, vl64
-; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x1]
-; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.s, z0.s, #31
-; CHECK-NEXT:    lsr z1.s, z1.s, #26
-; CHECK-NEXT:    asr z0.s, z0.s, #25
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1w { z0.s }, p0/z, [x0]
+; CHECK-NEXT:    ld1w { z1.s }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.s, z0.s, #26
+; CHECK-NEXT:    lsl z1.s, z1.s, #31
+; CHECK-NEXT:    ssra z0.s, z1.s, #25
 ; CHECK-NEXT:    st1w { z0.s }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <64 x i32>, ptr %a
@@ -1895,12 +1798,11 @@ define void @ssra_disjoint_shift_or4xi64(ptr %a, ptr %b) vscale_range(2,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_shift_or4xi64:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.d, vl4
-; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.d, z0.d, #63
-; CHECK-NEXT:    lsr z1.d, z1.d, #58
-; CHECK-NEXT:    asr z0.d, z0.d, #57
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.d, z0.d, #58
+; CHECK-NEXT:    lsl z1.d, z1.d, #63
+; CHECK-NEXT:    ssra z0.d, z1.d, #57
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <4 x i64>, ptr %a
@@ -1918,31 +1820,28 @@ define void @ssra_disjoint_shift_or8xi64(ptr %a, ptr %b) #0 {
 ; VBITS_GE_256:       // %bb.0:
 ; VBITS_GE_256-NEXT:    ptrue p0.d, vl4
 ; VBITS_GE_256-NEXT:    mov x8, #4 // =0x4
-; VBITS_GE_256-NEXT:    ld1d { z0.d }, p0/z, [x1, x8, lsl #3]
-; VBITS_GE_256-NEXT:    ld1d { z1.d }, p0/z, [x1]
-; VBITS_GE_256-NEXT:    ld1d { z2.d }, p0/z, [x0, x8, lsl #3]
-; VBITS_GE_256-NEXT:    ld1d { z3.d }, p0/z, [x0]
-; VBITS_GE_256-NEXT:    lsl z0.d, z0.d, #63
+; VBITS_GE_256-NEXT:    ld1d { z0.d }, p0/z, [x0, x8, lsl #3]
+; VBITS_GE_256-NEXT:    ld1d { z1.d }, p0/z, [x1, x8, lsl #3]
+; VBITS_GE_256-NEXT:    ld1d { z2.d }, p0/z, [x0]
+; VBITS_GE_256-NEXT:    ld1d { z3.d }, p0/z, [x1]
+; VBITS_GE_256-NEXT:    lsr z0.d, z0.d, #58
 ; VBITS_GE_256-NEXT:    lsl z1.d, z1.d, #63
 ; VBITS_GE_256-NEXT:    lsr z2.d, z2.d, #58
-; VBITS_GE_256-NEXT:    lsr z3.d, z3.d, #58
-; VBITS_GE_256-NEXT:    asr z0.d, z0.d, #57
-; VBITS_GE_256-NEXT:    asr z1.d, z1.d, #57
-; VBITS_GE_256-NEXT:    orr z0.d, z2.d, z0.d
-; VBITS_GE_256-NEXT:    orr z1.d, z3.d, z1.d
+; VBITS_GE_256-NEXT:    lsl z3.d, z3.d, #63
+; VBITS_GE_256-NEXT:    ssra z0.d, z1.d, #57
+; VBITS_GE_256-NEXT:    ssra z2.d, z3.d, #57
 ; VBITS_GE_256-NEXT:    st1d { z0.d }, p0, [x0, x8, lsl #3]
-; VBITS_GE_256-NEXT:    st1d { z1.d }, p0, [x0]
+; VBITS_GE_256-NEXT:    st1d { z2.d }, p0, [x0]
 ; VBITS_GE_256-NEXT:    ret
 ;
 ; VBITS_GE_512-LABEL: ssra_disjoint_shift_or8xi64:
 ; VBITS_GE_512:       // %bb.0:
 ; VBITS_GE_512-NEXT:    ptrue p0.d, vl8
-; VBITS_GE_512-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; VBITS_GE_512-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; VBITS_GE_512-NEXT:    lsl z0.d, z0.d, #63
-; VBITS_GE_512-NEXT:    lsr z1.d, z1.d, #58
-; VBITS_GE_512-NEXT:    asr z0.d, z0.d, #57
-; VBITS_GE_512-NEXT:    orr z0.d, z1.d, z0.d
+; VBITS_GE_512-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; VBITS_GE_512-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; VBITS_GE_512-NEXT:    lsr z0.d, z0.d, #58
+; VBITS_GE_512-NEXT:    lsl z1.d, z1.d, #63
+; VBITS_GE_512-NEXT:    ssra z0.d, z1.d, #57
 ; VBITS_GE_512-NEXT:    st1d { z0.d }, p0, [x0]
 ; VBITS_GE_512-NEXT:    ret
   %va = load <8 x i64>, ptr %a
@@ -1959,12 +1858,11 @@ define void @ssra_disjoint_shift_or16xi64(ptr %a, ptr %b) vscale_range(8,0) #0 {
 ; CHECK-LABEL: ssra_disjoint_shift_or16xi64:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.d, vl16
-; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.d, z0.d, #63
-; CHECK-NEXT:    lsr z1.d, z1.d, #58
-; CHECK-NEXT:    asr z0.d, z0.d, #57
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.d, z0.d, #58
+; CHECK-NEXT:    lsl z1.d, z1.d, #63
+; CHECK-NEXT:    ssra z0.d, z1.d, #57
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <16 x i64>, ptr %a
@@ -1981,12 +1879,11 @@ define void @ssra_disjoint_shift_or32xi64(ptr %a, ptr %b) vscale_range(16,0) #0 
 ; CHECK-LABEL: ssra_disjoint_shift_or32xi64:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    ptrue p0.d, vl32
-; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x1]
-; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x0]
-; CHECK-NEXT:    lsl z0.d, z0.d, #63
-; CHECK-NEXT:    lsr z1.d, z1.d, #58
-; CHECK-NEXT:    asr z0.d, z0.d, #57
-; CHECK-NEXT:    orr z0.d, z1.d, z0.d
+; CHECK-NEXT:    ld1d { z0.d }, p0/z, [x0]
+; CHECK-NEXT:    ld1d { z1.d }, p0/z, [x1]
+; CHECK-NEXT:    lsr z0.d, z0.d, #58
+; CHECK-NEXT:    lsl z1.d, z1.d, #63
+; CHECK-NEXT:    ssra z0.d, z1.d, #57
 ; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
 ; CHECK-NEXT:    ret
   %va = load <32 x i64>, ptr %a
