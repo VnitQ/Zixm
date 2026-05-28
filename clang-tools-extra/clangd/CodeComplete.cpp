@@ -578,6 +578,8 @@ private:
     const bool Delim = ArgumentLists == Config::ArgumentListsPolicy::Delimiters;
     const bool Full =
         ArgumentLists == Config::ArgumentListsPolicy::FullPlaceholders ||
+        // When NamePlaceholders is set the "full" value is edited elsewhere
+        ArgumentLists == Config::ArgumentListsPolicy::NamePlaceholders ||
         (!None && !Open && !Delim); // <-- failsafe: Full is default
 
     if (IsUsingDeclaration)
@@ -1029,7 +1031,9 @@ struct CompletionRecorder : public CodeCompleteConsumer {
     // CodeCompletionResult doesn't seem to be const-correct. We own it, anyway.
     return const_cast<CodeCompletionResult &>(R).CreateCodeCompletionString(
         *CCSema, CCContext, *CCAllocator, CCTUInfo,
-        /*IncludeBriefComments=*/false);
+        /*IncludeBriefComments=*/false,
+        /*SuppressFuncParamType=*/Opts.ArgumentLists ==
+            Config::ArgumentListsPolicy::NamePlaceholders);
   }
 
 private:
