@@ -26,10 +26,9 @@ define i16 @cttz_v16i8(<16 x i8> %v) {
 ; CHECK-BE-NEXT:    rev64 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmlt v0.16b, v0.16b, #0
-; CHECK-BE-NEXT:    rev16 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    shrn v0.8b, v0.8h, #4
-; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #2
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -58,8 +57,8 @@ define i8 @cttz_v8i16(<8 x i16> %v) {
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmlt v0.8h, v0.8h, #0
 ; CHECK-BE-NEXT:    xtn v0.8b, v0.8h
-; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #3
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -85,8 +84,8 @@ define i8 @cttz_v8i8(<8 x i8> %v) {
 ; CHECK-BE:       // %bb.0:
 ; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    cmlt v0.8b, v0.8b, #0
-; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #3
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -114,10 +113,9 @@ define i16 @cttz_v16i8_with_any_check(<16 x i8> %v) {
 ; CHECK-BE-NEXT:    rev64 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmlt v0.16b, v0.16b, #0
-; CHECK-BE-NEXT:    rev16 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    shrn v0.8b, v0.8h, #4
-; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #2
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -152,8 +150,8 @@ define i4 @cttz_v4i32(<4 x i32> %v) {
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmlt v0.4s, v0.4s, #0
 ; CHECK-BE-NEXT:    xtn v0.4h, v0.4s
-; CHECK-BE-NEXT:    rev64 v0.4h, v0.4h
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #4
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -181,8 +179,8 @@ define i2 @cttz_v2i64(<2 x i64> %v) {
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmlt v0.2d, v0.2d, #0
 ; CHECK-BE-NEXT:    xtn v0.2s, v0.2d
-; CHECK-BE-NEXT:    rev64 v0.2s, v0.2s
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #5
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -213,10 +211,9 @@ define i16 @cttz_v16i8_eq(<16 x i8> %v) {
 ; CHECK-BE-NEXT:    movi v1.16b, #42
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmeq v0.16b, v0.16b, v1.16b
-; CHECK-BE-NEXT:    rev16 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    shrn v0.8b, v0.8h, #4
-; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #2
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -244,10 +241,9 @@ define i16 @cttz_v16i8_ne(<16 x i8> %v) {
 ; CHECK-BE-NEXT:    rev64 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmtst v0.16b, v0.16b, v0.16b
-; CHECK-BE-NEXT:    rev16 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    shrn v0.8b, v0.8h, #4
-; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #2
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -277,10 +273,9 @@ define i16 @cttz_v16i8_sgt(<16 x i8> %v) {
 ; CHECK-BE-NEXT:    movi v1.16b, #5
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmgt v0.16b, v0.16b, v1.16b
-; CHECK-BE-NEXT:    rev16 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    shrn v0.8b, v0.8h, #4
-; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #2
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -310,8 +305,8 @@ define i4 @cttz_v4f32_olt(<4 x float> %v) {
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    fcmlt v0.4s, v0.4s, #0.0
 ; CHECK-BE-NEXT:    xtn v0.4h, v0.4s
-; CHECK-BE-NEXT:    rev64 v0.4h, v0.4h
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #4
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -341,8 +336,8 @@ define i8 @cttz_v8i16_with_any_check(<8 x i16> %v) {
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmlt v0.8h, v0.8h, #0
 ; CHECK-BE-NEXT:    xtn v0.8b, v0.8h
-; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #3
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -376,10 +371,9 @@ define i16 @cttz_v16i8_zero_undef(<16 x i8> %v) {
 ; CHECK-BE-NEXT:    rev64 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    ext v0.16b, v0.16b, v0.16b, #8
 ; CHECK-BE-NEXT:    cmlt v0.16b, v0.16b, #0
-; CHECK-BE-NEXT:    rev16 v0.16b, v0.16b
 ; CHECK-BE-NEXT:    shrn v0.8b, v0.8h, #4
-; CHECK-BE-NEXT:    rev64 v0.8b, v0.8b
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #2
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -470,16 +464,11 @@ define i16 @cttz_v16i16(<16 x i16> %v) {
 ; CHECK-LE-NEXT:    cmlt v1.8h, v1.8h, #0
 ; CHECK-LE-NEXT:    cmlt v0.8h, v0.8h, #0
 ; CHECK-LE-NEXT:    uzp1 v0.16b, v0.16b, v1.16b
-; CHECK-LE-NEXT:    mov x8, v0.d[1]
-; CHECK-LE-NEXT:    fmov x9, d0
-; CHECK-LE-NEXT:    rbit x10, x9
-; CHECK-LE-NEXT:    cmp x9, #0
+; CHECK-LE-NEXT:    shrn v0.8b, v0.8h, #4
+; CHECK-LE-NEXT:    fmov x8, d0
 ; CHECK-LE-NEXT:    rbit x8, x8
-; CHECK-LE-NEXT:    clz x10, x10
 ; CHECK-LE-NEXT:    clz x8, x8
-; CHECK-LE-NEXT:    add x8, x8, #64
-; CHECK-LE-NEXT:    csel x8, x10, x8, ne
-; CHECK-LE-NEXT:    lsr x0, x8, #3
+; CHECK-LE-NEXT:    lsr x0, x8, #2
 ; CHECK-LE-NEXT:    // kill: def $w0 killed $w0 killed $x0
 ; CHECK-LE-NEXT:    ret
 ;
@@ -492,15 +481,11 @@ define i16 @cttz_v16i16(<16 x i16> %v) {
 ; CHECK-BE-NEXT:    cmlt v1.8h, v1.8h, #0
 ; CHECK-BE-NEXT:    cmlt v0.8h, v0.8h, #0
 ; CHECK-BE-NEXT:    uzp1 v0.16b, v0.16b, v1.16b
-; CHECK-BE-NEXT:    rev64 v0.16b, v0.16b
-; CHECK-BE-NEXT:    mov x8, v0.d[1]
-; CHECK-BE-NEXT:    fmov x9, d0
-; CHECK-BE-NEXT:    clz x10, x9
-; CHECK-BE-NEXT:    cmp x9, #0
+; CHECK-BE-NEXT:    shrn v0.8b, v0.8h, #4
+; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
-; CHECK-BE-NEXT:    add x8, x8, #64
-; CHECK-BE-NEXT:    csel x8, x10, x8, ne
-; CHECK-BE-NEXT:    lsr x0, x8, #3
+; CHECK-BE-NEXT:    lsr x0, x8, #2
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
 ; CHECK-BE-NEXT:    ret
   %cmp = icmp slt <16 x i16> %v, splat (i16 0)
@@ -515,16 +500,11 @@ define i8 @cttz_v8i32(<8 x i32> %v) {
 ; CHECK-LE-NEXT:    cmlt v1.4s, v1.4s, #0
 ; CHECK-LE-NEXT:    cmlt v0.4s, v0.4s, #0
 ; CHECK-LE-NEXT:    uzp1 v0.8h, v0.8h, v1.8h
-; CHECK-LE-NEXT:    mov x8, v0.d[1]
-; CHECK-LE-NEXT:    fmov x9, d0
-; CHECK-LE-NEXT:    rbit x10, x9
-; CHECK-LE-NEXT:    cmp x9, #0
+; CHECK-LE-NEXT:    xtn v0.8b, v0.8h
+; CHECK-LE-NEXT:    fmov x8, d0
 ; CHECK-LE-NEXT:    rbit x8, x8
-; CHECK-LE-NEXT:    clz x10, x10
 ; CHECK-LE-NEXT:    clz x8, x8
-; CHECK-LE-NEXT:    add x8, x8, #64
-; CHECK-LE-NEXT:    csel x8, x10, x8, ne
-; CHECK-LE-NEXT:    lsr x0, x8, #4
+; CHECK-LE-NEXT:    lsr x0, x8, #3
 ; CHECK-LE-NEXT:    // kill: def $w0 killed $w0 killed $x0
 ; CHECK-LE-NEXT:    ret
 ;
@@ -537,15 +517,11 @@ define i8 @cttz_v8i32(<8 x i32> %v) {
 ; CHECK-BE-NEXT:    cmlt v1.4s, v1.4s, #0
 ; CHECK-BE-NEXT:    cmlt v0.4s, v0.4s, #0
 ; CHECK-BE-NEXT:    uzp1 v0.8h, v0.8h, v1.8h
-; CHECK-BE-NEXT:    rev64 v0.8h, v0.8h
-; CHECK-BE-NEXT:    mov x8, v0.d[1]
-; CHECK-BE-NEXT:    fmov x9, d0
-; CHECK-BE-NEXT:    clz x10, x9
-; CHECK-BE-NEXT:    cmp x9, #0
+; CHECK-BE-NEXT:    xtn v0.8b, v0.8h
+; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
-; CHECK-BE-NEXT:    add x8, x8, #64
-; CHECK-BE-NEXT:    csel x8, x10, x8, ne
-; CHECK-BE-NEXT:    lsr x0, x8, #4
+; CHECK-BE-NEXT:    lsr x0, x8, #3
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
 ; CHECK-BE-NEXT:    ret
   %cmp = icmp slt <8 x i32> %v, splat (i32 0)
@@ -560,16 +536,11 @@ define i4 @cttz_v4i64(<4 x i64> %v) {
 ; CHECK-LE-NEXT:    cmlt v1.2d, v1.2d, #0
 ; CHECK-LE-NEXT:    cmlt v0.2d, v0.2d, #0
 ; CHECK-LE-NEXT:    uzp1 v0.4s, v0.4s, v1.4s
-; CHECK-LE-NEXT:    mov x8, v0.d[1]
-; CHECK-LE-NEXT:    fmov x9, d0
-; CHECK-LE-NEXT:    rbit x10, x9
-; CHECK-LE-NEXT:    cmp x9, #0
+; CHECK-LE-NEXT:    xtn v0.4h, v0.4s
+; CHECK-LE-NEXT:    fmov x8, d0
 ; CHECK-LE-NEXT:    rbit x8, x8
-; CHECK-LE-NEXT:    clz x10, x10
 ; CHECK-LE-NEXT:    clz x8, x8
-; CHECK-LE-NEXT:    add x8, x8, #64
-; CHECK-LE-NEXT:    csel x8, x10, x8, ne
-; CHECK-LE-NEXT:    lsr x0, x8, #5
+; CHECK-LE-NEXT:    lsr x0, x8, #4
 ; CHECK-LE-NEXT:    // kill: def $w0 killed $w0 killed $x0
 ; CHECK-LE-NEXT:    ret
 ;
@@ -580,15 +551,11 @@ define i4 @cttz_v4i64(<4 x i64> %v) {
 ; CHECK-BE-NEXT:    cmlt v1.2d, v1.2d, #0
 ; CHECK-BE-NEXT:    cmlt v0.2d, v0.2d, #0
 ; CHECK-BE-NEXT:    uzp1 v0.4s, v0.4s, v1.4s
-; CHECK-BE-NEXT:    rev64 v0.4s, v0.4s
-; CHECK-BE-NEXT:    mov x8, v0.d[1]
-; CHECK-BE-NEXT:    fmov x9, d0
-; CHECK-BE-NEXT:    clz x10, x9
-; CHECK-BE-NEXT:    cmp x9, #0
+; CHECK-BE-NEXT:    xtn v0.4h, v0.4s
+; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
-; CHECK-BE-NEXT:    add x8, x8, #64
-; CHECK-BE-NEXT:    csel x8, x10, x8, ne
-; CHECK-BE-NEXT:    lsr x0, x8, #5
+; CHECK-BE-NEXT:    lsr x0, x8, #4
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
 ; CHECK-BE-NEXT:    ret
   %cmp = icmp slt <4 x i64> %v, splat (i64 0)
@@ -625,8 +592,6 @@ define i32 @cttz_v32i8(<32 x i8> %v) {
 ; CHECK-BE-NEXT:    ext v1.16b, v1.16b, v1.16b, #8
 ; CHECK-BE-NEXT:    cmlt v0.16b, v0.16b, #0
 ; CHECK-BE-NEXT:    cmlt v1.16b, v1.16b, #0
-; CHECK-BE-NEXT:    rev16 v0.16b, v0.16b
-; CHECK-BE-NEXT:    rev16 v1.16b, v1.16b
 ; CHECK-BE-NEXT:    shrn v0.8b, v0.8h, #4
 ; CHECK-BE-NEXT:    shrn2 v0.16b, v1.8h, #4
 ; CHECK-BE-NEXT:    rev64 v0.16b, v0.16b
@@ -750,8 +715,8 @@ define i4 @cttz_v4i16(<4 x i16> %v) {
 ; CHECK-BE:       // %bb.0:
 ; CHECK-BE-NEXT:    rev64 v0.4h, v0.4h
 ; CHECK-BE-NEXT:    cmlt v0.4h, v0.4h, #0
-; CHECK-BE-NEXT:    rev64 v0.4h, v0.4h
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #4
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -777,8 +742,8 @@ define i2 @cttz_v2i32(<2 x i32> %v) {
 ; CHECK-BE:       // %bb.0:
 ; CHECK-BE-NEXT:    rev64 v0.2s, v0.2s
 ; CHECK-BE-NEXT:    cmlt v0.2s, v0.2s, #0
-; CHECK-BE-NEXT:    rev64 v0.2s, v0.2s
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #5
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -808,8 +773,8 @@ define i2 @cttz_v2i8(<2 x i8> %v) {
 ; CHECK-BE-NEXT:    shl v0.2s, v0.2s, #24
 ; CHECK-BE-NEXT:    sshr v0.2s, v0.2s, #24
 ; CHECK-BE-NEXT:    cmlt v0.2s, v0.2s, #0
-; CHECK-BE-NEXT:    rev64 v0.2s, v0.2s
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #5
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0
@@ -839,8 +804,8 @@ define i4 @cttz_v4i8(<4 x i8> %v) {
 ; CHECK-BE-NEXT:    shl v0.4h, v0.4h, #8
 ; CHECK-BE-NEXT:    sshr v0.4h, v0.4h, #8
 ; CHECK-BE-NEXT:    cmlt v0.4h, v0.4h, #0
-; CHECK-BE-NEXT:    rev64 v0.4h, v0.4h
 ; CHECK-BE-NEXT:    fmov x8, d0
+; CHECK-BE-NEXT:    rbit x8, x8
 ; CHECK-BE-NEXT:    clz x8, x8
 ; CHECK-BE-NEXT:    lsr x0, x8, #4
 ; CHECK-BE-NEXT:    // kill: def $w0 killed $w0 killed $x0

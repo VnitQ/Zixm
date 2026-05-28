@@ -26274,8 +26274,6 @@ static SDValue performCTTZCombine(SDNode *N,
   if (!isPowerOf2_32(NumLanes) || NumLanes < 2 || NumLanes > 32)
     return SDValue();
 
-  bool IsBigEndian = !DAG.getDataLayout().isLittleEndian();
-
   constexpr unsigned DRegBits = 64;
   constexpr unsigned QRegBits = 128;
   constexpr unsigned MinLaneBits = 8;
@@ -26297,47 +26295,83 @@ static SDValue performCTTZCombine(SDNode *N,
   if (MaskBits != DRegBits && MaskBits != QRegBits && MaskBits != 2 * QRegBits)
     return SDValue();
 
-  // Wider inputs compress to i128, narrower to i64.
-  unsigned CompressedBits = (MaskBits == 2 * QRegBits) ? QRegBits : DRegBits;
-  EVT ScalarVT = (CompressedBits == QRegBits) ? MVT::i128 : MVT::i64;
+  // Target 64 bits when lanes fit, otherwise 128.
+  unsigned TargetBits = DRegBits;
+  if (MaskBits == 2 * QRegBits && NumLanes > 16)
+    TargetBits = QRegBits;
+  unsigned CompressedBits = std::min(MaskBits, TargetBits);
 
   SDLoc DL(N);
   SDValue Mask = DAG.getSExtOrTrunc(Predicate, DL, MaskVT);
 
   LLVMContext &Ctx = *DAG.getContext();
-  SDValue Compressed;
-  if (MaskBits == CompressedBits) {
-    Compressed = DAG.getBitcast(ScalarVT, Mask);
-  } else {
-    unsigned LaneBits = MaskVT.getScalarSizeInBits();
-    SDValue ToTrunc = Mask;
-    EVT NarrowVT;
-    if (LaneBits == MinLaneBits) {
-      // NEON's smallest vector lane type is i8 so we can't narrow further.
-      // Instead, bitcast the mask to i16 lanes and shrn by 4 to pack each
-      // input byte into 4 bits of the output
-      NarrowVT = MaskVT.getHalfNumVectorElementsVT(Ctx);
-      EVT PairedVT = NarrowVT.widenIntegerVectorElementType(Ctx);
-      SDValue Paired = DAG.getBitcast(PairedVT, Mask);
-      SDValue ShAmt = DAG.getConstant(LaneBits / 2, DL, PairedVT);
-      ToTrunc = DAG.getNode(ISD::SRL, DL, PairedVT, Paired, ShAmt);
+
+  // NEON's smallest vector lane type is i8 so we can't narrow further.
+  // Instead, bitcast the mask to i16 lanes and shrn by 4 to pack each
+  // input byte into 4 bits of the output
+  auto ShrnPair = [&](SDValue V) -> SDValue {
+    EVT InVT = V.getValueType();
+    EVT OutVT = InVT.getHalfNumVectorElementsVT(Ctx);
+    EVT PairedVT = OutVT.widenIntegerVectorElementType(Ctx);
+    SDValue Paired = DAG.getNode(AArch64ISD::NVCAST, DL, PairedVT, V);
+    SDValue ShAmt = DAG.getConstant(MinLaneBits / 2, DL, PairedVT);
+    SDValue Shifted = DAG.getNode(ISD::SRL, DL, PairedVT, Paired, ShAmt);
+    return DAG.getNode(ISD::TRUNCATE, DL, OutVT, Shifted);
+  };
+
+  // Trailing-zero count of the compressed result as an i64.
+  auto CompressedCttz = [&](SDValue V) -> SDValue {
+    if (V.getValueType().getSizeInBits() == DRegBits) {
+      SDValue Nv = DAG.getNode(AArch64ISD::NVCAST, DL, MVT::v1i64, V);
+      SDValue Scalar = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL, MVT::i64, Nv,
+                                   DAG.getConstant(0, DL, MVT::i64));
+      return DAG.getNode(ISD::CTTZ, DL, MVT::i64, Scalar);
+    }
+    SDValue Compressed = DAG.getBitcast(MVT::i128, V);
+    // BE puts lane 0 at the high end of the scalar after the bitcast, so we use
+    // clz instead of cttz to find the first match
+    unsigned Op = DAG.getDataLayout().isLittleEndian() ? ISD::CTTZ : ISD::CTLZ;
+    SDValue Ctz = DAG.getNode(Op, DL, MVT::i128, Compressed);
+    return DAG.getNode(ISD::TRUNCATE, DL, MVT::i64, Ctz);
+  };
+
+  // Narrow toward CompressedBits. shrn-pair is only used once since it
+  // leaves the i8 lanes already packed.
+  SDValue Cur = Mask;
+  bool UsedShrnPair = false;
+  while (Cur.getValueType().getSizeInBits() > CompressedBits) {
+    EVT CurVT = Cur.getValueType();
+    unsigned CurLaneBits = CurVT.getScalarSizeInBits();
+    if (CurLaneBits == MinLaneBits) {
+      if (UsedShrnPair)
+        break;
+      if (CurVT.getSizeInBits() <= QRegBits) {
+        Cur = ShrnPair(Cur);
+      } else {
+        // Split into Q-reg-sized halves so each ShrnPair stays in range.
+        EVT HalfVT = CurVT.getHalfNumVectorElementsVT(Ctx);
+        SDValue Lo = DAG.getNode(ISD::EXTRACT_SUBVECTOR, DL, HalfVT, Cur,
+                                 DAG.getConstant(0, DL, MVT::i64));
+        SDValue Hi = DAG.getNode(
+            ISD::EXTRACT_SUBVECTOR, DL, HalfVT, Cur,
+            DAG.getConstant(HalfVT.getVectorNumElements(), DL, MVT::i64));
+        Cur = DAG.getNode(ISD::CONCAT_VECTORS, DL, HalfVT, ShrnPair(Lo),
+                          ShrnPair(Hi));
+      }
+      UsedShrnPair = true;
     } else {
       // For wider lanes, xtn each lane down to half its width.
-      NarrowVT = MaskVT.changeVectorElementType(
-          Ctx, EVT::getIntegerVT(Ctx, LaneBits / 2));
+      EVT NarrowVT = CurVT.changeVectorElementType(
+          Ctx, EVT::getIntegerVT(Ctx, CurLaneBits / 2));
+      Cur = DAG.getNode(ISD::TRUNCATE, DL, NarrowVT, Cur);
     }
-    SDValue Narrowed = DAG.getNode(ISD::TRUNCATE, DL, NarrowVT, ToTrunc);
-    Compressed = DAG.getBitcast(ScalarVT, Narrowed);
   }
 
-  // BE puts lane 0 at the high end of the scalar after the bitcast, so we use
-  // clz instead of cttz to find the first match.
-  unsigned CountOpcode = IsBigEndian ? ISD::CTLZ : ISD::CTTZ;
-  SDValue Ctz = DAG.getNode(CountOpcode, DL, ScalarVT, Compressed);
+  SDValue Ctz = CompressedCttz(Cur);
   unsigned LaneIndexShift = Log2_32(CompressedBits / NumLanes);
   if (LaneIndexShift)
-    Ctz = DAG.getNode(ISD::SRL, DL, ScalarVT, Ctz,
-                      DAG.getShiftAmountConstant(LaneIndexShift, ScalarVT, DL));
+    Ctz = DAG.getNode(ISD::SRL, DL, MVT::i64, Ctz,
+                      DAG.getShiftAmountConstant(LaneIndexShift, MVT::i64, DL));
   return DAG.getSExtOrTrunc(Ctz, DL, VT);
 }
 
