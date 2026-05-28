@@ -457,16 +457,15 @@ static unsigned getMaxTCFromNonZeroRange(PredicatedScalarEvolution &PSE,
 ///   4) Returns the maximum trip count from the SCEV range excluding zero,
 ///      if \p CanUseConstantMax and \p CanExcludeZeroTrips.
 ///   5) Returns std::nullopt if all of the above failed.
-static std::optional<ElementCount>
-getSmallBestKnownTC(PredicatedScalarEvolution &PSE, Loop *L,
-                    bool CanUseConstantMax = true,
-                    bool CanExcludeZeroTrips = false) {
+static std::optional<ElementCount> getSmallBestKnownTC(
+    PredicatedScalarEvolution &PSE, Loop *L, bool CanUseConstantMax = true,
+    bool CanExcludeZeroTrips = false, bool ComputeUpperBoundOnly = false) {
   // Check if exact trip count is known.
   if (auto ExpectedTC = getSmallConstantTripCount(PSE.getSE(), L))
     return ExpectedTC;
 
   // Check if there is an expected trip count available from profile data.
-  if (LoopVectorizeWithBlockFrequency)
+  if (LoopVectorizeWithBlockFrequency && !ComputeUpperBoundOnly)
     if (auto EstimatedTC = getLoopEstimatedTripCount(L))
       return ElementCount::getFixed(*EstimatedTC);
 
@@ -2040,9 +2039,10 @@ static bool isIndvarOverflowCheckKnownFalse(
   // We know the runtime overflow check is known false iff the (max) trip-count
   // is known and (max) trip-count + (VF * UF) does not overflow in the type of
   // the vector loop induction variable.
-  if (std::optional<ElementCount> TC =
-          getSmallBestKnownTC(Cost->PSE, Cost->TheLoop,
-                              /*CanUseConstantMax=*/true)) {
+  if (std::optional<ElementCount> TC = getSmallBestKnownTC(
+          Cost->PSE, Cost->TheLoop,
+          /*CanUseConstantMax=*/true, /*CanExcludeZeroTrips=*/false,
+          /*ComputeUpperBoundOnly=*/true)) {
     unsigned MaxVF = VF.getKnownMinValue();
     unsigned MaxTC = TC->getKnownMinValue();
     if (VF.isScalable()) {
@@ -2050,11 +2050,9 @@ static bool isIndvarOverflowCheckKnownFalse(
           getMaxVScale(*Cost->TheFunction, Cost->TTI);
       if (!MaxVScale)
         return false;
-      bool Overflow;
-      MaxVF = SaturatingMultiply(MaxVF, *MaxVScale, &Overflow);
-      if (Overflow)
-        return false;
+      MaxVF *= *MaxVScale;
       if (TC->isScalable()) {
+        bool Overflow;
         MaxTC = SaturatingMultiply(MaxTC, *MaxVScale, &Overflow);
         if (Overflow)
           return false;
