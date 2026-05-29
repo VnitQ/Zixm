@@ -1013,7 +1013,13 @@ define void @constOffs2(ptr %Arr) {
 ; CHECK:       # %bb.0:
 ; CHECK-NEXT:    lay %r1, 10032(%r2)
 ; CHECK-NEXT:    lay %r2, 10064(%r2)
+; CHECK-NEXT:    clgrjl %r2, %r1, .LBB76_2
+; CHECK-NEXT:  # %bb.1:
 ; CHECK-NEXT:    mvc 0(48,%r1), 0(%r2)
+; CHECK-NEXT:    br %r14
+; CHECK-NEXT:  .LBB76_2:
+; CHECK-NEXT:    lhi %r0, 47
+; CHECK-NEXT:    mvcrl 0(%r1), 0(%r2)
 ; CHECK-NEXT:    br %r14
   %Dst = getelementptr inbounds nuw i8, ptr %Arr, i64 10032
   %Src = getelementptr inbounds nuw i8, ptr %Arr, i64 10064
@@ -1024,8 +1030,15 @@ define void @constOffs2(ptr %Arr) {
 define void @constOffs3(ptr %Arr) {
 ; CHECK-LABEL: constOffs3:
 ; CHECK:       # %bb.0:
+; CHECK-NEXT:    la %r1, 64(%r2)
+; CHECK-NEXT:    la %r2, 32(%r2)
+; CHECK-NEXT:    clgrjl %r2, %r1, .LBB77_2
+; CHECK-NEXT:  # %bb.1:
+; CHECK-NEXT:    mvc 0(48,%r1), 0(%r2)
+; CHECK-NEXT:    br %r14
+; CHECK-NEXT:  .LBB77_2:
 ; CHECK-NEXT:    lhi %r0, 47
-; CHECK-NEXT:    mvcrl 64(%r2), 32(%r2)
+; CHECK-NEXT:    mvcrl 0(%r1), 0(%r2)
 ; CHECK-NEXT:    br %r14
   %Dst = getelementptr inbounds nuw i8, ptr %Arr, i64 64
   %Src = getelementptr inbounds nuw i8, ptr %Arr, i64 32
@@ -1068,8 +1081,16 @@ define void @constOffs6() {
 ; CHECK:       # %bb.0:
 ; CHECK-NEXT:    aghi %r15, -20176
 ; CHECK-NEXT:    .cfi_def_cfa_offset 20336
-; CHECK-NEXT:    lay %r1, 10240(%r15)
-; CHECK-NEXT:    mvc 208(48,%r15), 0(%r1)
+; CHECK-NEXT:    la %r1, 208(%r15)
+; CHECK-NEXT:    lay %r2, 10240(%r15)
+; CHECK-NEXT:    clgrjl %r2, %r1, .LBB80_2
+; CHECK-NEXT:  # %bb.1:
+; CHECK-NEXT:    mvc 0(48,%r1), 0(%r2)
+; CHECK-NEXT:    aghi %r15, 20176
+; CHECK-NEXT:    br %r14
+; CHECK-NEXT:  .LBB80_2:
+; CHECK-NEXT:    lhi %r0, 47
+; CHECK-NEXT:    mvcrl 0(%r1), 0(%r2)
 ; CHECK-NEXT:    aghi %r15, 20176
 ; CHECK-NEXT:    br %r14
   %Alloc = alloca [20000 x i8]
@@ -1084,8 +1105,16 @@ define void @constOffs7() {
 ; CHECK:       # %bb.0:
 ; CHECK-NEXT:    aghi %r15, -672
 ; CHECK-NEXT:    .cfi_def_cfa_offset 832
+; CHECK-NEXT:    la %r1, 224(%r15)
+; CHECK-NEXT:    la %r2, 192(%r15)
+; CHECK-NEXT:    clgrjl %r2, %r1, .LBB81_2
+; CHECK-NEXT:  # %bb.1:
+; CHECK-NEXT:    mvc 0(48,%r1), 0(%r2)
+; CHECK-NEXT:    aghi %r15, 672
+; CHECK-NEXT:    br %r14
+; CHECK-NEXT:  .LBB81_2:
 ; CHECK-NEXT:    lhi %r0, 47
-; CHECK-NEXT:    mvcrl 224(%r15), 192(%r15)
+; CHECK-NEXT:    mvcrl 0(%r1), 0(%r2)
 ; CHECK-NEXT:    aghi %r15, 672
 ; CHECK-NEXT:    br %r14
   %Alloc = alloca [512 x i8]

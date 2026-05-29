@@ -99,9 +99,17 @@ SDValue SystemZSelectionDAGInfo::EmitTargetCodeForMemmove(
 
   if (auto *CSize = dyn_cast<ConstantSDNode>(Size))
     if (Subtarget.hasMiscellaneousExtensions3() &&
-        CSize->getZExtValue() > 0 && CSize->getZExtValue() <= 256)
+        CSize->getZExtValue() > 0 && CSize->getZExtValue() <= 256) {
+      // Add extra operands for the purpose of letting the DAGCombiner
+      // provide the distance between the two addresses as a constant if
+      // possible. DAGCombiner will not simplify SUB operands that have more
+      // than one use, but in some cases a constant will be exposed if part
+      // of LHS so emit both computations to improve the chances:
+      SDValue DstDiff = DAG.getNode(ISD::SUB, DL, MVT::i64, Dst, Src);
+      SDValue SrcDiff = DAG.getNode(ISD::SUB, DL, MVT::i64, Src, Dst);
       return DAG.getNode(SystemZISD::MEMMOVE, DL, MVT::Other,
-                         {Chain, Dst, Src, Size});
+                         {Chain, Dst, Src, Size, DstDiff, SrcDiff});
+    }
 
   return SDValue();
 }

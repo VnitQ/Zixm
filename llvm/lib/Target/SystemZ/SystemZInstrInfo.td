@@ -558,8 +558,10 @@ def : Pat<(z_mvcrl bdaddr12only:$dest, bdaddr12only:$src),
 let usesCustomInserter = 1, hasNoSchedulingInfo = 1, mayLoad = 1, mayStore = 1,
     Defs = [CC, R0L] in
   def MemmoveImm : Pseudo<(outs),
-                          (ins ADDR64:$dest, ADDR64:$src, imm64:$length),
-                          [(z_memmove ADDR64:$dest, ADDR64:$src, imm64:$length)]>;
+                (ins ADDR64:$dest, ADDR64:$src, imm64:$length, imm64:$d0,
+                     imm64:$d1),
+                [(z_memmove ADDR64:$dest, ADDR64:$src, imm64:$length,
+                            imm64:$d0, imm64:$d1)]>;
 
 // String moves.
 let mayLoad = 1, mayStore = 1, Defs = [CC] in
