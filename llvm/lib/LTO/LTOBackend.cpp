@@ -705,13 +705,10 @@ static bool splitOptAndCodeGenThin(unsigned task, const Config &C,
   if (!FinalStream)
     report_fatal_error("Failed to open final output stream");
 
-  int MergedFD;
   SmallString<128> MergedFilename;
-  if (sys::fs::createTemporaryFile("thinlto-merged", "o", MergedFD,
-                                   MergedFilename))
+  if (sys::fs::createTemporaryFile("thinlto-merged", "o", MergedFilename))
     report_fatal_error("Failed to create merged temp file.");
   llvm::FileRemover MergedFileRemover(MergedFilename);
-  sys::fs::closeFile(MergedFD);
 
   std::vector<StringRef> Args;
   std::string LinkerPath = "";
