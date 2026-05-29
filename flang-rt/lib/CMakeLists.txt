@@ -15,7 +15,7 @@ if (FLANG_RT_ENABLE_STATIC OR FLANG_RT_ENABLE_SHARED)
   if (FLANG_RT_INCLUDE_CUF)
     add_subdirectory(cuda)
   endif()
-elseif (FLANG_RT_FORTRAN_MODULES)
+else ()
   # Generate modules files only, skip the libraries
   add_subdirectory(runtime)
 endif ()
