@@ -148,6 +148,76 @@ class SearchIndex {
   bit EarlyOut = false;
 }
 
+// Describes one filter class contribution to a `SparseTable`.
+//
+// `Fields` is a list whose length must equal to the length of `ResultFields`
+// on the owning `SparseTable`. Each entry names a field on the FilterClass record
+// to read; an empty entry leaves that result member at its C++ default (`{}`).
+//
+// For example:
+//
+// def VOPDYSource : SparseTableSource {
+//   let FilterClass = "VOPDY";
+//   let KeyField = "VOPDXYKey";
+//   let Fields = ["", "IsY"];
+// }
+//
+// def VOPDXSource : SparseTableSource {
+//   let FilterClass = "VOPDX";
+//   let KeyField = "VOPDXYKey";
+//   let Fields = ["IsX", ""];
+// }
+//
+class SparseTableSource {
+  // Name of a class. The table will have one entry for each record that
+  // derives from that class.
+  string FilterClass;
+
+  // Name of the pre-packed key field (must be a bits<N> field on `FilterClass`).
+  // The user is responsible for packing multiple logical fields into this one
+  // field.
+  string KeyField;
+
+  // Parallel to `ResultFields` on the owning `SparseTable`. Non-empty entry
+  // contains a name of a field on the `FilterClass` record to read.
+  list<string> Fields = [];
+}
+
+// Generate a sparse directly-indexed lookup array of size 2 ^ `KeyBits`.
+//
+// Unlike `GenericTable` whose direct-lookup path requires contiguous key values,
+// `SparseTable` supports sparse key spaces.
+//
+// For example:
+//
+// def VOPDXYTable : SparseTable {
+//   let CppTypeName = "CanBeVOPD";
+//   let KeyBits = 11;
+//   let ResultFields = ["X", "Y"];
+//   let Sources = [VOPDXSource, VOPDYSource];
+//   let LookupFuncName = "getCanBeVOPDXY";
+// }
+//
+class SparseTable {
+  // Name of the C++ struct/class type that holds table entries. The
+  // declaration of this type is not generated automatically.
+  string CppTypeName;
+
+  // The emitted array has 2 ^ `KeyBits` elements. Must match the bit-width of the
+  // `KeyField` on every contributing `SparseTableSource`.
+  int KeyBits;
+
+  // Ordered list of result struct member names. The `Fields` list on
+  // each `SparseTableSource` aligns to this ordering.
+  list<string> ResultFields;
+
+  // Source classes that populate the table.
+  list<SparseTableSource> Sources;
+
+  // Name of the generated lookup function.
+  string LookupFuncName;
+}
+
 // Legacy table type with integrated enum.
 class SearchableTable {
   list<string> SearchableFields;
