@@ -723,6 +723,8 @@ Bug Fixes to AST Handling
 - Fixed a assertion when ``__block`` is used on global variables in C mode. (#GH183974)
 - Added missing AST nodes representing the ``decltype`` specifiers in destructor call to AST.
 
+- Fixed assertion crash in bytecode interpreter when checking initialization of
+  constexpr pointer arrays with GlobalInlineDescriptor. (#GH175432)
 Miscellaneous Bug Fixes
 ^^^^^^^^^^^^^^^^^^^^^^^
 - Fixed a crash whith the AST text dumper, when dumping a reference to a
