@@ -209,8 +209,15 @@ Error replayKernel() {
   if (Err)
     return Err;
 
+  // Check that a minimum and maximum have been exported.
   if (TeamsLimits.size() != 2 || ThreadsLimits.size() != 2)
     return createErr("TeamsLimits and ThreadsLimits must have a min and max");
+
+  // Check that the minimum and maximum are specified or both are zero.
+  if (bool(TeamsLimits[0]) != bool(TeamsLimits[1]))
+    return createErr("TeamsLimits min and max are inconsistent");
+  if (bool(ThreadsLimits[0]) != bool(ThreadsLimits[1]))
+    return createErr("ThreadsLimits min and max are inconsistent");
 
   // If the limits were specified, verify the selected values are valid.
   if (TeamsLimits[0] > 0 &&
