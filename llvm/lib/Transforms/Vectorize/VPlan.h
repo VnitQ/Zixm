@@ -2141,22 +2141,34 @@ protected:
 /// A recipe representing a sequence of load -> update -> store as part of
 /// a histogram operation. This means there may be aliasing between vector
 /// lanes, which is handled by the llvm.experimental.vector.histogram family
-/// of intrinsics. The only update operations currently supported are
-/// 'add' and 'sub' where the other term is loop-invariant.
+/// of intrinsics. Supported update operations are: add, sub, uadd.sat, umax,
+/// and umin, where the other term is loop-invariant.
 class VPHistogramRecipe : public VPRecipeBase {
-  /// Opcode of the update operation, currently either add or sub.
-  unsigned Opcode;
+public:
+  /// The kind of update operation performed on histogram buckets.
+  enum class HistogramUpdateKind {
+    Add,
+    Sub,
+    UAddSat,
+    UMax,
+    UMin,
+  };
+
+private:
+  /// The update operation kind for this histogram.
+  HistogramUpdateKind UpdateKind;
 
 public:
-  VPHistogramRecipe(unsigned Opcode, ArrayRef<VPValue *> Operands,
+  VPHistogramRecipe(HistogramUpdateKind UpdateKind,
+                    ArrayRef<VPValue *> Operands,
                     DebugLoc DL = DebugLoc::getUnknown())
       : VPRecipeBase(VPRecipeBase::VPHistogramSC, Operands, DL),
-        Opcode(Opcode) {}
+        UpdateKind(UpdateKind) {}
 
   ~VPHistogramRecipe() override = default;
 
   VPHistogramRecipe *clone() override {
-    return new VPHistogramRecipe(Opcode, operands(), getDebugLoc());
+    return new VPHistogramRecipe(UpdateKind, operands(), getDebugLoc());
   }
 
   VP_CLASSOF_IMPL(VPRecipeBase::VPHistogramSC);
@@ -2168,13 +2180,27 @@ public:
   InstructionCost computeCost(ElementCount VF,
                               VPCostContext &Ctx) const override;
 
-  unsigned getOpcode() const { return Opcode; }
+  HistogramUpdateKind getUpdateKind() const { return UpdateKind; }
+
+  /// Return the histogram intrinsic ID for this recipe's update kind.
+  Intrinsic::ID getHistogramIntrinsicID() const;
+
+  /// Return true if the increment should be negated before passing to the
+  /// histogram intrinsic (only for Sub).
+  bool shouldNegateIncrement() const {
+    return UpdateKind == HistogramUpdateKind::Sub;
+  }
 
   /// Return the mask operand if one was provided, or a null pointer if all
   /// lanes should be executed unconditionally.
   VPValue *getMask() const {
     return getNumOperands() == 3 ? getOperand(2) : nullptr;
   }
+
+  /// Return the HistogramUpdateKind for the given update instruction, or
+  /// std::nullopt if the instruction is not a supported histogram update.
+  static std::optional<HistogramUpdateKind>
+  getUpdateKindForInstruction(Instruction *I);
 
 protected:
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
