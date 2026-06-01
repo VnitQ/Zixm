@@ -105,8 +105,8 @@ define i64 @scmp_64_64(i64 %x, i64 %y) nounwind {
 ; CHECK:       # %bb.0:
 ; CHECK-NEXT:    cmpd 7, 3, 4
 ; CHECK-NEXT:    mfocrf 3, 1
-; CHECK-NEXT:    rldicl 4, 3, 61, 63
-; CHECK-NEXT:    rldicl 3, 3, 62, 63
+; CHECK-NEXT:    rlwinm 4, 3, 30, 31, 31
+; CHECK-NEXT:    rlwinm 3, 3, 29, 31, 31
 ; CHECK-NEXT:    sub 3, 4, 3
 ; CHECK-NEXT:    blr
   %1 = call i64 @llvm.scmp(i64 %x, i64 %y)

@@ -4061,6 +4061,9 @@ bool PPCDAGToDAGISel::trySelectThreeWayCompare(SDNode *N) {
   if (N->getOpcode() != ISD::SELECT)
     return false;
 
+  EVT ResVT = N->getValueType(0);
+  if (ResVT != MVT::i32 && ResVT != MVT::i64)
+    return false;
   // Only optimize for targets with MFOCRF support
   if (!Subtarget->hasMFOCRF())
     return false;
@@ -4112,13 +4115,9 @@ bool PPCDAGToDAGISel::trySelectThreeWayCompare(SDNode *N) {
   if (LHS != InnerLHS || RHS != InnerRHS)
     return false;
 
-  // For 64-bit:
-  //   cmpd       LHS, RHS
-  //   mfocrf8    r, CR7
-  //   rldicl     LT, r, 62, 63  (extract LT bit from CR7)
-  //   rldicl     GT, r, 61, 63  (extract GT bit from CR7)
-  //   subf8      result, LT, GT (GT - LT = -1/0/1)
-  // For 32-bit:
+  // Pattern matched! Generate optimal code:
+  // Since CR is 32-bit and MFOCRF8 puts CR in bits 32:63,
+  // we use RLWINM/RLWINM8 for both 32-bit and 64-bit:
   //   cmpw       LHS, RHS
   //   mfocrf     r, CR7
   //   rlwinm     LT, r, 29, 31, 31  (extract LT bit from CR7)
@@ -4127,7 +4126,6 @@ bool PPCDAGToDAGISel::trySelectThreeWayCompare(SDNode *N) {
 
   SDLoc dl(N);
   bool Is64BitCmp = (CmpVT == MVT::i64);
-  EVT ResVT = N->getValueType(0);
   bool Is64BitRes = (ResVT == MVT::i64);
 
   unsigned CmpOpc = Is64BitCmp ? PPC::CMPD : PPC::CMPW;
@@ -4148,37 +4146,20 @@ bool PPCDAGToDAGISel::trySelectThreeWayCompare(SDNode *N) {
   // Extract LT and GT bits from CR7
   SDValue LTBit, GTBit;
 
-  if (Is64BitRes) {
-    // For 64-bit: CR7 extraction using rldicl
-    // rldicl r, r, 62, 63 - extract LT
-    LTBit = SDValue(
-        CurDAG->getMachineNode(PPC::RLDICL, dl, MVT::i64, MFOCRF,
-                               CurDAG->getTargetConstant(62, dl, MVT::i32),
-                               CurDAG->getTargetConstant(63, dl, MVT::i32)),
-        0);
+  // Extract LT and GT bits from CR7 using RLWINM for both modes
+  unsigned RLWinmOpc = Is64BitRes ? PPC::RLWINM8 : PPC::RLWINM;
 
-    // rldicl r, r, 61, 63 - extract GT
-    GTBit = SDValue(
-        CurDAG->getMachineNode(PPC::RLDICL, dl, MVT::i64, MFOCRF,
-                               CurDAG->getTargetConstant(61, dl, MVT::i32),
-                               CurDAG->getTargetConstant(63, dl, MVT::i32)),
-        0);
-  } else {
-    // 32-bit: CR7 LT at bit 28, GT at bit 29
-    // rlwinm r, r, 29, 31, 31 - extract LT from bit 28 to bit 31
-    SDValue LTOps[] = {MFOCRF, CurDAG->getTargetConstant(29, dl, MVT::i32),
-                       CurDAG->getTargetConstant(31, dl, MVT::i32),
-                       CurDAG->getTargetConstant(31, dl, MVT::i32)};
-    LTBit =
-        SDValue(CurDAG->getMachineNode(PPC::RLWINM, dl, MVT::i32, LTOps), 0);
+  // Extract LT (Bit 28 -> Rotate Left 29 -> Bit 31)
+  SDValue LTOps[] = {MFOCRF, CurDAG->getTargetConstant(29, dl, MVT::i32),
+                     CurDAG->getTargetConstant(31, dl, MVT::i32),
+                     CurDAG->getTargetConstant(31, dl, MVT::i32)};
+  LTBit = SDValue(CurDAG->getMachineNode(RLWinmOpc, dl, ResVT, LTOps), 0);
 
-    // rlwinm r, r, 30, 31, 31 - extract GT from bit 29 to bit 31
-    SDValue GTOps[] = {MFOCRF, CurDAG->getTargetConstant(30, dl, MVT::i32),
-                       CurDAG->getTargetConstant(31, dl, MVT::i32),
-                       CurDAG->getTargetConstant(31, dl, MVT::i32)};
-    GTBit =
-        SDValue(CurDAG->getMachineNode(PPC::RLWINM, dl, MVT::i32, GTOps), 0);
-  }
+  // Extract GT (Bit 29 -> Rotate Left 30 -> Bit 31)
+  SDValue GTOps[] = {MFOCRF, CurDAG->getTargetConstant(30, dl, MVT::i32),
+                     CurDAG->getTargetConstant(31, dl, MVT::i32),
+                     CurDAG->getTargetConstant(31, dl, MVT::i32)};
+  GTBit = SDValue(CurDAG->getMachineNode(RLWinmOpc, dl, ResVT, GTOps), 0);
 
   // Compute result: GT - LT (match result type)
   // If LT: 0 - 1 = -1
