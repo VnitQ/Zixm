@@ -708,6 +708,18 @@ public:
   /// member, depending on the type of mpt.
   mlir::TypedAttr emitNullMemberAttr(QualType t, const MemberPointerType *mpt);
 
+  /// Build a GEP-style field-index path from \p destClass to \p field.
+  /// Returns std::nullopt and emits errorNYI for virtual-base paths.
+  std::optional<llvm::SmallVector<int32_t>>
+  buildMemberPath(const CXXRecordDecl *destClass, const FieldDecl *field);
+
+  /// Search \p destClass for the (possibly inherited) field at \p byteOffset
+  /// and return the GEP-style path to it.  Returns std::nullopt if no field
+  /// at that offset exists (e.g., offset lands in padding or a virtual base).
+  std::optional<llvm::SmallVector<int32_t>>
+  buildMemberPathFromByteOffset(const CXXRecordDecl *destClass,
+                                int64_t byteOffset);
+
   llvm::StringRef getMangledName(clang::GlobalDecl gd);
   // This function is to support the OpenACC 'bind' clause, which names an
   // alternate name for the function to be called by. This function mangles
@@ -913,6 +925,13 @@ public:
   void addGlobalAnnotations(const clang::ValueDecl *d, mlir::Operation *gv);
 
 private:
+  /// Recursively find the chain of non-virtual base subobject field indices
+  /// from \p currentClass to \p targetClass.  Appends indices in leaf-to-root
+  /// order; the caller must reverse before use.
+  bool findBaseSubobjectPath(const CXXRecordDecl *currentClass,
+                             const CXXRecordDecl *targetClass,
+                             llvm::SmallVectorImpl<int32_t> &path);
+
   // An ordered map of canonical GlobalDecls to their mangled names.
   llvm::MapVector<clang::GlobalDecl, llvm::StringRef> mangledDeclNames;
   llvm::StringMap<clang::GlobalDecl, llvm::BumpPtrAllocator> manglings;
