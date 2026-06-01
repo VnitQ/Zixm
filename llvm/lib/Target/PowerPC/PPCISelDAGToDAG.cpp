@@ -4112,12 +4112,18 @@ bool PPCDAGToDAGISel::trySelectThreeWayCompare(SDNode *N) {
   if (LHS != InnerLHS || RHS != InnerRHS)
     return false;
 
-  // Pattern matched! Generate optimal code:
-  // cmpd/cmpw  LHS, RHS
-  // mfocrf RT, FXM
-  // rldicl/rlwinm LT, r, 62/2, 63/31  (extract LT bit)
-  // rldicl/rlwinm GT, r, 61/1, 63/31  (extract GT bit)
-  // subf result, GT, LT   (LT - GT = -1/0/1)
+  // For 64-bit:
+  //   cmpd       LHS, RHS
+  //   mfocrf8    r, CR7
+  //   rldicl     LT, r, 62, 63  (extract LT bit from CR7)
+  //   rldicl     GT, r, 61, 63  (extract GT bit from CR7)
+  //   subf8      result, LT, GT (GT - LT = -1/0/1)
+  // For 32-bit:
+  //   cmpw       LHS, RHS
+  //   mfocrf     r, CR7
+  //   rlwinm     LT, r, 29, 31, 31  (extract LT bit from CR7)
+  //   rlwinm     GT, r, 30, 31, 31  (extract GT bit from CR7)
+  //   subf       result, LT, GT     (GT - LT = -1/0/1)
 
   SDLoc dl(N);
   bool Is64BitCmp = (CmpVT == MVT::i64);
@@ -4175,9 +4181,9 @@ bool PPCDAGToDAGISel::trySelectThreeWayCompare(SDNode *N) {
   }
 
   // Compute result: GT - LT (match result type)
-  // If LT: 0 - 1 = -1 ✓
-  // If GT: 1 - 0 = 1 ✓
-  // If EQ: 0 - 0 = 0 ✓
+  // If LT: 0 - 1 = -1
+  // If GT: 1 - 0 = 1
+  // If EQ: 0 - 0 = 0
   unsigned SubOpc = Is64BitRes ? PPC::SUBF8 : PPC::SUBF;
   SDValue Result =
       SDValue(CurDAG->getMachineNode(SubOpc, dl, ResVT, LTBit, GTBit), 0);
