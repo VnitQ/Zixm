@@ -412,7 +412,7 @@ bool ISD::matchBinaryPredicate(
 
   EVT SVT = LHS.getValueType().getScalarType();
   for (unsigned i = 0, e = LHS.getNumOperands(); i != e; ++i) {
-    if (!DemandedElts[i])
+    if (ISD::SPLAT_VECTOR != LHS.getOpcode() && !DemandedElts[i])
       continue;
     SDValue LHSOp = LHS.getOperand(i);
     SDValue RHSOp = RHS.getOperand(i);
