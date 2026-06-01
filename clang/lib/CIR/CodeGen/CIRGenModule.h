@@ -713,6 +713,13 @@ public:
   std::optional<llvm::SmallVector<int32_t>>
   buildMemberPath(const CXXRecordDecl *destClass, const FieldDecl *field);
 
+  /// Search \p destClass for the (possibly inherited) field at \p byteOffset
+  /// and return the GEP-style path to it.  Returns std::nullopt if no field
+  /// at that offset exists (e.g., offset lands in padding or a virtual base).
+  std::optional<llvm::SmallVector<int32_t>>
+  buildMemberPathFromByteOffset(const CXXRecordDecl *destClass,
+                                int64_t byteOffset);
+
   llvm::StringRef getMangledName(clang::GlobalDecl gd);
   // This function is to support the OpenACC 'bind' clause, which names an
   // alternate name for the function to be called by. This function mangles

@@ -2338,6 +2338,57 @@ bool CIRGenModule::findBaseSubobjectPath(const CXXRecordDecl *currentClass,
   return false;
 }
 
+std::optional<llvm::SmallVector<int32_t>>
+CIRGenModule::buildMemberPathFromByteOffset(const CXXRecordDecl *destClass,
+                                            int64_t byteOffset) {
+  const ASTRecordLayout &astLayout =
+      getASTContext().getASTRecordLayout(destClass);
+  const CIRGenRecordLayout &cirLayout =
+      getTypes().getCIRGenRecordLayout(destClass);
+
+  // Search direct fields.
+  for (const FieldDecl *fd : destClass->fields()) {
+    if (fd->isBitField())
+      continue;
+    int64_t fieldOff =
+        static_cast<int64_t>(astLayout.getFieldOffset(fd->getFieldIndex()) / 8);
+    if (fieldOff == byteOffset) {
+      int32_t cirIdx;
+      if (destClass->isUnion())
+        // getCIRFieldNo always returns 0 for every union member; use the
+        // declaration-order index to distinguish variants, matching
+        // buildMemberPath.
+        cirIdx = static_cast<int32_t>(fd->getFieldIndex());
+      else
+        cirIdx = static_cast<int32_t>(cirLayout.getCIRFieldNo(fd));
+      return llvm::SmallVector<int32_t>{cirIdx};
+    }
+  }
+
+  // Search non-virtual base subobjects.
+  for (const CXXBaseSpecifier &base : destClass->bases()) {
+    if (base.isVirtual())
+      continue;
+    const auto *baseDecl =
+        cast<CXXRecordDecl>(base.getType()->getAsRecordDecl());
+    int64_t baseOff = static_cast<int64_t>(
+        astLayout.getBaseClassOffset(baseDecl).getQuantity());
+    if (byteOffset >= baseOff) {
+      std::optional<llvm::SmallVector<int32_t>> subPath =
+          buildMemberPathFromByteOffset(baseDecl, byteOffset - baseOff);
+      if (subPath) {
+        int32_t baseCirIdx = static_cast<int32_t>(
+            cirLayout.getNonVirtualBaseCIRFieldNo(baseDecl));
+        llvm::SmallVector<int32_t> result{baseCirIdx};
+        result.insert(result.end(), subPath->begin(), subPath->end());
+        return result;
+      }
+    }
+  }
+
+  return std::nullopt;
+}
+
 void CIRGenModule::emitDeclContext(const DeclContext *dc) {
   for (Decl *decl : dc->decls()) {
     // Unlike other DeclContexts, the contents of an ObjCImplDecl at TU scope

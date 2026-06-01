@@ -933,9 +933,44 @@ public:
     switch (e->getCastKind()) {
     case CK_ToUnion:
     case CK_AddressSpaceConversion:
-    case CK_ReinterpretMemberPointer:
       cgm.errorNYI(e->getBeginLoc(), "ConstExprEmitter::VisitCastExpr");
       return {};
+
+    case CK_ReinterpretMemberPointer: {
+      mlir::Attribute src = Visit(subExpr, subExpr->getType());
+      if (!src)
+        return {};
+      auto srcAttr = mlir::dyn_cast<cir::DataMemberAttr>(src);
+      if (!srcAttr)
+        return {};
+      CIRGenBuilderTy &builder = cgm.getBuilder();
+      auto dstTy =
+          mlir::cast<cir::DataMemberType>(cgm.convertType(e->getType()));
+      if (srcAttr.isNullPtr())
+        return builder.getNullDataMemberAttr(dstTy);
+      // Compute the byte offset encoded by the source GEP path.
+      // The path never contains virtual-base slots: buildMemberPath /
+      // findBaseSubobjectPath calls errorNYI for virtual bases, so any
+      // DataMemberAttr that reaches here was built from non-virtual paths.
+      int64_t byteOffset = 0;
+      const mlir::DataLayout &dl = cgm.getDataLayout().layout;
+      mlir::Type curTy = srcAttr.getType().getClassTy();
+      for (int32_t idx : srcAttr.getPath()) {
+        auto recTy = mlir::cast<cir::RecordType>(curTy);
+        byteOffset += static_cast<int64_t>(recTy.getElementOffset(dl, idx));
+        curTy = recTy.getMembers()[idx];
+      }
+      const auto *mpt = e->getType()->castAs<MemberPointerType>();
+      const auto *destClass = mpt->getMostRecentCXXRecordDecl();
+      std::optional<llvm::SmallVector<int32_t>> path =
+          cgm.buildMemberPathFromByteOffset(destClass, byteOffset);
+      if (!path) {
+        cgm.errorNYI(e->getBeginLoc(),
+                     "reinterpret_cast of member pointer: no field at offset");
+        return {};
+      }
+      return builder.getDataMemberAttr(dstTy, *path);
+    }
 
     case CK_DerivedToBaseMemberPointer:
     case CK_BaseToDerivedMemberPointer:
