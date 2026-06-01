@@ -4,10 +4,10 @@
 define i8 @scmp_8_8(i8 signext %x, i8 signext %y) nounwind {
 ; CHECK-LABEL: scmp_8_8:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    cmpw 3, 4
-; CHECK-NEXT:    mfocrf 3, 128
-; CHECK-NEXT:    srwi 4, 3, 31
-; CHECK-NEXT:    rlwinm 3, 3, 2, 31, 31
+; CHECK-NEXT:    cmpw 7, 3, 4
+; CHECK-NEXT:    mfocrf 3, 1
+; CHECK-NEXT:    rlwinm 4, 3, 30, 31, 31
+; CHECK-NEXT:    rlwinm 3, 3, 29, 31, 31
 ; CHECK-NEXT:    sub 3, 4, 3
 ; CHECK-NEXT:    blr
   %1 = call i8 @llvm.scmp(i8 %x, i8 %y)
@@ -17,10 +17,10 @@ define i8 @scmp_8_8(i8 signext %x, i8 signext %y) nounwind {
 define i8 @scmp_8_16(i16 signext %x, i16 signext %y) nounwind {
 ; CHECK-LABEL: scmp_8_16:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    cmpw 3, 4
-; CHECK-NEXT:    mfocrf 3, 128
-; CHECK-NEXT:    srwi 4, 3, 31
-; CHECK-NEXT:    rlwinm 3, 3, 2, 31, 31
+; CHECK-NEXT:    cmpw 7, 3, 4
+; CHECK-NEXT:    mfocrf 3, 1
+; CHECK-NEXT:    rlwinm 4, 3, 30, 31, 31
+; CHECK-NEXT:    rlwinm 3, 3, 29, 31, 31
 ; CHECK-NEXT:    sub 3, 4, 3
 ; CHECK-NEXT:    blr
   %1 = call i8 @llvm.scmp(i16 %x, i16 %y)
@@ -30,10 +30,10 @@ define i8 @scmp_8_16(i16 signext %x, i16 signext %y) nounwind {
 define i8 @scmp_8_32(i32 %x, i32 %y) nounwind {
 ; CHECK-LABEL: scmp_8_32:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    cmpw 3, 4
-; CHECK-NEXT:    mfocrf 3, 128
-; CHECK-NEXT:    srwi 4, 3, 31
-; CHECK-NEXT:    rlwinm 3, 3, 2, 31, 31
+; CHECK-NEXT:    cmpw 7, 3, 4
+; CHECK-NEXT:    mfocrf 3, 1
+; CHECK-NEXT:    rlwinm 4, 3, 30, 31, 31
+; CHECK-NEXT:    rlwinm 3, 3, 29, 31, 31
 ; CHECK-NEXT:    sub 3, 4, 3
 ; CHECK-NEXT:    blr
   %1 = call i8 @llvm.scmp(i32 %x, i32 %y)
@@ -43,10 +43,10 @@ define i8 @scmp_8_32(i32 %x, i32 %y) nounwind {
 define i8 @scmp_8_64(i64 %x, i64 %y) nounwind {
 ; CHECK-LABEL: scmp_8_64:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    cmpd 3, 4
-; CHECK-NEXT:    mfocrf 3, 128
-; CHECK-NEXT:    srwi 4, 3, 31
-; CHECK-NEXT:    rlwinm 3, 3, 2, 31, 31
+; CHECK-NEXT:    cmpd 7, 3, 4
+; CHECK-NEXT:    mfocrf 3, 1
+; CHECK-NEXT:    rlwinm 4, 3, 30, 31, 31
+; CHECK-NEXT:    rlwinm 3, 3, 29, 31, 31
 ; CHECK-NEXT:    sub 3, 4, 3
 ; CHECK-NEXT:    blr
   %1 = call i8 @llvm.scmp(i64 %x, i64 %y)
@@ -77,10 +77,10 @@ define i8 @scmp_8_128(i128 %x, i128 %y) nounwind {
 define i32 @scmp_32_32(i32 %x, i32 %y) nounwind {
 ; CHECK-LABEL: scmp_32_32:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    cmpw 3, 4
-; CHECK-NEXT:    mfocrf 3, 128
-; CHECK-NEXT:    srwi 4, 3, 31
-; CHECK-NEXT:    rlwinm 3, 3, 2, 31, 31
+; CHECK-NEXT:    cmpw 7, 3, 4
+; CHECK-NEXT:    mfocrf 3, 1
+; CHECK-NEXT:    rlwinm 4, 3, 30, 31, 31
+; CHECK-NEXT:    rlwinm 3, 3, 29, 31, 31
 ; CHECK-NEXT:    sub 3, 4, 3
 ; CHECK-NEXT:    blr
   %1 = call i32 @llvm.scmp(i32 %x, i32 %y)
@@ -90,10 +90,10 @@ define i32 @scmp_32_32(i32 %x, i32 %y) nounwind {
 define i32 @scmp_32_64(i64 %x, i64 %y) nounwind {
 ; CHECK-LABEL: scmp_32_64:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    cmpd 3, 4
-; CHECK-NEXT:    mfocrf 3, 128
-; CHECK-NEXT:    srwi 4, 3, 31
-; CHECK-NEXT:    rlwinm 3, 3, 2, 31, 31
+; CHECK-NEXT:    cmpd 7, 3, 4
+; CHECK-NEXT:    mfocrf 3, 1
+; CHECK-NEXT:    rlwinm 4, 3, 30, 31, 31
+; CHECK-NEXT:    rlwinm 3, 3, 29, 31, 31
 ; CHECK-NEXT:    sub 3, 4, 3
 ; CHECK-NEXT:    blr
   %1 = call i32 @llvm.scmp(i64 %x, i64 %y)
@@ -103,8 +103,8 @@ define i32 @scmp_32_64(i64 %x, i64 %y) nounwind {
 define i64 @scmp_64_64(i64 %x, i64 %y) nounwind {
 ; CHECK-LABEL: scmp_64_64:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    cmpd 3, 4
-; CHECK-NEXT:    mfocrf 3, 128
+; CHECK-NEXT:    cmpd 7, 3, 4
+; CHECK-NEXT:    mfocrf 3, 1
 ; CHECK-NEXT:    rldicl 4, 3, 61, 63
 ; CHECK-NEXT:    rldicl 3, 3, 62, 63
 ; CHECK-NEXT:    sub 3, 4, 3
