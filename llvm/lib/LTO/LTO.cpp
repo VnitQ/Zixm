@@ -2779,8 +2779,6 @@ public:
           // Cache hits are taken care of earlier. At this point, we could only
           // have cache misses.
           assert(Job.CacheAddStream);
-          MemoryBufferRef ObjFileMbRef =
-              ObjFileMbOrErr->get()->getMemBufferRef();
           // Obtain a file stream for a storing a cache entry.
           auto CachedFileStreamOrErr =
               Job.CacheAddStream(Job.Task, Job.ModuleID);
@@ -2790,11 +2788,18 @@ public:
                 createStringError(inconvertibleErrorCode(),
                                   "Cannot get a cache file stream: %s",
                                   Job.NativeObjectPath.data()));
-          // Store a file buffer into the cache stream.
+
           auto &CacheStream = *(CachedFileStreamOrErr->get());
-          *(CacheStream.OS) << ObjFileMbRef.getBuffer();
+
+          // Store a file path into the cache stream. This file later will be
+          // renamed into cache file.
+          *(CacheStream.OS) << Job.NativeObjectPath;
           if (Error Err = CacheStream.commit())
             return Err;
+
+          AddBufferFn AddBuffer = CacheStream.GetAddBuffer();
+          AddBuffer(Job.Task, Job.ModuleID, std::move(ObjFileMbOrErr.get()));
+
         } else {
           AddBuffer(Job.Task, Job.ModuleID, std::move(*ObjFileMbOrErr));
         }
