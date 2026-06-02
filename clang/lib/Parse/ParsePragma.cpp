@@ -1063,7 +1063,7 @@ void Parser::HandlePragmaMSPragma() {
   if (!(this->*Handler)(PragmaName, PragmaLocation)) {
     // Pragma handling failed, and has been diagnosed.  Slurp up the tokens
     // until eof (really end of line) to prevent follow-on errors.
-    while (Tok.isNot(tok::eof))
+    while (!isAtInputEnd(Tok))
       PP.Lex(Tok);
     PP.Lex(Tok);
   }
@@ -1140,7 +1140,7 @@ bool Parser::HandlePragmaMSSection(StringRef PragmaName,
     return false;
   }
   PP.Lex(Tok); // )
-  if (Tok.isNot(tok::eof)) {
+  if (!isAtInputEnd(Tok)) {
     PP.Diag(PragmaLocation, diag::warn_pragma_extra_tokens_at_eol)
         << PragmaName;
     return false;
@@ -1222,7 +1222,7 @@ bool Parser::HandlePragmaMSSegment(StringRef PragmaName,
     return false;
   }
   PP.Lex(Tok); // )
-  if (Tok.isNot(tok::eof)) {
+  if (!isAtInputEnd(Tok)) {
     PP.Diag(PragmaLocation, diag::warn_pragma_extra_tokens_at_eol)
         << PragmaName;
     return false;
@@ -1600,7 +1600,7 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
       if (Toks.size() > 2) {
         Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
             << PragmaLoopHintString(Info->PragmaName, Info->Option);
-        while (Tok.isNot(tok::eof))
+        while (!isAtInputEnd(Tok))
           ConsumeAnyToken();
       }
 
@@ -1635,10 +1635,10 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
 
       // Tokens following an error in an ill-formed constant expression will
       // remain in the token stream and must be removed.
-      if (Tok.isNot(tok::eof)) {
+      if (!isAtInputEnd(Tok)) {
         Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
             << PragmaLoopHintString(Info->PragmaName, Info->Option);
-        while (Tok.isNot(tok::eof))
+        while (!isAtInputEnd(Tok))
           ConsumeAnyToken();
       }
 
@@ -1661,10 +1661,10 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
 
     // Tokens following an error in an ill-formed constant expression will
     // remain in the token stream and must be removed.
-    if (Tok.isNot(tok::eof)) {
+    if (!isAtInputEnd(Tok)) {
       Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
           << PragmaLoopHintString(Info->PragmaName, Info->Option);
-      while (Tok.isNot(tok::eof))
+      while (!isAtInputEnd(Tok))
         ConsumeAnyToken();
     }
 
@@ -2118,7 +2118,7 @@ void Parser::HandlePragmaAttribute() {
 
   // Tokens following an ill-formed attribute will remain in the token stream
   // and must be removed.
-  if (Tok.isNot(tok::eof)) {
+  if (!isAtInputEnd(Tok)) {
     Diag(Tok, diag::err_pragma_attribute_extra_tokens_after_attribute);
     SkipToEnd();
     return;
@@ -2828,7 +2828,7 @@ void PragmaSupportHandler<StartTok, EndTok, UnexpectedDiag>::HandlePragma(
   Tok.setKind(StartTok);
   Tok.setLocation(Introducer.Loc);
 
-  while (Tok.isNot(tok::eod) && Tok.isNot(tok::eof)) {
+  while (Tok.isNot(tok::eod) && !Parser::isAtInputEnd(Tok, PP.getLangOpts())) {
     Pragma.push_back(Tok);
     PP.Lex(Tok);
     if (Tok.is(StartTok)) {
