@@ -1466,6 +1466,14 @@ bool SystemZTargetLowering::findOptimalMemOpLowering(
   assert(Limit != ~0U &&
          "Expected EmitTargetCodeForMemXXX() to handle AlwaysInline cases.");
 
+  if (Op.isMemmove()) {
+    if (Op.size() >= 16 &&
+        (!Op.isAligned(Align(8)) || (Op.size() >= 25 && Op.size() <= 31)))
+      return false;
+    return TargetLowering::findOptimalMemOpLowering(
+        Context, MemOps, Limit, Op, DstAS, SrcAS, FuncAttributes, LargestVT);
+  }
+
   if (Op.isZeroMemset())
     return false; // Memset zero: Use XC.
 
@@ -9397,6 +9405,56 @@ SDValue SystemZTargetLowering::combineINTRINSIC(
   return SDValue();
 }
 
+SDValue SystemZTargetLowering::combineMEMMOVE(
+    SDNode *N, DAGCombinerInfo &DCI) const {
+  SelectionDAG &DAG = DCI.DAG;
+
+  // Let DAGCombiner run before this.
+  if (DCI.Level == BeforeLegalizeTypes)
+    return SDValue();
+
+  SDValue Chain = N->getOperand(0);
+  SDValue Dst = N->getOperand(1);
+  SDValue Src = N->getOperand(2);
+  SDValue Size = N->getOperand(3);
+  SDValue DstDiffOp = N->getOperand(4);
+  SDValue SrcDiffOp = N->getOperand(5);
+
+  // Check to see if DAGCombiner has been able to reduce the address
+  // difference to a constant.
+  auto *DstC = dyn_cast<ConstantSDNode>(DstDiffOp);
+  auto *SrcC = dyn_cast<ConstantSDNode>(SrcDiffOp);
+  if (DstC && DstC->getSExtValue() == 0 && SrcC && SrcC->getSExtValue() == 0)
+    return SDValue();  // Seen before.
+
+  int64_t DstDiff = DstC ? DstC->getSExtValue() : 0;
+  int64_t SrcDiff = SrcC ? SrcC->getSExtValue() : 0;
+  bool DstKnownLower = false;
+  bool SrcKnownLower = false;
+  if (DstDiff < 0 || SrcDiff > 0)
+    DstKnownLower = true;
+  if (DstDiff > 0 || SrcDiff < 0)
+    SrcKnownLower = true;
+  assert(!(DstKnownLower && SrcKnownLower) && "Address computations broken.");
+  unsigned SizeVal = cast<ConstantSDNode>(Size)->getZExtValue();
+  if (DstKnownLower) {
+    SDValue SizeAdj = DAG.getConstant(SizeVal - 1, SDLoc(N), MVT::i64);
+    return DAG.getNode(SystemZISD::MVC, SDLoc(N), MVT::Other,
+                       { Chain, Dst, Src, SizeAdj });
+  } else if (SrcKnownLower) {
+    SDValue SizeAdj = DAG.getConstant(SizeVal - 1, SDLoc(N), MVT::i32);
+    Chain = DAG.getCopyToReg(Chain, SDLoc(N), SystemZ::R0L, SizeAdj);
+    return DAG.getNode(SystemZISD::MVCRL, SDLoc(N), MVT::Other,
+                       { Chain, Dst, Src });
+  }
+
+  // Replace address difference operands with a constant 0 for 'unknown'.
+  return DAG.getNode(SystemZISD::MEMMOVE, SDLoc(N), MVT::Other,
+                     {Chain, Dst, Src, Size,
+                      DAG.getConstant(0, SDLoc(N), MVT::i64),
+                      DAG.getConstant(0, SDLoc(N), MVT::i64)});
+}
+
 SDValue SystemZTargetLowering::unwrapAddress(SDValue N) const {
   if (N->getOpcode() == SystemZISD::PCREL_WRAPPER)
     return N->getOperand(0);
@@ -9438,6 +9496,7 @@ SDValue SystemZTargetLowering::PerformDAGCombine(SDNode *N,
   case ISD::UREM:               return combineIntDIVREM(N, DCI);
   case ISD::INTRINSIC_W_CHAIN:
   case ISD::INTRINSIC_VOID:     return combineINTRINSIC(N, DCI);
+  case SystemZISD::MEMMOVE:     return combineMEMMOVE(N, DCI);
   }
 
   return SDValue();
@@ -10868,6 +10927,52 @@ SystemZTargetLowering::emitMemMemWrapper(MachineInstr &MI,
   return MBB;
 }
 
+MachineBasicBlock *
+SystemZTargetLowering::emitMemmoveImm(MachineInstr &MI,
+                                      MachineBasicBlock *MBB) const {
+  const SystemZInstrInfo *TII = Subtarget.getInstrInfo();
+
+  DebugLoc DL = MI.getDebugLoc();
+  MachineOperand DstAddr = earlyUseOperand(MI.getOperand(0));
+  MachineOperand SrcAddr = earlyUseOperand(MI.getOperand(1));
+  uint64_t Size = MI.getOperand(2).getImm();
+  int64_t Diff0 = MI.getOperand(3).getImm();
+  int64_t Diff1 = MI.getOperand(4).getImm();
+  assert(Size >= 16 && Size <= 256 &&
+         "Memmove of of unsupported constant length.");
+  assert(!Diff0 && !Diff1 && "Expected to handle unknown length case.");
+
+  // Use MVC or MVCRL after comparing the addresses.
+  MachineBasicBlock *DoneMBB = SystemZ::splitBlockAfter(MI, MBB);
+  MachineBasicBlock *MvcMBB = SystemZ::emitBlockAfter(MBB);
+  MachineBasicBlock *MvcrlMBB = SystemZ::emitBlockAfter(MvcMBB);
+  MBB->addSuccessor(MvcMBB);
+  MBB->addSuccessor(MvcrlMBB);
+  MvcMBB->addSuccessor(DoneMBB);
+  MvcrlMBB->addSuccessor(DoneMBB);
+
+  BuildMI(MBB, DL, TII->get(SystemZ::CLGR)).add(SrcAddr).add(DstAddr);
+  BuildMI(MBB, DL, TII->get(SystemZ::BRC))
+    .addImm(SystemZ::CCMASK_ICMP).addImm(SystemZ::CCMASK_CMP_LT)
+    .addMBB(MvcrlMBB);
+
+  BuildMI(MvcMBB, DL, TII->get(SystemZ::MVC))
+    .add(DstAddr).addImm(0)
+    .addImm(Size)
+    .add(SrcAddr).addImm(0)
+    .setMemRefs(MI.memoperands());
+  BuildMI(MvcMBB, DL, TII->get(SystemZ::J)).addMBB(DoneMBB);
+
+  BuildMI(MvcrlMBB, DL, TII->get(SystemZ::LHI), SystemZ::R0L)
+    .addImm(Size - 1);
+  BuildMI(MvcrlMBB, DL, TII->get(SystemZ::MVCRL))
+    .add(DstAddr).addImm(0)
+    .add(SrcAddr).addImm(0)
+    .setMemRefs(MI.memoperands());
+  MI.eraseFromParent();
+  return DoneMBB;
+}
+
 // Decompose string pseudo-instruction MI into a loop that continually performs
 // Opcode until CC != 3.
 MachineBasicBlock *SystemZTargetLowering::emitStringWrapper(
@@ -11239,6 +11344,8 @@ MachineBasicBlock *SystemZTargetLowering::EmitInstrWithCustomInserter(
   case SystemZ::MemsetRegImm:
   case SystemZ::MemsetRegReg:
     return emitMemMemWrapper(MI, MBB, SystemZ::MVC, true/*IsMemset*/);
+  case SystemZ::MemmoveImm:
+    return emitMemmoveImm(MI, MBB);
   case SystemZ::CLSTLoop:
     return emitStringWrapper(MI, MBB, SystemZ::CLST);
   case SystemZ::MVSTLoop:

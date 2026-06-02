@@ -87,6 +87,33 @@ SDValue SystemZSelectionDAGInfo::EmitTargetCodeForMemcpy(
   return emitMemMemReg(DAG, DL, SystemZISD::MVC, Chain, Dst, Src, Size);
 }
 
+SDValue SystemZSelectionDAGInfo::EmitTargetCodeForMemmove(
+    SelectionDAG &DAG, const SDLoc &DL, SDValue Chain, SDValue Dst, SDValue Src,
+    SDValue Size, Align Alignment, bool IsVolatile,
+    MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo) const {
+  if (IsVolatile)
+    return SDValue();
+
+  const SystemZSubtarget &Subtarget =
+    DAG.getMachineFunction().getSubtarget<SystemZSubtarget>();
+
+  if (auto *CSize = dyn_cast<ConstantSDNode>(Size))
+    if (Subtarget.hasMiscellaneousExtensions3() &&
+        CSize->getZExtValue() > 0 && CSize->getZExtValue() <= 256) {
+      // Add extra operands for the purpose of letting the DAGCombiner
+      // provide the distance between the two addresses as a constant if
+      // possible. DAGCombiner will not simplify SUB operands that have more
+      // than one use, but in some cases a constant will be exposed if part
+      // of LHS so emit both computations to improve the chances:
+      SDValue DstDiff = DAG.getNode(ISD::SUB, DL, MVT::i64, Dst, Src);
+      SDValue SrcDiff = DAG.getNode(ISD::SUB, DL, MVT::i64, Src, Dst);
+      return DAG.getNode(SystemZISD::MEMMOVE, DL, MVT::Other,
+                         {Chain, Dst, Src, Size, DstDiff, SrcDiff});
+    }
+
+  return SDValue();
+}
+
 // Handle a memset of 1, 2, 4 or 8 bytes with the operands given by
 // Chain, Dst, ByteVal and Size.  These cases are expected to use
 // MVI, MVHHI, MVHI and MVGHI respectively.

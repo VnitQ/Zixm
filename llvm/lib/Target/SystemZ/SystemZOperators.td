@@ -116,6 +116,15 @@ def SDT_ZMemMemLengthCC     : SDTypeProfile<1, 3,
                                              SDTCisPtrTy<1>,
                                              SDTCisPtrTy<2>,
                                              SDTCisVT<3, i64>]>;
+def SDT_ZMemMem             : SDTypeProfile<0, 2,
+                                            [SDTCisPtrTy<0>,
+                                             SDTCisPtrTy<1>]>;
+def SDT_ZMemmove            : SDTypeProfile<0, 5,
+                                            [SDTCisPtrTy<0>,
+                                             SDTCisPtrTy<1>,
+                                             SDTCisVT<2, i64>,
+                                             SDTCisVT<3, i64>,
+                                             SDTCisVT<4, i64>]>;
 def SDT_ZMemsetMVC          : SDTypeProfile<0, 3,
                                             [SDTCisPtrTy<0>,
                                              SDTCisVT<1, i64>,
@@ -677,6 +686,10 @@ def z_atomic_cmp_swap_128 : SDNode<"SystemZISD::ATOMIC_CMP_SWAP_128",
 // This isn't a memory opcode because we'd need to attach two
 // MachineMemOperands rather than one.
 def z_mvc               : SDNode<"SystemZISD::MVC", SDT_ZMemMemLength,
+                                 [SDNPHasChain, SDNPMayStore, SDNPMayLoad]>;
+def z_mvcrl             : SDNode<"SystemZISD::MVCRL", SDT_ZMemMem,
+                                 [SDNPHasChain, SDNPMayStore, SDNPMayLoad]>;
+def z_memmove           : SDNode<"SystemZISD::MEMMOVE", SDT_ZMemmove,
                                  [SDNPHasChain, SDNPMayStore, SDNPMayLoad]>;
 
 // Similar to MVC, but for logic operations (AND, OR, XOR).
