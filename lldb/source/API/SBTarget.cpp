@@ -610,7 +610,7 @@ lldb::SBAddress SBTarget::ResolveLoadAddress(lldb::addr_t vm_addr) {
 
   // We have a load address that isn't in a section, just return an address
   // with the offset filled in (the address) and the section set to NULL
-  addr.SetRawAddress(vm_addr);
+  addr = Address(vm_addr);
   return sb_addr;
 }
 
@@ -625,7 +625,7 @@ lldb::SBAddress SBTarget::ResolveFileAddress(lldb::addr_t file_addr) {
       return sb_addr;
   }
 
-  addr.SetRawAddress(file_addr);
+  addr = Address(file_addr);
   return sb_addr;
 }
 
@@ -643,7 +643,7 @@ lldb::SBAddress SBTarget::ResolvePastLoadAddress(uint32_t stop_id,
 
   // We have a load address that isn't in a section, just return an address
   // with the offset filled in (the address) and the section set to NULL
-  addr.SetRawAddress(vm_addr);
+  addr = Address(vm_addr);
   return sb_addr;
 }
 
