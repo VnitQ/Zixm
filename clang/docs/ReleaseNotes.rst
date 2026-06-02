@@ -598,6 +598,8 @@ Improvements to Clang's diagnostics
 - Clang now rejects inline asm constraints and clobbers that contain an
   embedded null character, instead of silently truncating them. (#GH173900)
 
+- Now more analysis-based warnings are emitted before template instantiation.
+
 Improvements to Clang's time-trace
 ----------------------------------
 
