@@ -540,7 +540,7 @@ public:
   ///     returned, else a valid object file interface will be
   ///     returned. The returned pointer is owned by this object and
   ///     remains valid as long as the object is around.
-  virtual ObjectFile *GetObjectFile();
+  ObjectFile *GetObjectFile();
 
   /// Like GetObjectFile, but the returned handle holds the Module mutex for
   /// its lifetime, serializing concurrent access to the ObjectFile against
@@ -556,7 +556,7 @@ public:
   ///
   /// \return
   ///     Unified module section list.
-  virtual SectionList *GetSectionList();
+  SectionList *GetSectionList();
 
   /// Like GetSectionList, but the returned handle holds the Module mutex for
   /// its lifetime.
@@ -569,7 +569,7 @@ public:
   /// should be called.  Any parts of the module, object file, or symbol file
   /// that has cached those file addresses must invalidate or update its
   /// cache.
-  virtual void SectionFileAddressesChanged();
+  void SectionFileAddressesChanged();
 
   /// Returns a reference to the UnwindTable for this Module
   ///
