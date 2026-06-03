@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AArch64InstrInfo.h"
 #include "AArch64MachineFunctionInfo.h"
 #include "AArch64TargetMachine.h"
 #include "MCTargetDesc/AArch64AddressingModes.h"
@@ -20,6 +21,7 @@
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsAArch64.h"
+#include "llvm/Support/AArch64AtomicHints.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/KnownBits.h"
@@ -507,6 +509,10 @@ private:
                                         unsigned Width);
 
   bool SelectCMP_SWAP(SDNode *N);
+
+  bool isAtomicHintInst(SDNode *N, AArch64AtomicStoreHint Hint) const;
+  bool isAtomicSTSHH_KEEP(SDNode *N) const;
+  bool isAtomicSTSHH_STRM(SDNode *N) const;
 
   bool SelectSVEAddSubImm(SDValue N, MVT VT, SDValue &Imm, SDValue &Shift,
                           bool Negate);
@@ -4451,6 +4457,20 @@ bool AArch64DAGToDAGISel::SelectCMP_SWAP(SDNode *N) {
   CurDAG->RemoveDeadNode(N);
 
   return true;
+}
+
+bool AArch64DAGToDAGISel::isAtomicHintInst(SDNode *N,
+                                           AArch64AtomicStoreHint Hint) const {
+  const MachineMemOperand *MMO = cast<MemSDNode>(N)->getMemOperand();
+  return AArch64InstrInfo::decodeAtomicHintFlags(MMO->getFlags()) == Hint;
+}
+
+bool AArch64DAGToDAGISel::isAtomicSTSHH_KEEP(SDNode *N) const {
+  return isAtomicHintInst(N, AArch64AtomicStoreHint::HINT_STSHH_KEEP);
+}
+
+bool AArch64DAGToDAGISel::isAtomicSTSHH_STRM(SDNode *N) const {
+  return isAtomicHintInst(N, AArch64AtomicStoreHint::HINT_STSHH_STRM);
 }
 
 bool AArch64DAGToDAGISel::SelectSVEAddSubImm(SDValue N, MVT VT, SDValue &Imm,
