@@ -2286,8 +2286,6 @@ bool CIRGenModule::findFieldMemberPath(const CXXRecordDecl *currentClass,
       getTypes().getCIRGenRecordLayout(currentClass);
 
   for (const FieldDecl *fd : currentClass->fields()) {
-    if (fd->isBitField())
-      continue;
     if (fd != field)
       continue;
 
