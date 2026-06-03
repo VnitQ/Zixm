@@ -138,8 +138,10 @@ void Flang::addDebugOptions(const llvm::opt::ArgList &Args, const JobAction &JA,
                    options::OPT_foffload_global_filtering,
                    options::OPT_fno_offload_global_filtering,
                    options::OPT_funsigned, options::OPT_fno_unsigned,
-                   options::OPT_facc_allow_default_none_scalars,
-                   options::OPT_fno_acc_allow_default_none_scalars,
+                   options::OPT_fopenacc_default_none_scalars_strict,
+                   options::OPT_fno_openacc_default_none_scalars_strict,
+                   options::OPT_fopenacc_multiple_names_in_routine,
+                   options::OPT_fno_openacc_multiple_names_in_routine,
                    options::OPT_finstrument_functions});
 
   if (Args.hasArg(options::OPT_fopenacc)) {
