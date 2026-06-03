@@ -34,9 +34,9 @@ std::optional<std::string> Library::readStringFromMemory(const Pointer &Ptr) {
   uint64_t Offset = 0;
 
   while (true) {
-    auto [MO, ValidOffset] =
-        Executor.verifyMemAccess(Ptr.getWithNewAddr(Address + Offset), 1,
-                                 Align(1), /*IsStore=*/false, /*AS=*/0);
+    auto [MO, ValidOffset] = Executor.verifyMemAccess(
+        Ptr.getWithNewAddr(Address + Offset), 1, Align(1), /*IsStore=*/false,
+        /*AS=*/0, /*IsVolatile=*/false);
     if (!MO)
       return std::nullopt;
 
@@ -282,7 +282,8 @@ AnyValue Library::executePrintf(ArrayRef<AnyValue> Args) {
     case 'n': {
       OS.flush();
       Executor.store(Arg, Align(4), AnyValue(APInt(32, Output.size())),
-                     Type::getInt32Ty(Ctx.getContext()), /*AS=*/0);
+                     Type::getInt32Ty(Ctx.getContext()), /*AS=*/0,
+                     /*IsVolatile=*/false);
       break;
     }
     case 'p': {

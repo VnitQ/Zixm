@@ -60,6 +60,10 @@ struct Frame {
   SmallVector<IntrusiveRefCntPtr<MemoryObject>> Allocas;
   // Values of arguments and executed instructions in this function.
   DenseMap<Value *, AnyValue> ValueMap;
+  // The provenances to be updated after the function returns or unwinds.
+  using CapturedProvenanceList =
+      SmallVector<std::pair<IntrusiveRefCntPtr<Provenance>, CaptureInfo>>;
+  CapturedProvenanceList CapturedProvenances;
 
   // Reserved for in-flight subroutines.
   Function *ResolvedCallee = nullptr;
@@ -68,7 +72,8 @@ struct Frame {
 
   Frame(Function &F, CallBase *CallSite, Frame *LastFrame,
         ArrayRef<AnyValue> Args, AnyValue &RetVal,
-        const TargetLibraryInfoImpl &TLIImpl);
+        const TargetLibraryInfoImpl &TLIImpl,
+        CapturedProvenanceList CapturedProvenance);
 };
 
 enum class DiagnosticKind {
@@ -103,12 +108,12 @@ public:
   /// object and offset if it is valid.
   std::pair<MemoryObject *, uint64_t>
   verifyMemAccess(const Pointer &Ptr, uint64_t AccessSize, Align Alignment,
-                  bool IsStore, unsigned AS);
+                  bool IsStore, unsigned AS, bool IsVolatile);
 
   AnyValue load(const AnyValue &Ptr, Align Alignment, Type *ValTy, bool NoUndef,
-                unsigned AS);
+                unsigned AS, bool IsVolatile);
   void store(const AnyValue &Ptr, Align Alignment, const AnyValue &Val,
-             Type *ValTy, unsigned AS);
+             Type *ValTy, unsigned AS, bool IsVolatile);
 
   void requestProgramExit(ProgramExitInfo::ProgramExitKind Kind,
                           uint64_t ExitCode = 0);
