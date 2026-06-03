@@ -598,6 +598,17 @@ Improvements to Clang's diagnostics
 - Clang now rejects inline asm constraints and clobbers that contain an
   embedded null character, instead of silently truncating them. (#GH173900)
 
+- ``-Wfortify-source`` now diagnoses buffer-size mismatches in calls to the
+  POSIX ``unistd.h`` I/O functions ``read``, ``write``, ``pread``,
+  ``pread64``, ``pwrite``, ``pwrite64``, ``readlink``, ``readlinkat``, and
+  ``getcwd`` when the buffer and the size argument are both statically
+  known.
+
+- ``-Wfortify-source`` now flags source-buffer over-reads through
+  ``__builtin___memcpy_chk``, ``__builtin___memmove_chk``,
+  ``__builtin___mempcpy_chk``, and ``__builtin___memccpy_chk``, matching the
+  behavior already provided for the non-``_chk`` variants.
+
 Improvements to Clang's time-trace
 ----------------------------------
 
@@ -910,6 +921,19 @@ Crash and bug fixes
 
 - Fixed ``security.VAList`` checker producing false positives when analyzing
   C23 code where ``va_start`` expands to ``__builtin_c23_va_start``.
+
+Improvements
+^^^^^^^^^^^^
+
+- ``unix.StdCLibraryFunctions`` now diagnoses size arguments greater than
+  ``SSIZE_MAX`` passed to ``read``, ``write``, ``readlink``, and
+  ``readlinkat``. This catches common mistakes such as passing ``-1`` to a
+  ``size_t`` parameter or using a constant that is valid on one platform
+  but exceeds ``SSIZE_MAX`` on another.
+
+- ``unix.StdCLibraryFunctions`` now models ``pread``, ``pread64``,
+  ``pwrite``, and ``pwrite64`` with the same size constraint and
+  return-value bounds as ``read`` and ``write``.
 
 .. comment:
   This is for the Static Analyzer.
