@@ -32,71 +32,71 @@ see the {doc}`CMakePrimer` page. It has a basic overview of the CMake language.
 We use here the command-line, non-interactive CMake interface.
 
 1. [Download](http://www.cmake.org/cmake/resources/software.html) and install
-    CMake. Version 3.20.0 is the minimum required.
+   CMake. Version 3.20.0 is the minimum required.
 
 2. Open a shell. Your development tools must be reachable from this shell
-    through the `PATH` environment variable.
+   through the `PATH` environment variable.
 
 3. Create a build directory. Building LLVM in the source
-    directory is not supported. `cd` to this directory:
+   directory is not supported. `cd` to this directory:
 
-    ``` console
-    $ mkdir mybuilddir
-    $ cd mybuilddir
-    ```
+   ``` console
+   $ mkdir mybuilddir
+   $ cd mybuilddir
+   ```
 
 4. Execute this command in the shell replacing `path/to/llvm/source/root` with
-    the path to the root of your LLVM source tree:
+   the path to the root of your LLVM source tree:
 
-    ``` console
-    $ cmake path/to/llvm/source/root
-    ```
+   ``` console
+   $ cmake path/to/llvm/source/root
+   ```
 
-    CMake will detect your development environment, perform a series of tests,
-    and generate the files required for building LLVM. CMake will use default
-    values for all build parameters. See the [Options and
-    variables](#options-and-variables) section for a list of build parameters
-    that you can modify.
+   CMake will detect your development environment, perform a series of tests,
+   and generate the files required for building LLVM. CMake will use default
+   values for all build parameters. See the [Options and
+   variables](#options-and-variables) section for a list of build parameters
+   that you can modify.
 
-    This can fail if CMake can't detect your toolset, or if it thinks that the
-    environment is not sane enough. In this case, make sure that the toolset
-    that you intend to use is the only one reachable from the shell, and that
-    the shell itself is the correct one for your development environment. CMake
-    will refuse to build MinGW makefiles if you have a POSIX shell reachable
-    through the PATH environment variable, for instance. You can force CMake to
-    use a given build tool; for instructions, see the [Usage](#Usage) section,
-    below. You may also wish to control which targets LLVM enables, or which
-    LLVM components are built; see the [Frequently Used LLVM-related
-    variables](#frequently-used-llvm-related-variables) below.
+   This can fail if CMake can't detect your toolset, or if it thinks that the
+   environment is not sane enough. In this case, make sure that the toolset
+   that you intend to use is the only one reachable from the shell, and that
+   the shell itself is the correct one for your development environment. CMake
+   will refuse to build MinGW makefiles if you have a POSIX shell reachable
+   through the PATH environment variable, for instance. You can force CMake to
+   use a given build tool; for instructions, see the [Usage](#Usage) section,
+   below. You may also wish to control which targets LLVM enables, or which
+   LLVM components are built; see the [Frequently Used LLVM-related
+   variables](#frequently-used-llvm-related-variables) below.
 
 5. After CMake has finished running, use IDE project files, or start
-    the build from the build directory:
+   the build from the build directory:
 
-    ``` console
-    $ cmake --build .
-    ```
+   ``` console
+   $ cmake --build .
+   ```
 
-    The `--build` option tells `cmake` to invoke the underlying build
-    tool (`make`, `ninja`, `xcodebuild`, `msbuild`, etc.)
+   The `--build` option tells `cmake` to invoke the underlying build
+   tool (`make`, `ninja`, `xcodebuild`, `msbuild`, etc.)
 
-    The underlying build tool can be invoked directly, of course, but
-    the `--build` option is portable.
+   The underlying build tool can be invoked directly, of course, but
+   the `--build` option is portable.
 
 6. After LLVM has finished building, install it from the build directory:
 
-    ``` console
-    $ cmake --build . --target install
-    ```
+   ``` console
+   $ cmake --build . --target install
+   ```
 
-    The `--target` option with `install` parameter in addition to
-    the `--build` option tells `cmake` to build the `install` target.
+   The `--target` option with `install` parameter in addition to
+   the `--build` option tells `cmake` to build the `install` target.
 
-    It is possible to set a different install prefix at installation time by
-    invoking the `cmake_install.cmake` script generated in the build directory:
+   It is possible to set a different install prefix at installation time by
+   invoking the `cmake_install.cmake` script generated in the build directory:
 
-    ``` console
-    $ cmake -DCMAKE_INSTALL_PREFIX=/tmp/llvm -P cmake_install.cmake
-    ```
+   ``` console
+   $ cmake -DCMAKE_INSTALL_PREFIX=/tmp/llvm -P cmake_install.cmake
+   ```
 
 (Basic CMake usage)=
 (Usage)=
@@ -132,7 +132,7 @@ $ cmake -G "Visual Studio 12" path/to/llvm/source/root
 ```
 
 A given development platform can have more than one adequate
-generator. If you use Visual Studio, \"NMake Makefiles\" is a generator you can use
+generator. If you use Visual Studio, "NMake Makefiles" is a generator you can use
 for building with NMake. By default, CMake chooses the most specific generator
 supported by your development environment. If you want an alternative generator,
 you must specify this to CMake with the `-G` option.
@@ -196,15 +196,15 @@ commonly used variables that control features of LLVM and enabled subprojects.
     | **MinSizeRel**     | For Size      | No         | No         | When disk space matters    |
 
     - Optimizations make LLVM/Clang run faster but can be an impediment for
-        step-by-step debugging.
+      step-by-step debugging.
     - Builds with debug information can use a lot of RAM and disk space and are
-        usually slower to run. You can improve RAM usage by using `lld`, see
-        the {ref}`LLVM_USE_LINKER <llvm_use_linker>` option.
+      usually slower to run. You can improve RAM usage by using `lld`, see
+      the {ref}`LLVM_USE_LINKER <llvm_use_linker>` option.
     - Assertions are internal checks to help you find bugs. They typically
-        slow down LLVM and Clang when enabled but can be useful during
-        development. You can manually set {ref}`LLVM_ENABLE_ASSERTIONS
-        <llvm_enable_assertions>` to override the default from
-        `CMAKE_BUILD_TYPE`.
+      slow down LLVM and Clang when enabled but can be useful during
+      development. You can manually set {ref}`LLVM_ENABLE_ASSERTIONS
+      <llvm_enable_assertions>` to override the default from
+      `CMAKE_BUILD_TYPE`.
 
     If you are using an IDE such as Visual Studio or Xcode, use the IDE
     settings to set the build type.
@@ -216,7 +216,7 @@ commonly used variables that control features of LLVM and enabled subprojects.
 
 **CMAKE_INSTALL_PREFIX**:PATH
 
-:   Path where LLVM will be installed when the \"install\" target is built.
+:   Path where LLVM will be installed when the "install" target is built.
 
 **CMAKE\_{C,CXX}\_FLAGS**:STRING
 
@@ -285,22 +285,22 @@ manual, or execute `cmake --help-variable VARIABLE_NAME`.
 **CMAKE_INSTALL_BINDIR**:PATH
 
 :   The path to install executables, relative to the *CMAKE_INSTALL_PREFIX*.
-    Defaults to \"bin\".
+    Defaults to "bin".
 
 **CMAKE_INSTALL_DOCDIR**:PATH
 
 :   The path to install documentation, relative to the *CMAKE_INSTALL_PREFIX*.
-    Defaults to \"share/doc\".
+    Defaults to "share/doc".
 
 **CMAKE_INSTALL_INCLUDEDIR**:PATH
 
 :   The path to install header files, relative to the *CMAKE_INSTALL_PREFIX*.
-    Defaults to \"include\".
+    Defaults to "include".
 
 **CMAKE_INSTALL_MANDIR**:PATH
 
 :   The path to install manpage files, relative to the *CMAKE_INSTALL_PREFIX*.
-    Defaults to \"share/man\".
+    Defaults to "share/man".
 
 (LLVM-related variables)=
 ### LLVM-related variables
@@ -451,7 +451,7 @@ sub-projects. Nearly all of these variable names begin with `LLVM_`.
 **LLVM_DEFAULT_TARGET_TRIPLE**:STRING
 
 :   LLVM target to use for code generation when no target is explicitly
-    specified. It defaults to \"host\", meaning that it shall pick the
+    specified. It defaults to "host", meaning that it shall pick the
     architecture of the machine where LLVM is being built. If you are building
     a cross-compiler, set it to the target triple of your desired architecture.
 
@@ -485,7 +485,7 @@ sub-projects. Nearly all of these variable names begin with `LLVM_`.
 :   Namespace under which the intermediate Qt Help Project file lives. See [Qt
     Help
     Project](http://qt-project.org/doc/qt-4.8/qthelpproject.html#custom-filters)
-    for more information. Defaults to \"org.llvm\". This option is only useful
+    for more information. Defaults to "org.llvm". This option is only useful
     in combination with `-DLLVM_ENABLE_DOXYGEN_QT_HELP=ON`; otherwise it has no
     effect.
 
@@ -959,7 +959,7 @@ sub-projects. Nearly all of these variable names begin with `LLVM_`.
 **LLVM_TARGET_ARCH**:STRING
 
 :   LLVM target to use for native code generation. This is required for JIT
-    generation. It defaults to \"host\", meaning that it shall pick the
+    generation. It defaults to "host", meaning that it shall pick the
     architecture of the machine where LLVM is being built. If you are
     cross-compiling, set it to the target architecture name.
 
@@ -991,8 +991,8 @@ sub-projects. Nearly all of these variable names begin with `LLVM_`.
 
 :   This flag controls the behavior of `llvm_unreachable()` in a release build
     (when assertions are disabled in general). When ON (default) then
-    `llvm_unreachable()` is considered \"undefined behavior\" and optimized as
-    such. When OFF it is instead replaced with a guaranteed \"trap\".
+    `llvm_unreachable()` is considered "undefined behavior" and optimized as
+    such. When OFF it is instead replaced with a guaranteed "trap".
 
 **LLVM_USE_INTEL_JITEVENTS**:BOOL
 
@@ -1074,7 +1074,7 @@ things to go wrong. They are also unstable across LLVM versions.
 
 :   The path for examples of using LLVM, relative to the
     *CMAKE_INSTALL_PREFIX*. Only matters if *LLVM_BUILD_EXAMPLES* is enabled.
-    Defaults to \"examples\".
+    Defaults to "examples".
 
 **LLVM_TOOLS_INSTALL_DIR**:STRING
 
@@ -1108,12 +1108,12 @@ A few notes about CMake Caches:
 
 - Order of command line arguments is important
   - `-D` arguments specified before `-C` are set before the cache is processed and
-        can be read inside the cache file
+    can be read inside the cache file
   - `-D` arguments specified after `-C` are set after the cache is processed and
-        are unset inside the cache file
+    are unset inside the cache file
 - All `-D` arguments will override cache file settings
 - CMAKE_TOOLCHAIN_FILE is evaluated after both the cache file and the command
-    line arguments
+  line arguments
 - It is recommended that all `-D` options be specified *before* `-C`
 
 For more information about some of the advanced build configurations supported
@@ -1128,7 +1128,7 @@ using Makefiles, execute this command in the root of your build directory:
 $ make check-all
 ```
 
-On Visual Studio, you may run tests by building the project \"check-all\".
+On Visual Studio, you may run tests by building the project "check-all".
 For more information about testing, see the {doc}`TestingGuide`.
 
 ## Cross compiling
@@ -1192,13 +1192,13 @@ the `cmake` command or by setting it directly in `ccmake` or `cmake-gui`).
 This file is available in two different locations.
 
 - `<LLVM_INSTALL_PACKAGE_DIR>/LLVMConfig.cmake` where
-    `<LLVM_INSTALL_PACKAGE_DIR>` is the location where LLVM CMake modules are
-    installed as part of an installed version of LLVM. This is typically
-    `cmake/llvm/` within the lib directory. On Linux, this is typically
-    `/usr/lib/cmake/llvm/LLVMConfig.cmake`.
+  `<LLVM_INSTALL_PACKAGE_DIR>` is the location where LLVM CMake modules are
+  installed as part of an installed version of LLVM. This is typically
+  `cmake/llvm/` within the lib directory. On Linux, this is typically
+  `/usr/lib/cmake/llvm/LLVMConfig.cmake`.
 - `<LLVM_BUILD_ROOT>/lib/cmake/llvm/LLVMConfig.cmake` where
-    `<LLVM_BUILD_ROOT>` is the root of the LLVM build tree. **Note: this is
-    only available when building LLVM with CMake.**
+  `<LLVM_BUILD_ROOT>` is the root of the LLVM build tree. **Note: this is
+  only available when building LLVM with CMake.**
 
 If LLVM is installed in your operating system's normal installation prefix (e.g.
 on Linux this is usually `/usr/`) `find_package(LLVM ...)` will
@@ -1340,9 +1340,9 @@ Notes for specific compilers and/or platforms.
 **CMAKE_OSX_SYSROOT**:STRING
 
 :   When compiling for OSX, in order for the test suite to find libSystem to
-    link dylib tests you'll need to run CMake with `` `xcrun --show-sdk-path
-    ``\` as the string to pass in so that the testsuite can find your os
+    link dylib tests you'll need to run CMake with `xcrun --show-sdk-path`
+    as the string to pass in so that the testsuite can find your os
     libraries.
 
-    This will show up as `` `ld: library not found for -lSystem ``\` when
+    This will show up as `ld: library not found for -lSystem` when
     running tests.
