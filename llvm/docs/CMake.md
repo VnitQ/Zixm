@@ -1292,10 +1292,8 @@ add_library(LLVMPassname MODULE Pass.cpp)
 
 Note if you intend for this pass to be merged into the LLVM source tree at some
 point in the future it might make more sense to use LLVM's internal
-`add_llvm_library` function with the MODULE argument instead by\...
-
-Adding the following to `<project dir>/CMakeLists.txt` (after
-`find_package(LLVM ...)`)
+`add_llvm_library` function with the MODULE argument instead by adding the
+following to `<project dir>/CMakeLists.txt` (after `find_package(LLVM ...)`):
 
 ``` cmake
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
