@@ -598,6 +598,8 @@ Improvements to Clang's diagnostics
 - Clang now rejects inline asm constraints and clobbers that contain an
   embedded null character, instead of silently truncating them. (#GH173900)
 
+- Clang now doesn't throw assertion errors when comparing unsigned vector types (#GH173614).
+
 Improvements to Clang's time-trace
 ----------------------------------
 
