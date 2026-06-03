@@ -72,7 +72,7 @@ void kernel char8_to_short3(global short3 *a, global char8 *b) {
 // CHECK-SAME: <3 x i8> noundef [[A:%.*]], ptr addrspace(1) noundef writeonly captures(none) initializes((0, 4)) [[OUT:%.*]]) local_unnamed_addr #[[ATTR2:[0-9]+]] {
 // CHECK-NEXT:  [[ENTRY:.*:]]
 // CHECK-NEXT:    [[TMP0:%.*]] = shufflevector <3 x i8> [[A]], <3 x i8> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 poison>
-// CHECK-NEXT:    store <4 x i8> [[TMP0]], ptr addrspace(1) [[OUT]], align 4, !tbaa [[INT_TBAA3:![0-9]+]]
+// CHECK-NEXT:    store <4 x i8> [[TMP0]], ptr addrspace(1) [[OUT]], align 4, !tbaa [[INT_TBAA19:![0-9]+]]
 // CHECK-NEXT:    ret void
 //
 void from_char3(char3 a, global int *out) {
@@ -83,7 +83,7 @@ void from_char3(char3 a, global int *out) {
 // CHECK-SAME: <3 x i16> noundef [[A:%.*]], ptr addrspace(1) noundef writeonly captures(none) initializes((0, 8)) [[OUT:%.*]]) local_unnamed_addr #[[ATTR2]] {
 // CHECK-NEXT:  [[ENTRY:.*:]]
 // CHECK-NEXT:    [[TMP0:%.*]] = shufflevector <3 x i16> [[A]], <3 x i16> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 poison>
-// CHECK-NEXT:    store <4 x i16> [[TMP0]], ptr addrspace(1) [[OUT]], align 8, !tbaa [[LONG_TBAA19:![0-9]+]]
+// CHECK-NEXT:    store <4 x i16> [[TMP0]], ptr addrspace(1) [[OUT]], align 8, !tbaa [[LONG_TBAA20:![0-9]+]]
 // CHECK-NEXT:    ret void
 //
 void from_short3(short3 a, global long *out) {
@@ -117,8 +117,7 @@ void scalar_to_short3(long a, global short3 *out) {
 }
 
 //.
-// CHECK: [[INT_TBAA3]] = !{[[META4:![0-9]+]], [[META4]], i64 0}
-// CHECK: [[META4]] = !{!"int", [[META5:![0-9]+]], i64 0}
+// CHECK: [[META4:![0-9]+]] = !{!"int", [[META5:![0-9]+]], i64 0}
 // CHECK: [[META5]] = !{!"omnipotent char", [[META6:![0-9]+]], i64 0}
 // CHECK: [[META6]] = !{!"Simple C/C++ TBAA"}
 // CHECK: [[META7]] = !{i32 1, i32 1}
@@ -133,6 +132,7 @@ void scalar_to_short3(long a, global short3 *out) {
 // CHECK: [[META16]] = !{!"float __attribute__((ext_vector_type(3)))*", !"double __attribute__((ext_vector_type(2)))*"}
 // CHECK: [[META17]] = !{!"short3*", !"char8*"}
 // CHECK: [[META18]] = !{!"short __attribute__((ext_vector_type(3)))*", !"char __attribute__((ext_vector_type(8)))*"}
-// CHECK: [[LONG_TBAA19]] = !{[[META20:![0-9]+]], [[META20]], i64 0}
-// CHECK: [[META20]] = !{!"long", [[META5]], i64 0}
+// CHECK: [[INT_TBAA19]] = !{[[META4]], [[META4]], i64 0}
+// CHECK: [[LONG_TBAA20]] = !{[[META21:![0-9]+]], [[META21]], i64 0}
+// CHECK: [[META21]] = !{!"long", [[META5]], i64 0}
 //.
