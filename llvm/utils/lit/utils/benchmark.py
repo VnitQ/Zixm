@@ -10,7 +10,6 @@ import logging
 import shutil
 import subprocess
 import sys
-from abc import ABC
 from datetime import datetime
 from pathlib import Path
 from platform import system
@@ -67,8 +66,8 @@ def _is_windows_admin() -> bool:
 
 CGROUP_V2_HINT = """\
 cset shield failed (likely cgroup v2); falling back to taskset.
-      cgroup v1 cpuset workarounds: https://documentation.ubuntu.com/real-time/latest/how-to/isolate-workload-cpusets/
-      Suppress this warning with --disable-cset."""
+    cgroup v1 cpuset workarounds: https://documentation.ubuntu.com/real-time/latest/how-to/isolate-workload-cpusets/
+    Suppress this warning with --disable-cset."""
 
 
 def _print_cgroup_v2_hint() -> None:
@@ -76,8 +75,17 @@ def _print_cgroup_v2_hint() -> None:
     log.warning(CGROUP_V2_HINT)
 
 
-class EnvironmentSetup(ABC):
-    def __enter__(self):
+class Platform:
+    """
+    Per-OS benchmark environment manager and command runner.
+    """
+
+    def __init__(self, skip_env: bool = False) -> None:
+        self.skip_env = skip_env
+
+    def __enter__(self) -> "Platform":
+        if self.skip_env:
+            return self
         try:
             self.setup()
         except BaseException:
@@ -85,8 +93,79 @@ class EnvironmentSetup(ABC):
             raise
         return self
 
-    def __exit__(self, *_):
-        self.restore()
+    def __exit__(self, *_) -> None:
+        if not self.skip_env:
+            self.restore()
+
+    def setup(self) -> None:
+        pass
+
+    def restore(self) -> None:
+        pass
+
+    def run(
+        self,
+        lit: Path,
+        test_path: Path,
+        workers: int,
+        warmup: int,
+        runs: int,
+        results_file: Path,
+    ) -> None:
+        cmd_str = self.lit_cmd_str(lit, test_path, workers)
+        hyp = self.build_hyperfine_cmd(cmd_str, warmup, runs, results_file)
+        log.info(f"=== Benchmarking: {test_path} (j{workers}) ===")
+        self._launch(hyp)
+
+    def _launch(self, hyp: list) -> None:
+        subprocess.run(self.wrap_command(hyp), check=True)
+
+    def build_hyperfine_cmd(
+        self, cmd_str: str, warmup: int, runs: int, results_file: Path
+    ) -> list:
+        return [
+            "hyperfine",
+            "--ignore-failure",
+            "--warmup",
+            str(warmup),
+            "--runs",
+            str(runs),
+            "--export-json",
+            str(results_file),
+            cmd_str,
+        ]
+
+    def lit_cmd_str(self, lit: Path, test_path: Path, workers: int) -> str:
+        return f"'{lit}' '{test_path}' -j{workers} --no-progress-bar"
+
+    def wrap_command(self, cmd: list) -> list:
+        return cmd
+
+
+class LinuxPlatform(Platform):
+    """
+    Limitations: Intel CPU only for turbo (AMD boost at cpufreq/boost is TODO);
+    requires cpupower and sudo; cset optional. If cset shielding fails at setup
+    the run falls back to taskset; that decision lives in self.use_cset.
+    """
+
+    GOV_PATH = Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+    TURBO_PATH = Path("/sys/devices/system/cpu/intel_pstate/no_turbo")
+    SMT_PATH = Path("/sys/devices/system/cpu/smt/control")
+    ASLR_PATH = Path("/proc/sys/kernel/randomize_va_space")
+
+    def __init__(
+        self,
+        benchmark_cpus: str,
+        use_cset: bool,
+        cset_available: bool,
+        skip_env: bool = False,
+    ) -> None:
+        super().__init__(skip_env)
+        self.benchmark_cpus = benchmark_cpus
+        self.saved: Dict[str, str] = {}
+        self.use_cset = use_cset
+        self.cset_available = cset_available
 
     def setup(self) -> None:
         self.set_cpu_performance()
@@ -101,57 +180,6 @@ class EnvironmentSetup(ABC):
         self.restore_turbo()
         self.restore_cpu_performance()
         self.restore_aslr()
-
-    def set_cpu_performance(self) -> None:
-        pass
-
-    def restore_cpu_performance(self) -> None:
-        pass
-
-    def disable_turbo(self) -> None:
-        pass
-
-    def restore_turbo(self) -> None:
-        pass
-
-    def disable_smt(self) -> None:
-        pass
-
-    def restore_smt(self) -> None:
-        pass
-
-    def disable_aslr(self) -> None:
-        pass
-
-    def restore_aslr(self) -> None:
-        pass
-
-    def shield_cpus(self) -> None:
-        pass
-
-    def unshield_cpus(self) -> None:
-        pass
-
-
-class LinuxEnvironmentSetup(EnvironmentSetup):
-    """Stabilise a Linux benchmark environment.
-
-    Limitations: Intel CPU only for turbo (AMD boost at cpufreq/boost is TODO);
-    requires cpupower and sudo; cset optional.
-    """
-
-    GOV_PATH = Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
-    TURBO_PATH = Path("/sys/devices/system/cpu/intel_pstate/no_turbo")
-    SMT_PATH = Path("/sys/devices/system/cpu/smt/control")
-    ASLR_PATH = Path("/proc/sys/kernel/randomize_va_space")
-
-    def __init__(
-        self, benchmark_cpus: str, use_cset: bool, cset_available: bool
-    ) -> None:
-        self.benchmark_cpus = benchmark_cpus
-        self.saved: Dict[str, str] = {}
-        self.use_cset: bool = use_cset
-        self.cset_available: bool = cset_available
 
     def sysfs_set(self, key: str, path: Path, value: str) -> None:
         if not path.exists():
@@ -252,12 +280,21 @@ class LinuxEnvironmentSetup(EnvironmentSetup):
             subprocess.run(["sudo", "cset", "shield", "--reset"], check=False)
             log.info("=== cset shield removed ===")
 
+    def wrap_command(self, cmd: list) -> list:
+        if self.use_cset:
+            return ["sudo", "cset", "shield", "--exec", "--"] + cmd
+        return ["sudo", "nice", "-n", "-20", "taskset", "-c", self.benchmark_cpus] + cmd
 
-class MacEnvironmentSetup(EnvironmentSetup):
-    """macOS: caffeinate only. No scriptable turbo/SMT/ASLR/shielding equivalents."""
 
-    def __init__(self) -> None:
-        self.proc = None
+class MacPlatform(Platform):
+    """macOS: caffeinate only. No scriptable turbo/SMT/ASLR/shielding equivalents.
+
+    The run is unwrapped (inherits base lit_cmd_str/wrap_command).
+    """
+
+    def __init__(self, skip_env: bool = False) -> None:
+        super().__init__(skip_env)
+        self.proc: Optional[subprocess.Popen] = None
 
     def setup(self) -> None:
         self.proc = subprocess.Popen(["caffeinate", "-dimsu"])
@@ -270,10 +307,9 @@ class MacEnvironmentSetup(EnvironmentSetup):
             log.info("=== Mac env: caffeinate stopped ===")
 
 
-class WindowsEnvironmentSetup(EnvironmentSetup):
-    """Windows: Ultimate performance plan, defender exclusions, PERFBOOSTMODE turbo
-
-    No runtime equivalent for SMT, ASLR, CPU shielding
+class WindowsPlatform(Platform):
+    """
+    The run is launched HIGH_PRIORITY with a kernel32 affinity mask.
     """
 
     THROTTLE = [
@@ -282,19 +318,38 @@ class WindowsEnvironmentSetup(EnvironmentSetup):
         ("SUB_PROCESSOR", "CPMINCORES"),
     ]
 
-    def __init__(self, repo_root: Path) -> None:
+    # The plan the benchmark runs under (High Performance).
+    BENCH_SCHEME = "SCHEME_MIN"
+
+    def __init__(
+        self, repo_root: Path, affinity_mask: str = "FFF", skip_env: bool = False
+    ) -> None:
+        super().__init__(skip_env)
         self.winmm = None
         self.repo_root = repo_root
+        self.affinity_mask = int(affinity_mask, 16)
         self.saved_scheme: Optional[str] = None
         self.saved: Dict[str, Dict[str, str]] = {}
 
     def setup(self) -> None:
-        super().setup()
+        self.set_cpu_performance()
+        self.disable_turbo()
         self.exclude_from_defender()
 
     def restore(self) -> None:
         self.restore_defender()
-        super().restore()
+        self.restore_turbo()
+        self.restore_cpu_performance()
+
+    def _activate_scheme(self, scheme: str) -> subprocess.CompletedProcess:
+        """Make a power scheme live. Re-activating the current scheme is how
+        pending /set*valueindex changes get pushed to hardware."""
+        return subprocess.run(
+            ["powercfg", "/setactive", scheme],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
     def exclude_from_defender(self) -> None:
         try:
@@ -326,7 +381,7 @@ class WindowsEnvironmentSetup(EnvironmentSetup):
 
     def query_setting(self, sub: str, setting: str) -> Dict[str, str]:
         r = subprocess.run(
-            ["powercfg", "/query", "SCHEME_CURRENT", sub, setting],
+            ["powercfg", "/query", self.BENCH_SCHEME, sub, setting],
             capture_output=True,
             text=True,
         )
@@ -342,7 +397,7 @@ class WindowsEnvironmentSetup(EnvironmentSetup):
         for flag in ("/setacvalueindex", "/setdcvalueindex"):
             try:
                 subprocess.run(
-                    ["powercfg", flag, "SCHEME_CURRENT", sub, setting, val], check=True
+                    ["powercfg", flag, self.BENCH_SCHEME, sub, setting, val], check=True
                 )
             except subprocess.CalledProcessError as e:
                 log.warning(f"{e}")
@@ -352,7 +407,7 @@ class WindowsEnvironmentSetup(EnvironmentSetup):
         for flag, idx in (("/setacvalueindex", "ac"), ("/setdcvalueindex", "dc")):
             if idx in saved:
                 subprocess.run(
-                    ["powercfg", flag, "SCHEME_CURRENT", sub, setting, saved[idx]],
+                    ["powercfg", flag, self.BENCH_SCHEME, sub, setting, saved[idx]],
                     capture_output=True,
                 )
 
@@ -365,16 +420,14 @@ class WindowsEnvironmentSetup(EnvironmentSetup):
         parts = r.stdout.split()
         if len(parts) >= 4:
             self.saved_scheme = parts[3]
-        try:
-            subprocess.run(["powercfg", "/setactive", "SCHEME_MIN"], check=True)
-        except subprocess.CalledProcessError as e:
-            log.warning(f"could not activate Ultimate Performance plan: {e}")
-            log.warning("continuing; throttle settings will still be applied")
         for sub, setting in self.THROTTLE:
             self.saved[setting] = self.query_setting(sub, setting)
         for sub, setting in self.THROTTLE:
             self.apply_setting(sub, setting, "100")
-        subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"], check=False)
+        r = self._activate_scheme(self.BENCH_SCHEME)
+        if r.returncode != 0:
+            log.warning(f"could not activate High Performance plan: {r.stderr.strip()}")
+            log.warning("benchmark may run under the previous plan")
         try:
             import ctypes
 
@@ -386,8 +439,7 @@ class WindowsEnvironmentSetup(EnvironmentSetup):
     def restore_cpu_performance(self) -> None:
         for sub, setting in self.THROTTLE:
             self.restore_setting(setting, sub, setting)
-        scheme = self.saved_scheme or "SCHEME_BALANCED"
-        subprocess.run(["powercfg", "/setactive", scheme], capture_output=True)
+        self._activate_scheme(self.saved_scheme or "SCHEME_BALANCED")
         if self.winmm:
             try:
                 self.winmm.timeEndPeriod(1)
@@ -397,112 +449,18 @@ class WindowsEnvironmentSetup(EnvironmentSetup):
     def disable_turbo(self) -> None:
         self.saved["boost"] = self.query_setting(W_SUB_PROC, W_BOOST)
         self.apply_setting(W_SUB_PROC, W_BOOST, "0")
-        subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"], check=False)
+        self._activate_scheme("SCHEME_CURRENT")
 
     def restore_turbo(self) -> None:
         self.restore_setting("boost", W_SUB_PROC, W_BOOST)
-        subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"], check=False)
+        self._activate_scheme("SCHEME_CURRENT")
 
-
-class NullEnvironmentSetup(EnvironmentSetup):
-    pass
-
-
-def _make_env(
-    args, repo_root: Path, use_cset: bool, cset_available: bool
-) -> EnvironmentSetup:
-    if args.skip_env_setup:
-        return NullEnvironmentSetup()
-    if IS_LINUX:
-        return LinuxEnvironmentSetup(
-            benchmark_cpus=args.benchmark_cpus,
-            use_cset=use_cset,
-            cset_available=cset_available,
-        )
-    if IS_MAC:
-        return MacEnvironmentSetup()
-    if IS_WINDOWS:
-        return WindowsEnvironmentSetup(repo_root=repo_root)
-    return NullEnvironmentSetup()
-
-
-class BenchmarkRunner(ABC):
-    """Platform-specific hyperfine execution wrapper"""
-
-    def run(
-        self,
-        lit: Path,
-        test_path: Path,
-        workers: int,
-        warmup: int,
-        runs: int,
-        results_file: Path,
-    ) -> None:
-        cmd_str = self.lit_cmd_str(lit, test_path, workers)
-        hyp = self.build_hyperfine_cmd(cmd_str, warmup, runs, results_file)
-        log.info(f"=== Benchmarking: {test_path} (j{workers}) ===")
-        subprocess.run(self.wrap_command(hyp), check=True)
-
-    def build_hyperfine_cmd(
-        self, cmd_str: str, warmup: int, runs: int, results_file: Path
-    ) -> list:
-        return [
-            "hyperfine",
-            "--ignore-failure",
-            "--warmup",
-            str(warmup),
-            "--runs",
-            str(runs),
-            "--export-json",
-            str(results_file),
-            cmd_str,
-        ]
-
-    def lit_cmd_str(self, lit: Path, test_path: Path, workers: int) -> str:
-        if IS_WINDOWS:
-            return f'python "{lit}" "{test_path}" -j{workers} --no-progress-bar'
-        return f"'{lit}' '{test_path}' -j{workers} --no-progress-bar"
-
-    def wrap_command(self, cmd: list) -> list:
-        return cmd
-
-
-class LinuxBenchmarkRunner(BenchmarkRunner):
-    def __init__(self, benchmark_cpus: str, use_cset: bool) -> None:
-        self.cpus = benchmark_cpus
-        self.use_cset = use_cset
-
-    def wrap_command(self, cmd: list) -> list:
-        if self.use_cset:
-            return ["sudo", "cset", "shield", "--exec", "--"] + cmd
-        return ["sudo", "nice", "-n", "-20", "taskset", "-c", self.cpus] + cmd
-
-
-class MacBenchmarkRunner(BenchmarkRunner):
-    pass
-
-
-class WindowsBenchmarkRunner(BenchmarkRunner):
-    def __init__(self, affinity_mask: str = "FFF") -> None:
-        self.affinity_mask = int(affinity_mask, 16)
-
-    def run(
-        self,
-        lit: Path,
-        test_path: Path,
-        workers: int,
-        warmup: int,
-        runs: int,
-        results_file: Path,
-    ):
+    def _launch(self, hyp: list) -> None:
         import ctypes
 
         kernel32 = ctypes.windll.kernel32
         HIGH_PRIORITY_CLASS = 0x00000080
         PROCESS_SET_INFORMATION = 0x0200
-        cmd_str = self.lit_cmd_str(lit, test_path, workers)
-        hyp = self.build_hyperfine_cmd(cmd_str, warmup, runs, results_file)
-        log.info(f"=== Benchmarking: {test_path} (j{workers}) ===")
         proc = subprocess.Popen(hyp, creationflags=HIGH_PRIORITY_CLASS)
         h = kernel32.OpenProcess(PROCESS_SET_INFORMATION, False, proc.pid)
         if h:
@@ -523,30 +481,28 @@ class WindowsBenchmarkRunner(BenchmarkRunner):
         if proc.returncode != 0:
             raise subprocess.CalledProcessError(proc.returncode, hyp)
 
-    def wrap_command(self, cmd: list) -> list:
-        return cmd
+    def lit_cmd_str(self, lit: Path, test_path: Path, workers: int) -> str:
+        return f'python "{lit}" "{test_path}" -j{workers} --no-progress-bar'
 
 
-def _make_runner(args, use_cset: bool, cset_available: bool) -> BenchmarkRunner:
+def make_platform(args, repo_root: Path) -> Platform:
+    """Detect the OS once and build the matching Platform."""
+    skip = args.skip_env_setup
     if IS_LINUX:
+        cset_available = bool(shutil.which("cset"))
+        use_cset = cset_available and not args.disable_cset and not skip
         if cset_available and not use_cset:
             log.info("cset available but disabled; using taskset")
         elif not cset_available:
             log.warning(
                 "cset not found; using taskset (install: sudo apt install cpuset)"
             )
-        return LinuxBenchmarkRunner(args.benchmark_cpus, use_cset=use_cset)
+        return LinuxPlatform(args.benchmark_cpus, use_cset, cset_available, skip)
     if IS_MAC:
-        return MacBenchmarkRunner()
+        return MacPlatform(skip)
     if IS_WINDOWS:
-        return WindowsBenchmarkRunner(affinity_mask=args.affinity_mask)
-    return BenchmarkRunner()
-
-
-def _lit_path(build_dir: Path) -> Path:
-    if IS_WINDOWS:
-        return build_dir / "bin" / "llvm-lit.py"
-    return build_dir / "bin" / "llvm-lit"
+        return WindowsPlatform(repo_root, args.affinity_mask, skip)
+    return Platform(skip)
 
 
 def _check_tools() -> List[str]:
@@ -567,8 +523,8 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""\
 Examples:
-  python benchmark.py --test-path llvm-project/llvm/test/CodeGen/X86 --build-dir build --workers 4
-  python benchmark.py --test-path llvm-project/llvm/test/CodeGen/X86 --build-dir build --workers 4 --label baseline
+  python benchmark.py --test-path llvm-project/llvm/test/CodeGen/X86 --repo-root . --lit build/bin/llvm-lit --workers 4
+  python benchmark.py --test-path llvm-project/llvm/test/CodeGen/X86 --repo-root . --lit build/bin/llvm-lit --workers 4 --label baseline
 
 Notes:
   Linux env setup needs cpupower + sudo and assumes an Intel CPU (turbo); cset optional.
@@ -590,10 +546,10 @@ Platform: {SYSTEM} Defaults: --warmup {default_warmup} --runs {default_runs}""",
         help="Repo root; parent directory of llvm-project/",
     )
     parser.add_argument(
-        "--build-dir",
+        "--lit",
         required=True,
         metavar="PATH",
-        help="Pre-built LLVM build directory (must already contain lit)",
+        help="Path to the built lit binary (e.g. build/bin/llvm-lit)",
     )
     parser.add_argument(
         "--workers",
@@ -649,28 +605,18 @@ Platform: {SYSTEM} Defaults: --warmup {default_warmup} --runs {default_runs}""",
     )
     args = parser.parse_args()
     repo_root = Path(args.repo_root).resolve()
-    build_dir = Path(args.build_dir).resolve()
+    lit = repo_root / args.lit
     test_path = repo_root / args.test_path
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     results_dir = repo_root / "results" / f"{args.label}-{timestamp}"
     missing_tools = _check_tools()
     if missing_tools:
         sys.exit(f"ERROR: missing required tools: {', '.join(missing_tools)}")
-    lit = _lit_path(build_dir)
     if not lit.exists():
-        sys.exit(
-            f"ERROR: lit binary not found at {lit}. "
-            "Build LLVM first and check --build-dir."
-        )
+        sys.exit(f"ERROR: lit binary not found at {lit}. Check --lit.")
     results_dir.mkdir(parents=True, exist_ok=True)
-    cset_available = IS_LINUX and bool(shutil.which("cset"))
-    use_cset = cset_available and not args.disable_cset and not args.skip_env_setup
-    with _make_env(args, repo_root, use_cset, cset_available) as env:
-        if IS_LINUX and hasattr(env, "use_cset") and not env.use_cset:
-            runner = _make_runner(args, False, cset_available)
-        else:
-            runner = _make_runner(args, use_cset, cset_available)
-        runner.run(
+    with make_platform(args, repo_root) as platform:
+        platform.run(
             lit,
             test_path,
             args.workers,
