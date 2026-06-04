@@ -48,6 +48,8 @@ class ProcessAttachTestCase(TestBase):
         # Spawn a new process
         popen = self.spawnSubprocess(exe)
 
+        # Don't wait for the continue to finish.
+        self.setAsync(True)
         self.runCmd("process attach -c -p " + str(popen.pid))
 
         target = self.dbg.GetSelectedTarget()
