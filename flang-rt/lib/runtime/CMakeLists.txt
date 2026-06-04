@@ -12,9 +12,8 @@ find_package(Backtrace)
 set(HAVE_BACKTRACE ${Backtrace_FOUND})
 set(BACKTRACE_HEADER ${Backtrace_HEADER})
 
-<<<<<<< HEAD
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
-=======
+
 # Module sources that are required by other modules
 set(intrinsics_sources
   __fortran_builtins.f90
@@ -25,6 +24,7 @@ set(intrinsics_sources
 set(module_sources
   __fortran_ieee_exceptions.f90
   __fortran_type_info.f90
+  f90deviceio.f90
   flang_debug.f90
   iso_fortran_env.f90
   iso_fortran_env_impl.f90
@@ -38,7 +38,6 @@ set(module_sources
   cuda_runtime_api.f90
   cudadevice.f90
 )
->>>>>>> bafde6fbb860
 
 # List of files that are buildable for all devices.
 set(supported_sources

@@ -599,7 +599,6 @@ if(build_runtimes)
     endforeach()
   endif()
   if("openmp" IN_LIST LLVM_ENABLE_RUNTIMES OR "offload" IN_LIST LLVM_ENABLE_RUNTIMES)
-<<<<<<< HEAD
     # With ROCm 6.3 the ROCr runtime and the thunk layer share a single repository.
     # No need to provide a separate path for ROCt.
     if (OFFLOAD_EXTERNAL_PROJECT_UNIFIED_ROCR)
@@ -655,26 +654,11 @@ if(build_runtimes)
     if("AMDGPU" IN_LIST LLVM_TARGETS_TO_BUILD)
       set(AMDGPU_ARCH_DEP amdgpu-arch)
     endif()
-    if (${LLVM_TOOL_FLANG_BUILD})
-      message(STATUS "Configuring build of omp_lib.mod and omp_lib_kinds.mod via flang")
-      set(LIBOMP_FORTRAN_MODULES_COMPILER "${CMAKE_BINARY_DIR}/bin/flang")
-      set(LIBOMP_MODULES_INSTALL_PATH "${CMAKE_INSTALL_INCLUDEDIR}/flang")
-      # TODO: This is a workaround until flang becomes a first-class project
-      # in llvm/CMakeList.txt.  Until then, this line ensures that flang is
-      # built before "openmp" is built as a runtime project.  Besides "flang"
-      # to build the compiler, we also need to add "module_files" to make sure
-      # that all .mod files are also properly build.
-      list(APPEND extra_deps "flang" "module_files")
-    endif()
     if (${LIBOMPTARGET_BUILD_DEVICE_FORTRT})
       set(FORTRT_DEP FortranRuntime)
     endif()
     foreach(dep opt llvm-link llvm-extract clang llvm-offload-binary clang-nvlink-wrapper rocm-device-libs offload-arch ${HSA_DEP} ${AMDGPU_ARCH_DEP} ${FORTRT_DEP})
       if(TARGET ${dep} AND OPENMP_ENABLE_LIBOMPTARGET)
-=======
-    foreach(dep opt llvm-link llvm-extract clang llvm-offload-binary clang-nvlink-wrapper)
-      if(TARGET ${dep})
->>>>>>> bafde6fbb860
         list(APPEND extra_deps ${dep})
       endif()
     endforeach()
