@@ -275,6 +275,18 @@ define float @test_fabs(float %x) {
   ret float %abs
 }
 
+define float @test_fabs_nneg(float %x) {
+; CHECK-LABEL: test_fabs_nneg:
+; CHECK:       // %bb.0:
+; CHECK-NEXT:    fabs s0, s0
+; CHECK-NEXT:    frintz s0, s0
+; CHECK-NEXT:    ret
+  %nneg = call float @llvm.fabs(float %x)
+  %conv1 = fptosi float %nneg to i32
+  %conv2 = sitofp i32 %conv1 to float
+  ret float %conv2
+}
+
 define float @test_copysign(float %x, float %y) {
 ; CHECK-LABEL: test_copysign:
 ; CHECK:       // %bb.0:
