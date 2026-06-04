@@ -1172,11 +1172,12 @@ define i64 @bswap_i64(i64 %a) {
 ; RV64I-NEXT:    and a2, a0, a2
 ; RV64I-NEXT:    slli a2, a2, 24
 ; RV64I-NEXT:    or a2, a2, a4
-; RV64I-NEXT:    lui a4, 1044480
+; RV64I-NEXT:    li a4, 255
 ; RV64I-NEXT:    and a3, a0, a3
 ; RV64I-NEXT:    slli a3, a3, 40
 ; RV64I-NEXT:    or a1, a1, a3
 ; RV64I-NEXT:    srli a3, a0, 8
+; RV64I-NEXT:    slli a4, a4, 24
 ; RV64I-NEXT:    and a0, a0, a4
 ; RV64I-NEXT:    slli a0, a0, 8
 ; RV64I-NEXT:    or a0, a2, a0
