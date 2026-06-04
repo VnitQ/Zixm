@@ -53,13 +53,10 @@ static void combineExitConditions(VPlan &Plan) {
   VPBuilder EarlyExitBuilder(EarlyExitingVPBB->getTerminator());
   if (EarlyExitingVPBB->getSuccessors()[0] != EarlyExitVPBB)
     Cond = EarlyExitBuilder.createNot(Cond);
-  auto *MaskedCond =
-      EarlyExitBuilder.createNaryOp(VPInstruction::MaskedCond, {Cond});
 
   // Combine the early exit with the latch exit on the latch terminator.
   VPBuilder Builder(LatchVPBB->getTerminator());
-  auto *IsAnyExitTaken =
-      Builder.createNaryOp(VPInstruction::AnyOf, {MaskedCond});
+  auto *IsAnyExitTaken = Builder.createNaryOp(VPInstruction::AnyOf, {Cond});
   auto *LatchBranch = cast<VPInstruction>(LatchVPBB->getTerminator());
   assert(LatchBranch->getOpcode() == VPInstruction::BranchOnCond &&
          "Unexpected terminator");
@@ -121,7 +118,7 @@ TEST_F(VPUncountableExitTest, FindUncountableExitRecipes) {
       vputils::getRecipesForUncountableExit(Recipes, GEPs, LatchVPBB);
   ASSERT_TRUE(UncountableCondition.has_value());
   ASSERT_EQ(GEPs.size(), 1ull);
-  ASSERT_EQ(Recipes.size(), 4ull);
+  ASSERT_EQ(Recipes.size(), 3ull);
 }
 
 TEST_F(VPUncountableExitTest, NoUncountableExit) {
