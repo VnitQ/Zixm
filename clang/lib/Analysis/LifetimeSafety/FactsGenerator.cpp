@@ -49,9 +49,13 @@ bool FactsGenerator::hasOrigins(const Expr *E) const {
 /// Propagates origin information from Src to Dst through all levels of
 /// indirection, creating OriginFlowFacts at each level.
 ///
-/// This function enforces a critical type-safety invariant: both lists must
-/// have the same shape (same depth/structure). This invariant ensures that
-/// origins flow only between compatible types during expression evaluation.
+/// This function enforces a critical type-safety invariant: both trees
+/// must have the same pointee-chain depth, and field children are
+/// matched by `FieldDecl`. This invariant ensures that origins flow only
+/// between compatible types during expression evaluation. Field pairs
+/// found on both sides recurse; unmatched fields are skipped, which is
+/// exercised by `CK_DerivedToBase` flows where Base's and Derived's
+/// trees carry distinct direct-field FDs.
 ///
 /// Examples:
 ///   - `int* p = &x;` flows origins from `&x` (depth 1) to `p` (depth 1)
@@ -59,19 +63,31 @@ bool FactsGenerator::hasOrigins(const Expr *E) const {
 ///     * Level 1: pp <- p's address
 ///     * Level 2: (*pp) <- what p points to (i.e., &x)
 ///   - `View v = obj;` flows origins from `obj` (depth 1) to `v` (depth 1)
+///   - `S s2 = s;` flows the top-level origin and recursively flows each
+///     matching `FieldDecl` subtree, so loans on `s.v.inner` propagate to
+///     `s2.v.inner`.
 void FactsGenerator::flow(OriginNode *Dst, OriginNode *Src, bool Kill) {
   if (!Dst)
     return;
-  assert(Src &&
-         "Dst is non-null but Src is null. List must have the same length");
-  assert(Dst->getLength() == Src->getLength() &&
-         "Lists must have the same length");
 
-  while (Dst && Src) {
-    CurrentBlockFacts.push_back(FactMgr.createFact<OriginFlowFact>(
-        Dst->getOriginID(), Src->getOriginID(), Kill));
-    Dst = Dst->getPointeeChild();
-    Src = Src->getPointeeChild();
+  assert(Src && "Dst node has no paired Src node");
+
+  llvm::SmallVector<std::pair<OriginNode *, OriginNode *>, 4> Worklist{
+      {Dst, Src}};
+  while (!Worklist.empty()) {
+    auto [D, S] = Worklist.pop_back_val();
+    assert(D->getLength() == S->getLength() &&
+           "matched Dst/Src nodes must have equal pointee-chain length");
+    while (D && S) {
+      CurrentBlockFacts.push_back(FactMgr.createFact<OriginFlowFact>(
+          D->getOriginID(), S->getOriginID(), Kill));
+      for (const OriginNode::Edge &E : D->children())
+        if (E.FD)
+          if (OriginNode *SrcF = S->getFieldChild(E.FD))
+            Worklist.push_back({E.Child, SrcF});
+      D = D->getPointeeChild();
+      S = S->getPointeeChild();
+    }
   }
 }
 
@@ -366,12 +382,16 @@ void FactsGenerator::VisitUnaryOperator(const UnaryOperator *UO) {
 }
 
 void FactsGenerator::VisitReturnStmt(const ReturnStmt *RS) {
-  if (const Expr *RetExpr = RS->getRetValue()) {
-    if (OriginNode *Node = getOriginNode(*RetExpr))
-      for (OriginNode *L = Node; L != nullptr; L = L->getPointeeChild())
-        EscapesInCurrentBlock.push_back(
-            FactMgr.createFact<ReturnEscapeFact>(L->getOriginID(), RetExpr));
-  }
+  const Expr *RetExpr = RS->getRetValue();
+  if (!RetExpr)
+    return;
+  OriginNode *Root = getOriginNode(*RetExpr);
+  if (!Root)
+    return;
+  Root->forEachOrigin([this, RetExpr](const OriginNode *Cur) {
+    EscapesInCurrentBlock.push_back(
+        FactMgr.createFact<ReturnEscapeFact>(Cur->getOriginID(), RetExpr));
+  });
 }
 
 void FactsGenerator::handleAssignment(const Expr *TargetExpr,
