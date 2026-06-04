@@ -598,6 +598,11 @@ Improvements to Clang's diagnostics
 - Clang now rejects inline asm constraints and clobbers that contain an
   embedded null character, instead of silently truncating them. (#GH173900)
 
+- ``-Wfortify-source`` now warns when the constant-evaluated argument to
+  ``umask`` has bits set outside ``0777``. Those bits are silently discarded
+  by the kernel, so setting them is almost always a typo (matching the
+  bionic libc ``diagnose_if`` check).
+
 Improvements to Clang's time-trace
 ----------------------------------
 
