@@ -30,28 +30,28 @@ void store(const struct foo *input, void *addr)
 // CHECK-LABEL: define dso_local void @store2(
 // CHECK-SAME: ptr noundef readonly captures(none) [[IN:%.*]], ptr noundef [[ADDR:%.*]]) local_unnamed_addr #[[ATTR0]] {
 // CHECK-NEXT:  [[ENTRY:.*:]]
-// CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr [[IN]], align 4, !tbaa [[INT_TBAA2:![0-9]+]]
+// CHECK-NEXT:    [[TMP0:%.*]] = load i32, ptr [[IN]], align 4, !tbaa [[INT_TBAA8:![0-9]+]]
 // CHECK-NEXT:    [[CONV:%.*]] = sext i32 [[TMP0]] to i64
 // CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds nuw i8, ptr [[IN]], i64 4
-// CHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr [[ARRAYIDX1]], align 4, !tbaa [[INT_TBAA2]]
+// CHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr [[ARRAYIDX1]], align 4, !tbaa [[INT_TBAA8]]
 // CHECK-NEXT:    [[CONV2:%.*]] = sext i32 [[TMP1]] to i64
 // CHECK-NEXT:    [[ARRAYIDX4:%.*]] = getelementptr inbounds nuw i8, ptr [[IN]], i64 16
-// CHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr [[ARRAYIDX4]], align 4, !tbaa [[INT_TBAA2]]
+// CHECK-NEXT:    [[TMP2:%.*]] = load i32, ptr [[ARRAYIDX4]], align 4, !tbaa [[INT_TBAA8]]
 // CHECK-NEXT:    [[CONV5:%.*]] = sext i32 [[TMP2]] to i64
 // CHECK-NEXT:    [[ARRAYIDX7:%.*]] = getelementptr inbounds nuw i8, ptr [[IN]], i64 64
-// CHECK-NEXT:    [[TMP3:%.*]] = load i32, ptr [[ARRAYIDX7]], align 4, !tbaa [[INT_TBAA2]]
+// CHECK-NEXT:    [[TMP3:%.*]] = load i32, ptr [[ARRAYIDX7]], align 4, !tbaa [[INT_TBAA8]]
 // CHECK-NEXT:    [[CONV8:%.*]] = sext i32 [[TMP3]] to i64
 // CHECK-NEXT:    [[ARRAYIDX10:%.*]] = getelementptr inbounds nuw i8, ptr [[IN]], i64 100
-// CHECK-NEXT:    [[TMP4:%.*]] = load i32, ptr [[ARRAYIDX10]], align 4, !tbaa [[INT_TBAA2]]
+// CHECK-NEXT:    [[TMP4:%.*]] = load i32, ptr [[ARRAYIDX10]], align 4, !tbaa [[INT_TBAA8]]
 // CHECK-NEXT:    [[CONV11:%.*]] = sext i32 [[TMP4]] to i64
 // CHECK-NEXT:    [[ARRAYIDX13:%.*]] = getelementptr inbounds nuw i8, ptr [[IN]], i64 144
-// CHECK-NEXT:    [[TMP5:%.*]] = load i32, ptr [[ARRAYIDX13]], align 4, !tbaa [[INT_TBAA2]]
+// CHECK-NEXT:    [[TMP5:%.*]] = load i32, ptr [[ARRAYIDX13]], align 4, !tbaa [[INT_TBAA8]]
 // CHECK-NEXT:    [[CONV14:%.*]] = sext i32 [[TMP5]] to i64
 // CHECK-NEXT:    [[ARRAYIDX16:%.*]] = getelementptr inbounds nuw i8, ptr [[IN]], i64 196
-// CHECK-NEXT:    [[TMP6:%.*]] = load i32, ptr [[ARRAYIDX16]], align 4, !tbaa [[INT_TBAA2]]
+// CHECK-NEXT:    [[TMP6:%.*]] = load i32, ptr [[ARRAYIDX16]], align 4, !tbaa [[INT_TBAA8]]
 // CHECK-NEXT:    [[CONV17:%.*]] = sext i32 [[TMP6]] to i64
 // CHECK-NEXT:    [[ARRAYIDX19:%.*]] = getelementptr inbounds nuw i8, ptr [[IN]], i64 256
-// CHECK-NEXT:    [[TMP7:%.*]] = load i32, ptr [[ARRAYIDX19]], align 4, !tbaa [[INT_TBAA2]]
+// CHECK-NEXT:    [[TMP7:%.*]] = load i32, ptr [[ARRAYIDX19]], align 4, !tbaa [[INT_TBAA8]]
 // CHECK-NEXT:    [[CONV20:%.*]] = sext i32 [[TMP7]] to i64
 // CHECK-NEXT:    [[S_SROA_10_0_INSERT_EXT:%.*]] = zext i64 [[CONV20]] to i512
 // CHECK-NEXT:    [[S_SROA_10_0_INSERT_SHIFT:%.*]] = shl nuw i512 [[S_SROA_10_0_INSERT_EXT]], 448
@@ -75,7 +75,7 @@ void store(const struct foo *input, void *addr)
 // CHECK-NEXT:    [[S_SROA_0_0_INSERT_EXT:%.*]] = zext i64 [[CONV]] to i512
 // CHECK-NEXT:    [[S_SROA_0_0_INSERT_MASK:%.*]] = or disjoint i512 [[S_SROA_4_0_INSERT_MASK]], [[S_SROA_4_0_INSERT_SHIFT]]
 // CHECK-NEXT:    [[S_SROA_0_0_INSERT_INSERT:%.*]] = or i512 [[S_SROA_0_0_INSERT_MASK]], [[S_SROA_0_0_INSERT_EXT]]
-// CHECK-NEXT:    tail call void asm sideeffect "st64b $0,[$1]", "r,r,~{memory}"(i512 [[S_SROA_0_0_INSERT_INSERT]], ptr [[ADDR]]) #[[ATTR1]], !srcloc [[META8:![0-9]+]]
+// CHECK-NEXT:    tail call void asm sideeffect "st64b $0,[$1]", "r,r,~{memory}"(i512 [[S_SROA_0_0_INSERT_INSERT]], ptr [[ADDR]]) #[[ATTR1]], !srcloc [[META9:![0-9]+]]
 // CHECK-NEXT:    ret void
 //
 void store2(int *in, void *addr)
@@ -84,11 +84,11 @@ void store2(int *in, void *addr)
     __asm__ volatile ("st64b %0,[%1]" : : "r" (s), "r" (addr) : "memory" );
 }
 //.
-// CHECK: [[INT_TBAA2]] = !{[[META3:![0-9]+]], [[META3]], i64 0}
-// CHECK: [[META3]] = !{!"int", [[META4:![0-9]+]], i64 0}
+// CHECK: [[META3:![0-9]+]] = !{!"int", [[META4:![0-9]+]], i64 0}
 // CHECK: [[META4]] = !{!"omnipotent char", [[META5:![0-9]+]], i64 0}
 // CHECK: [[META5]] = !{!"Simple C/C++ TBAA"}
 // CHECK: [[META6]] = !{i64 789}
 // CHECK: [[META7]] = !{i64 1368}
-// CHECK: [[META8]] = !{i64 5992}
+// CHECK: [[INT_TBAA8]] = !{[[META3]], [[META3]], i64 0}
+// CHECK: [[META9]] = !{i64 5992}
 //.
