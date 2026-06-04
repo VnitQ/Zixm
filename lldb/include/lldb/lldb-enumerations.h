@@ -712,14 +712,14 @@ enum SymbolType {
   eSymbolTypeHeaderFile,
   eSymbolTypeObjectFile,
   eSymbolTypeCommonBlock,
-  eSymbolTypeBlock,
-  eSymbolTypeLocal,
-  eSymbolTypeParam,
-  eSymbolTypeVariable,
+  // Free slot, previously eSymbolTypeBlock.
+  eSymbolTypeLocal = 13,
+  // Free slot, previously eSymbolTypeParam.
+  eSymbolTypeVariable = 15,
   eSymbolTypeVariableType,
   eSymbolTypeLineEntry,
-  eSymbolTypeLineHeader,
-  eSymbolTypeScopeBegin,
+  // Free slot, previously eSymbolTypeLineHeader.
+  eSymbolTypeScopeBegin = 19,
   eSymbolTypeScopeEnd,
   eSymbolTypeAdditional, ///< When symbols take more than one entry, the extra
                          ///< entries get this type
