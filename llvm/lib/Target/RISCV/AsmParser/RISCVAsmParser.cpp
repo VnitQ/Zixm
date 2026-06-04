@@ -1394,28 +1394,6 @@ static MatchClassKind remapRegClassByHwMode(MatchClassKind Kind, bool Purecap) {
   }
 }
 
-static const MCRegisterClass *getRegClassFromMatchKind(MatchClassKind K) {
-  // TODO: it would be nice to have tablegen generate this.
-  switch (K) {
-  case MCK_GPR:
-    return &RISCVMCRegisterClasses[RISCV::GPRRegClassID];
-  case MCK_GPRC:
-    return &RISCVMCRegisterClasses[RISCV::GPRCRegClassID];
-  case MCK_GPRSP:
-    return &RISCVMCRegisterClasses[RISCV::GPRSPRegClassID];
-  case MCK_YGPR:
-    return &RISCVMCRegisterClasses[RISCV::YGPRRegClassID];
-  case MCK_YGPRC:
-    return &RISCVMCRegisterClasses[RISCV::YGPRCRegClassID];
-  case MCK_YGPRNoX0:
-    return &RISCVMCRegisterClasses[RISCV::YGPRNoX0RegClassID];
-  case MCK_YGPRSP:
-    return &RISCVMCRegisterClasses[RISCV::YGPRSPRegClassID];
-  default:
-    return nullptr;
-  }
-}
-
 unsigned RISCVAsmParser::validateTargetOperandClass(MCParsedAsmOperand &AsmOp,
                                                     unsigned _Kind) {
   // Convert to enum for improved debugger output.
