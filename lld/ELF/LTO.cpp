@@ -116,7 +116,7 @@ static lto::Config createConfig(Ctx &ctx) {
   c.CGOptLevel = ctx.arg.ltoCgo;
 
   c.PTO.LoopVectorization = c.OptLevel > 1;
-  c.PTO.SLPVectorization = c.OptLevel > 1;
+  c.PTO.SLPVectorization = ctx.arg.ltoSLPVectorize && c.OptLevel > 1;
 
   // Set up a custom pipeline if we've been asked to.
   c.OptPipeline = std::string(ctx.arg.ltoNewPmPasses);

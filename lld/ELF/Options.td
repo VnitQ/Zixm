@@ -672,6 +672,9 @@ defm lto_known_safe_vtables : EEq<"lto-known-safe-vtables",
 def lto_obj_path_eq: JJ<"lto-obj-path=">;
 def lto_sample_profile: JJ<"lto-sample-profile=">,
   HelpText<"Sample profile file path">;
+defm lto_slp_vectorize: BB<"lto-slp-vectorize",
+  "Enable SLP vectorization during LTO (default at O2+)",
+  "Disable SLP vectorization during LTO">;
 defm lto_validate_all_vtables_have_type_infos: BB<"lto-validate-all-vtables-have-type-infos",
   "Validate that all vtables have type infos for LTO link",
   "Do not validate that all vtables have type infos for LTO link">;
@@ -776,6 +779,10 @@ def: J<"plugin-opt=opt-remarks-hotness-threshold=">,
 def: J<"plugin-opt=sample-profile=">,
   Alias<lto_sample_profile>, HelpText<"Alias for --lto-sample-profile">;
 def: F<"plugin-opt=save-temps">, Alias<save_temps>, HelpText<"Alias for --save-temps">;
+def: F<"plugin-opt=slp-vectorize">,
+  Alias<lto_slp_vectorize>, HelpText<"Alias for --lto-slp-vectorize">;
+def: F<"plugin-opt=no-slp-vectorize">,
+  Alias<no_lto_slp_vectorize>, HelpText<"Alias for --no-lto-slp-vectorize">;
 def plugin_opt_stats_file: J<"plugin-opt=stats-file=">,
   HelpText<"Filename to write LTO statistics to">;
 def: J<"plugin-opt=time-trace=">, Alias<time_trace_eq>, HelpText<"Alias for --time-trace=">;
