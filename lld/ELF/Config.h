@@ -760,7 +760,7 @@ struct Ctx : CommonLinkerContext {
 
   // True if performing the embedded unoptimized dynamic debugging relocatable
   // link.
-  bool dynDbgLink = false;
+  bool inDynDbgLink = false;
   // True if performing dynamic debugging style relocatable link rather than a
   // regular relocatable link.
   bool dynDbgRelocatable = false;

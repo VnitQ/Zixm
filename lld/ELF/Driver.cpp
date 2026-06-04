@@ -3305,7 +3305,7 @@ template <class ELFT> static void linkDynamicDebug(Ctx &ctx) {
   LinkerScript script(dc);
   initContext(dc, script, ctx.arg.progName, ctx.e.outs(), ctx.e.errs(),
               ctx.e.exitEarly, ctx.e.disableOutput);
-  dc.dynDbgLink = true;
+  dc.inDynDbgLink = true;
   dc.dynDbgRelocatable = !ctx.arg.relocatable;
 
   for (auto *file : ctx.objectFiles) {
