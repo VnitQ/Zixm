@@ -5028,7 +5028,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   bool IsRDCMode =
       Args.hasFlag(options::OPT_fgpu_rdc, options::OPT_fno_gpu_rdc, false);
 
-  auto LTOMode = IsDeviceOffloadAction ? D.getOffloadLTOMode() : D.getLTOMode();
+  auto LTOMode = TC.getLTOMode(Args, JA.getOffloadingDeviceKind());
   bool IsUsingLTO = LTOMode != LTOK_None;
 
   // Extract API doesn't have a main input file, so invent a fake one as a
@@ -5405,8 +5405,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
             Twine("-flto=") + (LTOMode == LTOK_Thin ? "thin" : "full")));
         // PS4 uses the legacy LTO API, which does not support some of the
         // features enabled by -flto-unit.
-        if (!RawTriple.isPS4() ||
-            (D.getLTOMode() == LTOK_Full) || !UnifiedLTO)
+        if (!RawTriple.isPS4() || (LTOMode == LTOK_Full) || !UnifiedLTO)
           CmdArgs.push_back("-flto-unit");
       }
     }
@@ -6356,12 +6355,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(Args.MakeArgString("-crash-diagnostics-dir=" + Dir));
   }
 
-  bool UseSeparateSections = isUseSeparateSections(Triple);
-
-  if (Args.hasFlag(options::OPT_ffunction_sections,
-                   options::OPT_fno_function_sections, UseSeparateSections)) {
-    CmdArgs.push_back("-ffunction-sections");
-  }
+  addSeparateSectionFlags(Triple, Args, CmdArgs);
 
   if (Arg *A = Args.getLastArg(options::OPT_fbasic_block_address_map,
                                options::OPT_fno_basic_block_address_map)) {
@@ -6405,12 +6399,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       D.Diag(diag::err_drv_unsupported_opt_for_target)
           << A->getAsString(Args) << TripleStr;
     }
-  }
-
-  bool HasDefaultDataSections = Triple.isOSBinFormatXCOFF();
-  if (Args.hasFlag(options::OPT_fdata_sections, options::OPT_fno_data_sections,
-                   UseSeparateSections || HasDefaultDataSections)) {
-    CmdArgs.push_back("-fdata-sections");
   }
 
   Args.addOptOutFlag(CmdArgs, options::OPT_funique_section_names,
@@ -7144,10 +7132,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   Args.AddLastArg(CmdArgs, options::OPT_ftrap_function_EQ);
 
-  // Handle -f[no-]wrapv and -f[no-]strict-overflow, which are used by both
-  // clang and flang.
-  renderCommonIntegerOverflowOptions(Args, CmdArgs);
-
   Args.AddLastArg(CmdArgs, options::OPT_ffinite_loops,
                   options::OPT_fno_finite_loops);
 
@@ -7418,6 +7402,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         Args.hasArg(options::OPT_fms_define_stdc))
       CmdArgs.push_back("-fms-define-stdc");
   }
+
+  // Handle -f[no-]wrapv and -f[no-]strict-overflow, which are used by both
+  // clang and flang.
+  renderCommonIntegerOverflowOptions(Args, CmdArgs, IsMSVCCompat);
 
   // -fms-anonymous-structs is disabled by default.
   // Determine whether to enable Microsoft named anonymous struct/union support.
@@ -8239,12 +8227,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     // Check if we are using PS4 in regular LTO mode.
     // Otherwise, issue an error.
 
-    auto OtherLTOMode =
-        IsDeviceOffloadAction ? D.getLTOMode() : D.getOffloadLTOMode();
+    auto OtherLTOMode = TC.getLTOMode(
+        Args, IsDeviceOffloadAction ? Action::OFK_None
+                                    : static_cast<Action::OffloadKind>(
+                                          C.getActiveOffloadKinds()));
     auto OtherIsUsingLTO = OtherLTOMode != LTOK_None;
 
     if ((!IsUsingLTO && !OtherIsUsingLTO) ||
-        (IsPS4 && !UnifiedLTO && (D.getLTOMode() != LTOK_Full)))
+        (IsPS4 && !UnifiedLTO && (TC.getLTOMode(Args) != LTOK_Full)))
       D.Diag(diag::err_drv_argument_only_allowed_with)
           << "-fwhole-program-vtables"
           << ((IsPS4 && !UnifiedLTO) ? "-flto=full" : "-flto");
@@ -9508,7 +9498,7 @@ void OffloadPackager::ConstructJob(Compilation &C, const JobAction &JA,
         "kind=" + Kind.str(),
     };
 
-    if (TC->getDriver().isUsingOffloadLTO())
+    if (TC->isUsingLTO(TCArgs, OffloadAction->getOffloadingDeviceKind()))
       for (StringRef Feature : FeatureArgs)
         Parts.emplace_back("feature=" + Feature.str());
 
@@ -9679,10 +9669,10 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
       // SPIR-V linker. `spirv-link` isn't called in LTO mode so restrict these
       // flags to normal compilation.
       // SPIR-V for AMD doesn't use spirv-link and therefore doesn't need these
-      // flags.
+      // flags. SYCL uses clang-sycl-linker instead of spirv-link, so skip it.
       if (TC->getTriple().isSPIRV() &&
           TC->getTriple().getVendor() != llvm::Triple::VendorType::AMD &&
-          !C.getDriver().isUsingLTO() && !C.getDriver().isUsingOffloadLTO()) {
+          Kind != Action::OFK_SYCL && !TC->isUsingLTO(ToolChainArgs, Kind)) {
         // For SPIR-V some functions will be defined by the runtime so allow
         // unresolved symbols in `spirv-link`.
         LinkerArgs.emplace_back("--allow-partial-linkage");
@@ -9698,11 +9688,12 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
         CmdArgs.push_back(Args.MakeArgString(
             "--device-linker=" + TC->getTripleString() + "=" + Arg));
 
-      // Forward the LTO mode relying on the Driver's parsing.
-      if (C.getDriver().getOffloadLTOMode() == LTOK_Full)
+      // Forward the LTO mode for this toolchain.
+      auto DeviceLTOMode = TC->getLTOMode(ToolChainArgs, Kind);
+      if (DeviceLTOMode == LTOK_Full)
         CmdArgs.push_back(Args.MakeArgString(
             "--device-compiler=" + TC->getTripleString() + "=-flto=full"));
-      else if (C.getDriver().getOffloadLTOMode() == LTOK_Thin) {
+      else if (DeviceLTOMode == LTOK_Thin) {
         CmdArgs.push_back(Args.MakeArgString(
             "--device-compiler=" + TC->getTripleString() + "=-flto=thin"));
         if (TC->getTriple().isAMDGPU()) {
@@ -9721,6 +9712,17 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
                                    "=-plugin-opt=-amdgpu-internalize-symbols"));
           }
         }
+      }
+
+      if (JA.getType() == types::TY_HIP_FATBIN && Kind == Action::OFK_HIP) {
+        // Non-RDC HIP uses the conventional non-LTO pipeline unless the user
+        // opts into offload LTO.
+        bool UsesProfileGenerate = Args.hasArg(
+            options::OPT_fprofile_generate, options::OPT_fprofile_generate_EQ,
+            options::OPT_fprofile_instr_generate,
+            options::OPT_fprofile_instr_generate_EQ);
+        if (TC->getLTOMode(Args, Kind) == LTOK_None && !UsesProfileGenerate)
+          CmdArgs.push_back("--no-lto");
       }
     }
   }
@@ -9832,9 +9834,10 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.append({"-o", Output.getFilename()});
     for (auto Input : Inputs)
       CmdArgs.push_back(Input.getFilename());
-  } else
+  } else {
     for (const char *LinkArg : LinkCommand->getArguments())
       CmdArgs.push_back(LinkArg);
+  }
 
   addOffloadCompressArgs(Args, CmdArgs);
 
