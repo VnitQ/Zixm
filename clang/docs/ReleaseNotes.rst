@@ -354,6 +354,11 @@ New Compiler Flags
   that ``bool`` values loaded from memory cannot have a bit pattern other
   than 0 or 1.
 
+- New option `-fstable-pointer-subtraction` added to disable optimizations
+  that assume both operands of a pointer subtraction refer to elements of the
+  same array object, preserving stable semantics for pointer subtraction in
+  low-level code that operates on externally defined memory layouts.
+
 Deprecated Compiler Flags
 -------------------------
 
