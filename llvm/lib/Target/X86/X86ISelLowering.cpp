@@ -18086,6 +18086,13 @@ static SDValue lowerV8F64Shuffle(const SDLoc &DL, ArrayRef<int> Mask,
                                           Zeroable, Subtarget, DAG))
     return Blend;
 
+  // Try to use VALIGN via integer domain bitcast. Avoids VPERMPD which
+  // requires an extra register for the index vector; VALIGNQ uses an immediate.
+  if (SDValue Rotate = lowerShuffleAsVALIGN(
+          DL, MVT::v8i64, DAG.getBitcast(MVT::v8i64, V1),
+          DAG.getBitcast(MVT::v8i64, V2), Mask, Zeroable, Subtarget, DAG))
+    return DAG.getBitcast(MVT::v8f64, Rotate);
+
   return lowerShuffleWithPERMV(DL, MVT::v8f64, Mask, V1, V2, Subtarget, DAG);
 }
 
@@ -18152,6 +18159,13 @@ static SDValue lowerV16F32Shuffle(const SDLoc &DL, ArrayRef<int> Mask,
   if (SDValue V = lowerShuffleWithEXPAND(DL, MVT::v16f32, V1, V2, Mask,
                                          Zeroable, Subtarget, DAG))
     return V;
+
+  // Try to use VALIGN via integer domain bitcast. Avoids VPERMPS which
+  // requires an extra register for the index vector; VALIGND uses an immediate.
+  if (SDValue Rotate = lowerShuffleAsVALIGN(
+          DL, MVT::v16i32, DAG.getBitcast(MVT::v16i32, V1),
+          DAG.getBitcast(MVT::v16i32, V2), Mask, Zeroable, Subtarget, DAG))
+    return DAG.getBitcast(MVT::v16f32, Rotate);
 
   return lowerShuffleWithPERMV(DL, MVT::v16f32, Mask, V1, V2, Subtarget, DAG);
 }
