@@ -130,24 +130,23 @@ class Returned<ArgIndex idx> : IntrinsicProperty {
   int ArgNo = idx.Value;
 }
 
-// DefaultVal - A value carrier paired with ImmArg to declare a default for
+// DefaultValue - A value carrier paired with ImmArg to declare a default for
 // a missing trailing argument. AutoUpgrade fills the default when an old
 // .bc / .ll file is loaded.
-class DefaultVal<int val> {
-  bit HasDefault = 1;
+class DefaultValue<int val> {
   int Value = val;
 }
 
-// Sentinel — used as the default for ImmArg's optional DefaultVal parameter.
-def NoDefault : DefaultVal<0> {
-  let HasDefault = 0;
+// Sentinel — used as the default for ImmArg's optional DefaultValue parameter.
+def NoDefault : DefaultValue<0> {
+  let Value = ?;
 }
 
 // ImmArg - The specified argument must be an immediate. The optional
 // second template parameter declares a default value for AutoUpgrade.
-class ImmArg<ArgIndex idx, DefaultVal val = NoDefault> : IntrinsicProperty {
+class ImmArg<ArgIndex idx, DefaultValue val = NoDefault> : IntrinsicProperty {
   int ArgNo = idx.Value;
-  DefaultVal Default = val;
+  DefaultValue Default = val;
 }
 
 // ReadOnly - The specified argument pointer is not written to through the

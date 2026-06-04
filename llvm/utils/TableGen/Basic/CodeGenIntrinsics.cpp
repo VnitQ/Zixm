@@ -397,9 +397,38 @@ CodeGenIntrinsic::CodeGenIntrinsic(const Record *R,
       SeenDefault = true;
     } else if (SeenDefault) {
       PrintFatalError(TheDef->getLoc(),
-                      "DefaultVal missing at argument " + Twine(i) +
+                      "DefaultValue missing for argument " + Twine(i) +
                           ". Defaults must form a contiguous trailing block "
                           "ending at the last parameter.");
+    }
+  }
+
+  // Validate each declared default:
+  //  (a) the parameter is an integer type
+  //  (b) the default value fits in the declared integer width
+  for (unsigned i = 0; i < ParamDefaultValues.size(); ++i) {
+    if (!ParamDefaultValues[i].has_value())
+      continue;
+    const Record *ParamTy = IS.ParamTys[i];
+    if (!ParamTy->isSubClassOf("LLVMType")) {
+      PrintFatalError(TheDef->getLoc(),
+                      "DefaultValue at argument " + Twine(i) +
+                          " requires an integer parameter type");
+    }
+    const Record *VT = ParamTy->getValueAsDef("VT");
+    if (!VT->getValueAsBit("isInteger")) {
+      PrintFatalError(TheDef->getLoc(),
+                      "DefaultValue at argument " + Twine(i) +
+                          " requires an integer parameter type");
+    }
+    unsigned Width = VT->getValueAsInt("Size");
+    int64_t Value = *ParamDefaultValues[i];
+    int64_t MaxUnsigned = (Width >= 64) ? INT64_MAX : ((1LL << Width) - 1);
+    int64_t MinSigned = (Width >= 64) ? INT64_MIN : -(1LL << (Width - 1));
+    if (Value < MinSigned || Value > MaxUnsigned) {
+      PrintFatalError(TheDef->getLoc(),
+                      "DefaultValue " + Twine(Value) + " out of range for i" +
+                          Twine(Width) + " parameter at argument " + Twine(i));
     }
   }
 }
@@ -507,16 +536,13 @@ void CodeGenIntrinsic::setProperty(const Record *R) {
     unsigned ArgNo = R->getValueAsInt("ArgNo");
     addArgAttribute(ArgNo, ImmArg);
 
-    // If a DefaultVal (not the NoDefault sentinel) was supplied, record it.
-    const RecordVal *DefField = R->getValue("Default");
-    if (DefField) {
-      if (const auto *DI = dyn_cast<DefInit>(DefField->getValue())) {
-        const Record *DefRec = DI->getDef();
-        if (DefRec->getValueAsBit("HasDefault")) {
-          int64_t Value = DefRec->getValueAsInt("Value");
-          addDefaultArgValue(ArgNo - 1, Value);
-        }
-      }
+    // If a DefaultValue (not the NoDefault sentinel) was supplied, record it.
+    // NoDefault is recognized by its Value field being unset (?).
+    const Record *DefaultField = R->getValueAsDef("Default");
+    const RecordVal *ValueField = DefaultField->getValue("Value");
+    if (ValueField && !isa<UnsetInit>(ValueField->getValue())) {
+      int64_t Value = DefaultField->getValueAsInt("Value");
+      addDefaultArgValue(ArgNo - 1, Value);
     }
   } else if (R->isSubClassOf("Align")) {
     unsigned ArgNo = R->getValueAsInt("ArgNo");

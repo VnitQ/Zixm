@@ -1,7 +1,7 @@
 ; RUN: opt -S < %s | FileCheck %s
 ;
 ; Verifies that AutoUpgrade correctly fills in a missing trailing argument
-; with the value declared via DefaultVal in the intrinsic's TableGen
+; with the value declared via DefaultValue in the intrinsic's TableGen
 ; definition.
 
 declare i32 @llvm.nvvm.test.add3(i32, i32, i32)

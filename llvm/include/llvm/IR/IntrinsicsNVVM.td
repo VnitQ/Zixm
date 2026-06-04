@@ -1303,23 +1303,23 @@ let TargetPrefix = "nvvm" in {
 
   //
   // Test intrinsic for default-arg feature: three required i32 args plus a
-  // fourth i32 with DefaultVal = 255.
+  // fourth i32 with DefaultValue = 255.
   //
   def int_nvvm_test_add3 :
       NVVMPureIntrinsic<[llvm_i32_ty],
                         [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty, llvm_i32_ty],
-                        [ImmArg<ArgIndex<3>, DefaultVal<255>>]>;
+                        [ImmArg<ArgIndex<3>, DefaultValue<255>>]>;
 
   //
   // Test intrinsic for default-arg feature: four required i32 args plus two
-  // trailing args (i64, i32) with DefaultVal = 50 and 14.
+  // trailing args (i64, i32) with DefaultValue = 50 and 14.
   //
   def int_nvvm_test_add4 :
       NVVMPureIntrinsic<[llvm_i32_ty],
                         [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty, llvm_i32_ty,
                          llvm_i64_ty, llvm_i32_ty],
-                        [ImmArg<ArgIndex<4>, DefaultVal<50>>,
-                         ImmArg<ArgIndex<5>, DefaultVal<14>>]>;
+                        [ImmArg<ArgIndex<4>, DefaultValue<50>>,
+                         ImmArg<ArgIndex<5>, DefaultValue<14>>]>;
 
   //
   // Dummy based on int_nvvm_nanosleep. Adds i1 flag with default = false.
@@ -1327,7 +1327,7 @@ let TargetPrefix = "nvvm" in {
   def int_nvvm_nanosleep_dummy :
       DefaultAttrsIntrinsic<[], [llvm_i32_ty, llvm_i1_ty],
                             [IntrConvergent, IntrNoMem, IntrHasSideEffects,
-                             ImmArg<ArgIndex<1>, DefaultVal<false>>]>;
+                             ImmArg<ArgIndex<1>, DefaultValue<false>>]>;
 
   //
   // Performance Monitor Events (pm events) intrinsics
@@ -2095,7 +2095,7 @@ def int_nvvm_cp_async_bulk_wait_group :
 // Dummy based on cp_async_bulk_wait_group. Adds i1 flag with default = false.
 def int_nvvm_cp_async_bulk_wait_group_dummy :
     Intrinsic<[], [llvm_i32_ty, llvm_i1_ty],
-              [ImmArg<ArgIndex<1>, DefaultVal<false>>]>;
+              [ImmArg<ArgIndex<1>, DefaultValue<false>>]>;
 
 def int_nvvm_cp_async_bulk_wait_group_read :
     Intrinsic<[], [llvm_i32_ty], [ImmArg<ArgIndex<0>>]>;
@@ -2234,7 +2234,7 @@ let IntrProperties = [IntrNoMem] in {
 // Dummy based on int_nvvm_move_i32. Adds i64 second arg with default = 99.
 def int_nvvm_move_i32_dummy :
     DefaultAttrsIntrinsic<[llvm_i32_ty], [llvm_i32_ty, llvm_i64_ty],
-                          [ImmArg<ArgIndex<1>, DefaultVal<99>>]>;
+                          [ImmArg<ArgIndex<1>, DefaultValue<99>>]>;
 
 // For getting the handle from a texture or surface variable
 def int_nvvm_texsurf_handle
@@ -3222,7 +3222,7 @@ def int_nvvm_tcgen05_fence_after_thread_sync : Intrinsic<[], [],
 def int_nvvm_tcgen05_fence_dummy :
     Intrinsic<[], [llvm_i32_ty, llvm_i32_ty, llvm_i1_ty],
               [IntrConvergent,
-               ImmArg<ArgIndex<2>, DefaultVal<false>>]>;
+               ImmArg<ArgIndex<2>, DefaultValue<false>>]>;
 
 // Tcgen05 cp intrinsics
 foreach cta_group = ["cg1", "cg2"] in {

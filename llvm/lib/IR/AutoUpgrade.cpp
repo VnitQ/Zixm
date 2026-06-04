@@ -1279,13 +1279,12 @@ static bool convertIntrinsicValidType(StringRef Name,
 }
 
 static bool upgradeIntrinsicDeclWithDefaultArgs(Function *F, Function *&NewFn) {
-  // Look up the intrinsic ID by full name, e.g. "llvm.nvvm.add3.i32"
   Intrinsic::ID IID = Intrinsic::lookupIntrinsicID(F->getName());
   if (IID == Intrinsic::not_intrinsic)
     return false;
 
-  // Fast path: this intrinsic has no default args annotated in .td
-  if (!Intrinsic::hasDefaultArgs(IID))
+  auto [FirstDefault, Defaults] = Intrinsic::getAllDefaultArgValues(IID);
+  if (Defaults.empty())
     return false;
 
   // Overloaded intrinsics are out of scope for the default-arg feature
@@ -1300,9 +1299,10 @@ static bool upgradeIntrinsicDeclWithDefaultArgs(Function *F, Function *&NewFn) {
   if (F->arg_size() >= FullDecl->arg_size())
     return false;
 
-  // Verify every missing trailing arg has a default in the table
+  // Every missing trailing arg must fall within the default range
+  // [FirstDefault, FirstDefault + Defaults.size()).
   for (unsigned Idx = F->arg_size(); Idx < FullDecl->arg_size(); ++Idx) {
-    if (!Intrinsic::getDefaultArgValue(IID, Idx))
+    if (Idx < FirstDefault || Idx >= FirstDefault + Defaults.size())
       return false;
   }
 
@@ -5017,8 +5017,8 @@ static bool upgradeIntrinsicCallWithDefaultArgs(CallBase *CI, Function *NewFn,
                                                 IRBuilder<> &Builder) {
   Intrinsic::ID IID = NewFn->getIntrinsicID();
 
-  // Fast path: this intrinsic has no default args in the table.
-  if (!Intrinsic::hasDefaultArgs(IID))
+  auto [FirstDefault, Defaults] = Intrinsic::getAllDefaultArgValues(IID);
+  if (Defaults.empty())
     return false;
 
   unsigned OldArgCount = CI->arg_size();
@@ -5035,20 +5035,15 @@ static bool upgradeIntrinsicCallWithDefaultArgs(CallBase *CI, Function *NewFn,
   // Fill in each missing trailing argument from the table.
   FunctionType *NewFT = NewFn->getFunctionType();
   for (unsigned Idx = OldArgCount; Idx < NewArgCount; ++Idx) {
-    std::optional<int64_t> DefaultVal = Intrinsic::getDefaultArgValue(IID, Idx);
-
-    // If any missing arg has no entry in the table, give up.
-    if (!DefaultVal)
+    if (Idx < FirstDefault || Idx >= FirstDefault + Defaults.size())
       return false;
-
     Type *ParamTy = NewFT->getParamType(Idx);
 
     // Only integer types are supported (i1, i8, i16, i32, i64).
     if (!ParamTy->isIntegerTy())
       return false;
-
-    NewArgs.push_back(
-        ConstantInt::get(ParamTy, static_cast<uint64_t>(*DefaultVal)));
+    NewArgs.push_back(ConstantInt::get(
+        ParamTy, static_cast<uint64_t>(Defaults[Idx - FirstDefault])));
   }
 
   // Preserve operand bundles by creating the call with them.
@@ -5173,7 +5168,7 @@ void llvm::UpgradeIntrinsicCall(CallBase *CI, Function *NewFn) {
   switch (NewFn->getIntrinsicID()) {
   default: {
     // Last resort: try the data-driven default-arg upgrade.
-    // Handles any intrinsic annotated with ImmArg<..., DefaultVal<...>>
+    // Handles any intrinsic annotated with ImmArg<..., DefaultValue<...>>
     // in its .td definition, without needing a dedicated case.
     if (upgradeIntrinsicCallWithDefaultArgs(CI, NewFn, Builder))
       return;
