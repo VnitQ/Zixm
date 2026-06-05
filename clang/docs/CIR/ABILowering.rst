@@ -564,6 +564,29 @@ The pass takes one of two driver modes via pass options:
 
 Exactly one of the two options must be set.
 
+Variadic Aggregate Arguments
+============================
+
+Passing aggregates through a variadic function has two halves, governed by
+the same target ABI classification that the design above will ultimately
+provide through the LLVM ABI library.
+
+On the **callee** side, ``__builtin_va_arg`` of an aggregate is expanded by
+the ``cir-lowering-prepare`` pass into the x86-64 System V register-save-area
+sequence (the ``gp_offset`` / ``reg_save_area`` / ``overflow_arg_area``
+dance).  The eightbyte classifier determines whether the argument arrives in
+integer registers, SSE registers, or the overflow (stack) area; the pass
+reconstructs the aggregate from whichever slot the ABI designates.
+
+On the **caller** side, an aggregate passed through the variadic ellipsis is
+coerced into eightbyte-sized pieces: integer and pointer eightbytes occupy
+general-purpose registers, floating-point eightbytes occupy SSE registers,
+and the aggregate spills to the overflow area once the register slots are
+exhausted.
+
+Both halves use the full x86-64 INTEGER and SSE eightbyte classifier supplied
+through the LLVM ABI library and MLIR integration layer described above.
+
 Open Questions
 ==============
 
