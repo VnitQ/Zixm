@@ -3,11 +3,22 @@
 // RUN: rm -rf %t.testdir
 // RUN: mkdir -p %t.testdir
 // RUN: env LIBOMPTARGET_RECORD=1 LIBOMPTARGET_RECORD_MEMSIZE=536870912 LIBOMPTARGET_RECORD_DIR=%t.testdir %libomptarget-run-generic 2>&1 | %fcheck-generic
-// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} %omp-kernel-replay --verify {}
-// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} %omp-kernel-replay --verify --num-teams=1 --num-threads=1 {}
-// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} %omp-kernel-replay --verify --num-teams=2 --num-threads=32 {}
-// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} %omp-kernel-replay --verify --num-teams=32 --num-threads=64 {}
-// clang-format on
+// RUN: ls -t %t.testdir/*.json | sed -n '2p' | grep . | xargs -I {} %omp-kernel-replay --verify {}
+// RUN: ls -t %t.testdir/*.json | sed -n '2p' | grep . | xargs -I {} %omp-kernel-replay --verify --num-teams=1 --num-threads=1 {}
+// RUN: ls -t %t.testdir/*.json | sed -n '2p' | grep . | xargs -I {} %omp-kernel-replay --verify --num-teams=2 --num-threads=32 {}
+// RUN: ls -t %t.testdir/*.json | sed -n '2p' | grep . | xargs -I {} %omp-kernel-replay --verify --num-teams=32 --num-threads=64 {}
+// RUN: ls -t %t.testdir/*.json | sed -n '2p' | grep . | xargs -I {} not %omp-kernel-replay --verify --num-threads=129 {} 2>&1 | FileCheck --check-prefix=REPLAY-ERROR1 %s
+// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} %omp-kernel-replay --verify --num-threads=129 {}
+// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} not %omp-kernel-replay --verify --num-threads=1024 {} 2>&1 | FileCheck --check-prefix=REPLAY-ERROR1 %s
+// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} not %omp-kernel-replay --verify --num-teams=2 {} 2>&1 | FileCheck --check-prefix=REPLAY-ERROR2 %s
+
+// RUN: %libomptarget-compilexx-generic -mllvm -openmp-ir-builder-use-default-max-threads=0
+// RUN: rm -rf %t.testdir
+// RUN: mkdir -p %t.testdir
+// RUN: env LIBOMPTARGET_RECORD=1 LIBOMPTARGET_RECORD_MEMSIZE=536870912 LIBOMPTARGET_RECORD_DIR=%t.testdir %libomptarget-run-generic 2>&1 | %fcheck-generic
+// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} %omp-kernel-replay --verify --num-threads=129 {}
+// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} %omp-kernel-replay --verify --num-threads=1024 {}
+// RUN: ls -t %t.testdir/*.json | sed -n '1p' | grep . | xargs -I {} not %omp-kernel-replay --verify --num-threads=2048 {} 2>&1 | FileCheck --check-prefix=REPLAY-ERROR1 %s
 
 // REQUIRES: gpu
 
@@ -15,6 +26,10 @@
 // UNSUPPORTED: x86_64-unknown-linux-gnu
 // UNSUPPORTED: s390x-ibm-linux-gnu
 // UNSUPPORTED: intelgpu
+
+// REPLAY-ERROR1: [llvm-omp-kernel-replay] Error: number of threads is out of the allowed limits
+// REPLAY-ERROR2: [llvm-omp-kernel-replay] Error: number of teams is out of the allowed limits
+// clang-format on
 
 #include <cstdint>
 #include <cstdio>
@@ -31,6 +46,10 @@ int main() {
     map(tofrom : Data[0 : Size])
   for (size_t I = 0; I < Size; ++I) {
     Data[I] = 10 + (uint64_t)I;
+  }
+
+#pragma omp target
+  {
   }
 
   uint64_t Sum = 0;
