@@ -182,6 +182,26 @@ class StdTuplePrinter(object):
             return iter(())
         return self._Children(self.val)
 
+
+class StdPairPrinter(object):
+    """Print a std::pair.
+
+    Print std::pair explicitly instead of relying on GDB's default struct
+    formatting. Some ABI configurations (e.g.
+    _LIBCPP_DEPRECATED_ABI_DISABLE_PAIR_TRIVIAL_COPY_CTOR, enabled by default on
+    FreeBSD) add an empty __non_trivially_copyable_base base class to
+    std::pair. GDB renders this implementation detail as
+    '<...__non_trivially_copyable_base<...>> = {<No data fields>}', which makes
+    the output ABI-dependent. Only 'first' and 'second' are meaningful, so
+    print just those members.
+    """
+
+    def __init__(self, val):
+        self.val = val
+
+    def children(self):
+        return iter([("first", self.val["first"]), ("second", self.val["second"])])
+
 class StdStringPrinter(object):
     """Print a std::string."""
 
@@ -901,6 +921,7 @@ class LibcxxPrettyPrinter(object):
             "basic_string": StdStringPrinter,
             "string": StdStringPrinter,
             "string_view": StdStringViewPrinter,
+            "pair": StdPairPrinter,
             "tuple": StdTuplePrinter,
             "unique_ptr": StdUniquePtrPrinter,
             "shared_ptr": StdSharedPointerPrinter,
