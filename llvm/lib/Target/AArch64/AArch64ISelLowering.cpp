@@ -26328,8 +26328,8 @@ static SDValue performCTTZCombine(SDNode *N,
       return DAG.getNode(ISD::CTTZ, DL, MVT::i64, Scalar);
     }
     SDValue Compressed = DAG.getBitcast(MVT::i128, V);
-    // BE puts lane 0 at the high end of the scalar after the bitcast, so we use
-    // clz instead of cttz to find the first match
+    // BITCAST puts lane 0 at the high end of the scalar on BE (unlike NVCAST
+    // above), so use clz instead of cttz to find the first match
     unsigned Op = DAG.getDataLayout().isLittleEndian() ? ISD::CTTZ : ISD::CTLZ;
     SDValue Ctz = DAG.getNode(Op, DL, MVT::i128, Compressed);
     return DAG.getNode(ISD::TRUNCATE, DL, MVT::i64, Ctz);
