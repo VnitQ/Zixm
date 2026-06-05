@@ -29,6 +29,7 @@
 #include <__type_traits/is_equality_comparable.h>
 #include <__type_traits/is_integral.h>
 #include <__type_traits/is_signed.h>
+#include <__type_traits/remove_cv.h>
 #include <__utility/move.h>
 #include <limits>
 
@@ -69,11 +70,11 @@ _LIBCPP_CONSTEXPR_SINCE_CXX14 _Tp* __find_vectorized(_Tp* __first, _Tp* __last, 
   if (!__libcpp_is_constant_evaluated()) {
     constexpr size_t __unroll_count = 4;
     constexpr size_t __vec_size     = __native_vector_size<_Tp>;
-    using __vec                     = __simd_vector<_Tp, __vec_size>;
+    using __vec                     = __simd_vector<typename remove_cv<_Tp>::type, __vec_size>;
 
     auto __orig_first = __first;
 
-    auto __values = static_cast<__simd_vector<_Tp, __vec_size>>(__value); // broadcast the value
+    auto __values = static_cast<__vec>(__value); // broadcast the value
     while (static_cast<size_t>(__last - __first) >= __unroll_count * __vec_size) [[__unlikely__]] {
       __vec __lhs[__unroll_count];
 
