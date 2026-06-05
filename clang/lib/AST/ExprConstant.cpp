@@ -2427,6 +2427,14 @@ static bool CheckLiteralType(EvalInfo &Info, const Expr *E,
   return false;
 }
 
+static void CheckMicrosoftRelaxations(EvalInfo &Info,
+                                      const SourceLocation &Loc) {
+  auto *Diag = Info.EvalStatus.Diag;
+  if (Diag && Diag->empty() && Info.EvalStatus.SeenCastOrNull &&
+      !Info.EvalStatus.IsConvertedExpr)
+    Info.report(Loc, diag::warn_relaxed_constant_fold);
+}
+
 static bool CheckEvaluationResult(CheckEvaluationResultKind CERK,
                                   EvalInfo &Info, SourceLocation DiagLoc,
                                   QualType Type, const APValue &Value,
@@ -2515,6 +2523,9 @@ static bool CheckEvaluationResult(CheckEvaluationResultKind CERK,
       CERK == CheckEvaluationResultKind::ConstantExpression)
     return CheckMemberPointerConstantExpression(Info, DiagLoc, Type, Value, Kind);
 
+  // Emit warning if expression is not LValue, member pointer,
+  // and contains C-style casts under -fms-compatibility
+  CheckMicrosoftRelaxations(Info, DiagLoc);
   // Everything else is fine.
   return true;
 }
@@ -19495,7 +19506,7 @@ bool IntExprEvaluator::VisitCastExpr(const CastExpr *E) {
       return false;
 
     if (LV.getLValueBase()) {
-      Info.EvalStatus.HasLValue = true;
+      CCEDiag(E, diag::note_constexpr_has_lvalue) << E->getSourceRange();
       // Only allow based lvalue casts if they are lossless.
       // FIXME: Allow a larger integer size than the pointer size, and allow
       // narrowing back down to pointer width in subsequent integral casts.
@@ -21475,7 +21486,6 @@ bool Expr::EvaluateAsConstantExpr(EvalResult &Result, const ASTContext &Ctx,
     // destruction.
     return false;
   }
-
   return true;
 }
 
@@ -21544,12 +21554,9 @@ bool Expr::EvaluateAsInitializer(APValue &Value, const ASTContext &Ctx,
       llvm_unreachable("Unhandled cleanup; missing full expression marker?");
   }
 
-  bool Checked = CheckConstantExpression(Info, DeclLoc, DeclTy, Value,
-                                         ConstantExprKind::Normal) &&
-                 CheckMemoryLeaks(Info);
-  if (Checked && !Info.EvalStatus.HasLValue)
-    Ctx.maybeFoldConstexprWithCast(Notes);
-  return Checked;
+  return CheckConstantExpression(Info, DeclLoc, DeclTy, Value,
+                                 ConstantExprKind::Normal) &&
+         CheckMemoryLeaks(Info);
 }
 
 bool VarDecl::evaluateDestruction(
