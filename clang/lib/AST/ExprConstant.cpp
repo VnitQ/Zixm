@@ -8456,6 +8456,13 @@ protected:
            Info.Ctx.BuiltinInfo.isConstantEvaluated(BuiltinOp);
   }
 
+  unsigned getConstantEvaluatedBuiltinID(const CallExpr *E) {
+    unsigned BuiltinOp = E->getBuiltinCallee();
+    if (Info.Ctx.BuiltinInfo.isAuxBuiltinID(BuiltinOp))
+      BuiltinOp = Info.Ctx.BuiltinInfo.getAuxBuiltinID(BuiltinOp);
+    return BuiltinOp;
+  }
+
 public:
   ExprEvaluatorBase(EvalInfo &Info) : Info(Info) {}
 
@@ -10342,7 +10349,7 @@ bool PointerExprEvaluator::visitNonBuiltinCallExpr(const CallExpr *E) {
 bool PointerExprEvaluator::VisitCallExpr(const CallExpr *E) {
   if (!IsConstantEvaluatedBuiltinCall(E))
     return visitNonBuiltinCallExpr(E);
-  return VisitBuiltinCallExpr(E, E->getBuiltinCallee());
+  return VisitBuiltinCallExpr(E, getConstantEvaluatedBuiltinID(E));
 }
 
 // Determine if T is a character type for which we guarantee that
@@ -12279,6 +12286,8 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
   if (!IsConstantEvaluatedBuiltinCall(E))
     return ExprEvaluatorBaseTy::VisitCallExpr(E);
 
+  unsigned BuiltinOp = getConstantEvaluatedBuiltinID(E);
+
   auto EvaluateBinOpExpr =
       [&](llvm::function_ref<APInt(const APSInt &, const APSInt &)> Fn) {
         APValue SourceLHS, SourceRHS;
@@ -12406,7 +12415,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
     return Success(V, E);
   };
 
-  switch (E->getBuiltinCallee()) {
+  switch (BuiltinOp) {
   default:
     return false;
   case Builtin::BI__builtin_elementwise_popcount:
@@ -12422,7 +12431,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
 
     for (unsigned EltNum = 0; EltNum < SourceLen; ++EltNum) {
       APSInt Elt = Source.getVectorElt(EltNum).getInt();
-      switch (E->getBuiltinCallee()) {
+      switch (BuiltinOp) {
       case Builtin::BI__builtin_elementwise_popcount:
         ResultElements.push_back(APValue(
             APSInt(APInt(Info.Ctx.getIntWidth(DestEltTy), Elt.popcount()),
@@ -12614,7 +12623,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
       const APSInt &HiRHS = SourceRHS.getVectorElt(EltNum + 1).getInt();
       unsigned BitWidth = 2 * LoLHS.getBitWidth();
 
-      switch (E->getBuiltinCallee()) {
+      switch (BuiltinOp) {
       case clang::X86::BI__builtin_ia32_pmaddubsw128:
       case clang::X86::BI__builtin_ia32_pmaddubsw256:
       case clang::X86::BI__builtin_ia32_pmaddubsw512:
@@ -12826,7 +12835,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
       APSInt LHS = SourceLHS.getVectorElt(EltNum).getInt();
       APSInt RHS = SourceRHS.getVectorElt(EltNum).getInt();
 
-      switch (E->getBuiltinCallee()) {
+      switch (BuiltinOp) {
       case clang::X86::BI__builtin_ia32_pmuludq128:
       case clang::X86::BI__builtin_ia32_pmuludq256:
       case clang::X86::BI__builtin_ia32_pmuludq512:
@@ -12933,7 +12942,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
     for (unsigned EltNum = 0; EltNum < SourceLen; ++EltNum) {
       APSInt LHS = SourceLHS.getVectorElt(EltNum).getInt();
       APSInt RHS = SourceRHS.getVectorElt(EltNum).getInt();
-      switch (E->getBuiltinCallee()) {
+      switch (BuiltinOp) {
       case Builtin::BI__builtin_elementwise_max:
         ResultElements.push_back(
             APValue(APSInt(std::max(LHS, RHS),
@@ -13291,7 +13300,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
   case X86::BI__builtin_ia32_cvtpd2ps_mask:
   case X86::BI__builtin_ia32_cvtpd2ps512_mask: {
 
-    const auto BuiltinID = E->getBuiltinCallee();
+    const auto BuiltinID = BuiltinOp;
     bool IsMasked = (BuiltinID == X86::BI__builtin_ia32_cvtpd2ps_mask ||
                      BuiltinID == X86::BI__builtin_ia32_cvtpd2ps512_mask);
 
@@ -13827,14 +13836,14 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
         // Without a fallback, a zero element is undefined
         if (!Fallback) {
           Info.FFDiag(E, diag::note_constexpr_countzeroes_zero)
-              << /*IsTrailing=*/(E->getBuiltinCallee() ==
+              << /*IsTrailing=*/(BuiltinOp ==
                                  Builtin::BI__builtin_elementwise_ctzg);
           return false;
         }
         ResultElements.push_back(Fallback->getVectorElt(EltNum));
         continue;
       }
-      switch (E->getBuiltinCallee()) {
+      switch (BuiltinOp) {
       case Builtin::BI__builtin_elementwise_clzg:
         ResultElements.push_back(APValue(
             APSInt(APInt(Info.Ctx.getIntWidth(DestEltTy), LHS.countl_zero()),
@@ -13904,7 +13913,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
       for (unsigned I = 0; I != EltsPerLane; I += 2) {
         APSInt LHSA = SourceLHS.getVectorElt(LaneStart + I).getInt();
         APSInt LHSB = SourceLHS.getVectorElt(LaneStart + I + 1).getInt();
-        switch (E->getBuiltinCallee()) {
+        switch (BuiltinOp) {
         case clang::X86::BI__builtin_ia32_phaddw128:
         case clang::X86::BI__builtin_ia32_phaddw256:
         case clang::X86::BI__builtin_ia32_phaddd128:
@@ -13938,7 +13947,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
       for (unsigned I = 0; I != EltsPerLane; I += 2) {
         APSInt RHSA = SourceRHS.getVectorElt(LaneStart + I).getInt();
         APSInt RHSB = SourceRHS.getVectorElt(LaneStart + I + 1).getInt();
-        switch (E->getBuiltinCallee()) {
+        switch (BuiltinOp) {
         case clang::X86::BI__builtin_ia32_phaddw128:
         case clang::X86::BI__builtin_ia32_phaddw256:
         case clang::X86::BI__builtin_ia32_phaddd128:
@@ -13998,7 +14007,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
       for (unsigned I = 0; I != HalfElemsPerLane; ++I) {
         APFloat LHSA = SourceLHS.getVectorElt(L + (2 * I) + 0).getFloat();
         APFloat LHSB = SourceLHS.getVectorElt(L + (2 * I) + 1).getFloat();
-        switch (E->getBuiltinCallee()) {
+        switch (BuiltinOp) {
         case clang::X86::BI__builtin_ia32_haddpd:
         case clang::X86::BI__builtin_ia32_haddps:
         case clang::X86::BI__builtin_ia32_haddps256:
@@ -14017,7 +14026,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
       for (unsigned I = 0; I != HalfElemsPerLane; ++I) {
         APFloat RHSA = SourceRHS.getVectorElt(L + (2 * I) + 0).getFloat();
         APFloat RHSB = SourceRHS.getVectorElt(L + (2 * I) + 1).getFloat();
-        switch (E->getBuiltinCallee()) {
+        switch (BuiltinOp) {
         case clang::X86::BI__builtin_ia32_haddpd:
         case clang::X86::BI__builtin_ia32_haddps:
         case clang::X86::BI__builtin_ia32_haddps256:
@@ -14141,7 +14150,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
       const APSInt &Hi = SourceHi.getVectorElt(EltNum).getInt();
       const APSInt &Lo = SourceLo.getVectorElt(EltNum).getInt();
       const APSInt &Shift = SourceShift.getVectorElt(EltNum).getInt();
-      switch (E->getBuiltinCallee()) {
+      switch (BuiltinOp) {
       case Builtin::BI__builtin_elementwise_fshl:
         ResultElements.push_back(APValue(
             APSInt(llvm::APIntOps::fshl(Hi, Lo, Shift), Hi.isUnsigned())));
@@ -14224,7 +14233,7 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
     assert(X.getVectorLength() == A.getVectorLength());
 
     bool IsInverse = false;
-    switch (E->getBuiltinCallee()) {
+    switch (BuiltinOp) {
     case X86::BI__builtin_ia32_vgf2p8affineinvqb_v16qi:
     case X86::BI__builtin_ia32_vgf2p8affineinvqb_v32qi:
     case X86::BI__builtin_ia32_vgf2p8affineinvqb_v64qi: {
@@ -14628,12 +14637,9 @@ bool VectorExprEvaluator::VisitCallExpr(const CallExpr *E) {
   case clang::X86::BI__builtin_ia32_maxsd_round_mask:
   case clang::X86::BI__builtin_ia32_maxss_round_mask:
   case clang::X86::BI__builtin_ia32_maxsh_round_mask: {
-    bool IsMin =
-        E->getBuiltinCallee() ==
-            clang::X86::BI__builtin_ia32_minsd_round_mask ||
-        E->getBuiltinCallee() ==
-            clang::X86::BI__builtin_ia32_minss_round_mask ||
-        E->getBuiltinCallee() == clang::X86::BI__builtin_ia32_minsh_round_mask;
+    bool IsMin = BuiltinOp == clang::X86::BI__builtin_ia32_minsd_round_mask ||
+                 BuiltinOp == clang::X86::BI__builtin_ia32_minss_round_mask ||
+                 BuiltinOp == clang::X86::BI__builtin_ia32_minsh_round_mask;
     return EvaluateScalarFpRoundMaskBinOp(
         [IsMin](const APFloat &A, const APFloat &B,
                 std::optional<APSInt> RoundingMode) -> std::optional<APFloat> {
@@ -16336,7 +16342,7 @@ tryEvaluateBuiltinObjectSize(const Expr *E, unsigned Type, EvalInfo &Info) {
 bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
   if (!IsConstantEvaluatedBuiltinCall(E))
     return ExprEvaluatorBaseTy::VisitCallExpr(E);
-  return VisitBuiltinCallExpr(E, E->getBuiltinCallee());
+  return VisitBuiltinCallExpr(E, getConstantEvaluatedBuiltinID(E));
 }
 
 static bool getBuiltinAlignArguments(const CallExpr *E, EvalInfo &Info,
@@ -19902,7 +19908,9 @@ bool FloatExprEvaluator::VisitCallExpr(const CallExpr *E) {
   if (!IsConstantEvaluatedBuiltinCall(E))
     return ExprEvaluatorBaseTy::VisitCallExpr(E);
 
-  switch (E->getBuiltinCallee()) {
+  unsigned BuiltinOp = getConstantEvaluatedBuiltinID(E);
+
+  switch (BuiltinOp) {
   default:
     return false;
 
