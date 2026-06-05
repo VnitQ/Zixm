@@ -29,6 +29,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/InterleavedRange.h"
 #include "llvm/Support/ScaledNumber.h"
 #include "llvm/Support/StringSaver.h"
@@ -303,13 +304,7 @@ template <> struct DenseMapInfo<ValueInfo> {
     return ValueInfo(false, (GlobalValueSummaryMapTy::value_type *)-8);
   }
 
-  static inline ValueInfo getTombstoneKey() {
-    return ValueInfo(false, (GlobalValueSummaryMapTy::value_type *)-16);
-  }
-
-  static inline bool isSpecialKey(ValueInfo V) {
-    return V == getTombstoneKey() || V == getEmptyKey();
-  }
+  static inline bool isSpecialKey(ValueInfo V) { return V == getEmptyKey(); }
 
   static bool isEqual(ValueInfo L, ValueInfo R) {
     // We are not supposed to mix ValueInfo(s) with different HaveGVs flag
@@ -1102,16 +1097,22 @@ public:
     return *Callsites;
   }
 
-  void addCallsite(CallsiteInfo &Callsite) {
+  void addCallsite(CallsiteInfo &&Callsite) {
     if (!Callsites)
       Callsites = std::make_unique<CallsitesTy>();
-    Callsites->push_back(Callsite);
+    Callsites->push_back(std::move(Callsite));
   }
 
   ArrayRef<AllocInfo> allocs() const {
     if (Allocs)
       return *Allocs;
     return {};
+  }
+
+  void addAlloc(AllocInfo &&Alloc) {
+    if (!Allocs)
+      Allocs = std::make_unique<AllocsTy>();
+    Allocs->push_back(std::move(Alloc));
   }
 
   AllocsTy &mutableAllocs() {
@@ -1125,10 +1126,6 @@ public:
 template <> struct DenseMapInfo<FunctionSummary::VFuncId> {
   static FunctionSummary::VFuncId getEmptyKey() { return {0, uint64_t(-1)}; }
 
-  static FunctionSummary::VFuncId getTombstoneKey() {
-    return {0, uint64_t(-2)};
-  }
-
   static bool isEqual(FunctionSummary::VFuncId L, FunctionSummary::VFuncId R) {
     return L.GUID == R.GUID && L.Offset == R.Offset;
   }
@@ -1139,10 +1136,6 @@ template <> struct DenseMapInfo<FunctionSummary::VFuncId> {
 template <> struct DenseMapInfo<FunctionSummary::ConstVCall> {
   static FunctionSummary::ConstVCall getEmptyKey() {
     return {{0, uint64_t(-1)}, {}};
-  }
-
-  static FunctionSummary::ConstVCall getTombstoneKey() {
-    return {{0, uint64_t(-2)}, {}};
   }
 
   static bool isEqual(FunctionSummary::ConstVCall L,
@@ -1574,7 +1567,7 @@ public:
   // in the way some record are interpreted, like flags for instance.
   // Note that incrementing this may require changes in both BitcodeReader.cpp
   // and BitcodeWriter.cpp.
-  static constexpr uint64_t BitcodeSummaryVersion = 12;
+  static constexpr uint64_t BitcodeSummaryVersion = 13;
 
   // Regular LTO module name for ASM writer
   static constexpr const char *getRegularLTOModuleName() {
@@ -1763,12 +1756,19 @@ public:
     return ValueInfo(HaveGVs, VP);
   }
 
-  /// Return a ValueInfo for \p GV and mark it as belonging to GV.
-  ValueInfo getOrInsertValueInfo(const GlobalValue *GV) {
+  /// Return a ValueInfo for \p GV with GUID \p GUID and mark it as belonging to
+  /// GV.
+  ValueInfo getOrInsertValueInfo(const GlobalValue *GV,
+                                 GlobalValue::GUID GUID) {
     assert(HaveGVs);
-    auto VP = getOrInsertValuePtr(GV->getGUID());
+    auto VP = getOrInsertValuePtr(GUID);
     VP->second.U.GV = GV;
     return ValueInfo(HaveGVs, VP);
+  }
+
+  /// Return a ValueInfo for \p GV and mark it as belonging to GV.
+  ValueInfo getOrInsertValueInfo(const GlobalValue *GV) {
+    return getOrInsertValueInfo(GV, GV->getGUID());
   }
 
   /// Return the GUID for \p OriginalId in the OidGuidMap.

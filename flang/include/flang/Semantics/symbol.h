@@ -475,6 +475,12 @@ public:
     return usedAsProcedureHere_;
   }
   void set_usedAsProcedureHere(SourceName here) { usedAsProcedureHere_ = here; }
+  const std::vector<OpenACCRoutineInfo> &openACCRoutineInfos() const {
+    return openACCRoutineInfos_;
+  }
+  void add_openACCRoutineInfo(OpenACCRoutineInfo info) {
+    openACCRoutineInfos_.push_back(info);
+  }
 
 private:
   const Symbol *rawProcInterface_{nullptr};
@@ -482,6 +488,7 @@ private:
   std::optional<const Symbol *> init_;
   bool isCUDAKernel_{false};
   std::optional<SourceName> usedAsProcedureHere_;
+  std::vector<OpenACCRoutineInfo> openACCRoutineInfos_;
   friend llvm::raw_ostream &operator<<(
       llvm::raw_ostream &, const ProcEntityDetails &);
 };
@@ -1229,12 +1236,6 @@ namespace llvm {
 template <> struct DenseMapInfo<Fortran::semantics::SymbolRef> {
   static inline Fortran::semantics::SymbolRef getEmptyKey() {
     auto ptr = DenseMapInfo<const Fortran::semantics::Symbol *>::getEmptyKey();
-    return *reinterpret_cast<Fortran::semantics::SymbolRef *>(&ptr);
-  }
-
-  static inline Fortran::semantics::SymbolRef getTombstoneKey() {
-    auto ptr =
-        DenseMapInfo<const Fortran::semantics::Symbol *>::getTombstoneKey();
     return *reinterpret_cast<Fortran::semantics::SymbolRef *>(&ptr);
   }
 

@@ -387,10 +387,6 @@ template <> struct llvm::DenseMapInfo<VTableSlot> {
     return {DenseMapInfo<Metadata *>::getEmptyKey(),
             DenseMapInfo<uint64_t>::getEmptyKey()};
   }
-  static VTableSlot getTombstoneKey() {
-    return {DenseMapInfo<Metadata *>::getTombstoneKey(),
-            DenseMapInfo<uint64_t>::getTombstoneKey()};
-  }
   static unsigned getHashValue(const VTableSlot &I) {
     return DenseMapInfo<Metadata *>::getHashValue(I.TypeID) ^
            DenseMapInfo<uint64_t>::getHashValue(I.ByteOffset);
@@ -405,10 +401,6 @@ template <> struct llvm::DenseMapInfo<VTableSlotSummary> {
   static VTableSlotSummary getEmptyKey() {
     return {DenseMapInfo<StringRef>::getEmptyKey(),
             DenseMapInfo<uint64_t>::getEmptyKey()};
-  }
-  static VTableSlotSummary getTombstoneKey() {
-    return {DenseMapInfo<StringRef>::getTombstoneKey(),
-            DenseMapInfo<uint64_t>::getTombstoneKey()};
   }
   static unsigned getHashValue(const VTableSlotSummary &I) {
     return DenseMapInfo<StringRef>::getHashValue(I.TypeID) ^
@@ -489,7 +481,7 @@ struct VirtualCallSite {
       emitRemark(OptName, TargetName, OREGetter);
     CB.replaceAllUsesWith(New);
     if (auto *II = dyn_cast<InvokeInst>(&CB)) {
-      BranchInst::Create(II->getNormalDest(), CB.getIterator());
+      UncondBrInst::Create(II->getNormalDest(), CB.getIterator());
       II->getUnwindDest()->removePredecessor(II->getParent());
     }
     CB.eraseFromParent();
@@ -886,6 +878,7 @@ void llvm::updateVCallVisibilityInModule(
     function_ref<bool(StringRef)> IsVisibleToRegularObj) {
   if (!hasWholeProgramVisibility(WholeProgramVisibilityEnabledInLTO))
     return;
+
   for (GlobalVariable &GV : M.globals()) {
     // Add linkage unit visibility to any variable with type metadata, which are
     // the vtable definitions. We won't have an existing vcall_visibility
@@ -2026,8 +2019,7 @@ bool DevirtModule::tryVirtualConstProp(
 
     if (CSByConstantArg.second.isExported()) {
       ResByArg->TheKind = WholeProgramDevirtResolution::ByArg::VirtualConstProp;
-      exportConstant(Slot, CSByConstantArg.first, "byte", OffsetByte,
-                     ResByArg->Byte);
+      ResByArg->Byte = OffsetByte;
       exportConstant(Slot, CSByConstantArg.first, "bit", 1ULL << OffsetBit,
                      ResByArg->Bit);
     }
@@ -2309,8 +2301,7 @@ void DevirtModule::importResolution(VTableSlot Slot, VTableSlotInfo &SlotInfo) {
       break;
     }
     case WholeProgramDevirtResolution::ByArg::VirtualConstProp: {
-      Constant *Byte = importConstant(Slot, CSByConstantArg.first, "byte",
-                                      Int32Ty, ResByArg.Byte);
+      Constant *Byte = ConstantInt::get(Int32Ty, ResByArg.Byte);
       Constant *Bit = importConstant(Slot, CSByConstantArg.first, "bit", Int8Ty,
                                      ResByArg.Bit);
       applyVirtualConstProp(CSByConstantArg.second, "", Byte, Bit);

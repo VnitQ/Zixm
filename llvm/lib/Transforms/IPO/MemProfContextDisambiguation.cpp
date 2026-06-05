@@ -212,8 +212,8 @@ static cl::opt<unsigned> MemProfICPNoInlineThreshold(
 
 namespace llvm {
 cl::opt<bool> EnableMemProfContextDisambiguation(
-    "enable-memprof-context-disambiguation", cl::init(false), cl::Hidden,
-    cl::ZeroOrMore, cl::desc("Enable MemProf context disambiguation"));
+    "enable-memprof-context-disambiguation", cl::Hidden,
+    cl::desc("Enable MemProf context disambiguation"));
 
 // Indicate we are linking with an allocator that supports hot/cold operator
 // new interfaces.
@@ -1057,7 +1057,7 @@ public:
     for (auto &I : FunctionCalleesToSynthesizedCallsiteInfos) {
       auto *FS = I.first;
       for (auto &Callsite : I.second)
-        FS->addCallsite(*Callsite.second);
+        FS->addCallsite(std::move(*Callsite.second));
     }
   }
 
@@ -5899,8 +5899,19 @@ bool MemProfContextDisambiguation::applyImport(Module &M) {
           break;
         }
       }
-      assert(GVSummary && GVSummary->modulePath() == SrcModule);
+      // TODO: Put back the assert once we have metadata on imported copies of
+      // aliases linking them back to the original alias GUID, which would allow
+      // us to locate the alias summary here.
+      // assert(GVSummary && GVSummary->modulePath() == SrcModule);
     }
+
+    // GVSummary can be null if this is a function imported as a copy of an
+    // alias, and we don't have the aliasee's summary in our distributed index.
+    // TODO: Once we can locate the original GUID for imported aliases (e.g. via
+    // TBD additional metadata), we should find the alias summary instead, and
+    // we can remove this check and fall back to the original check below.
+    if (!GVSummary)
+      continue;
 
     // If this was an imported alias skip it as we won't have the function
     // summary, and it should be cloned in the original module.
