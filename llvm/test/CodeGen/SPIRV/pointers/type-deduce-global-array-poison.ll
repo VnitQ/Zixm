@@ -1,0 +1,33 @@
+; A global variable keeps its concrete array pointee type even when its
+; initializer is poison and it is non-constant, so a dynamic index is lowered as
+; an OpAccessChain rather than dropped (which would make every invocation access
+; element 0).
+
+; RUN: llc -verify-machineinstrs -O0 -mtriple=spirv-unknown-vulkan1.3-compute %s -o - | FileCheck %s
+; RUN: %if spirv-tools %{ llc -O0 -mtriple=spirv-unknown-vulkan1.3-compute %s -o - -filetype=obj | spirv-val %}
+
+@tile = internal addrspace(3) global [64 x i32] poison, align 16
+
+; CHECK-DAG: %[[#U32:]] = OpTypeInt 32 0
+; CHECK-DAG: %[[#Arr:]] = OpTypeArray %[[#U32]] %[[#]]
+; CHECK-DAG: %[[#ArrPtr:]] = OpTypePointer Workgroup %[[#Arr]]
+; CHECK-DAG: %[[#EltPtr:]] = OpTypePointer Workgroup %[[#U32]]
+; CHECK-DAG: %[[#Tile:]] = OpVariable %[[#ArrPtr]] Workgroup
+
+; The dynamic index survives as an OpAccessChain into the array tile and the
+; variable is not collapsed to a scalar pointer.
+; CHECK: %[[#Id:]] = OpCompositeExtract %[[#U32]] %[[#]] 0
+; CHECK: %[[#Ptr:]] = OpAccessChain %[[#EltPtr]] %[[#Tile]] %[[#Id]]
+; CHECK: OpStore %[[#Ptr]] %[[#]]
+
+define void @store_dynamic_index() #0 {
+entry:
+  %id = call i32 @llvm.spv.thread.id.in.group.i32(i32 0)
+  %p = getelementptr i32, ptr addrspace(3) @tile, i32 %id
+  store i32 42, ptr addrspace(3) %p, align 4
+  ret void
+}
+
+declare i32 @llvm.spv.thread.id.in.group.i32(i32)
+
+attributes #0 = { "hlsl.shader"="compute" "hlsl.numthreads"="64,1,1" }
