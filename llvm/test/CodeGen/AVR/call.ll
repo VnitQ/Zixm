@@ -152,7 +152,7 @@ define void @testcallprologue() {
 ; CHECK-LABEL: testcallprologue:
 ; CHECK: push r28
 ; CHECK: push r29
-; CHECK: sbiw r28, 27
+; CHECK: sbiw r28, 16
 ; CHECK: ldi [[REG1:r[0-9]+]], 88
 ; CHECK: std Y+9, [[REG1]]
 ; CHECK: ldi [[REG1:r[0-9]+]], 11

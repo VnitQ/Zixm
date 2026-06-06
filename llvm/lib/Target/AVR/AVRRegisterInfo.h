@@ -43,6 +43,10 @@ public:
 
   Register getFrameRegister(const MachineFunction &MF) const override;
 
+  bool requiresRegisterScavenging(const MachineFunction &MF) const override {
+    return true;
+  }
+
   const TargetRegisterClass *
   getPointerRegClass(unsigned Kind = 0) const override;
 
