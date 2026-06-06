@@ -85,6 +85,29 @@ bool fromJSON(const llvm::json::Value &value,
               AcceleratorBreakpointHitArgs &data, llvm::json::Path path);
 llvm::json::Value toJSON(const AcceleratorBreakpointHitArgs &data);
 
+/// Information the client needs to connect to an accelerator GDB server (e.g. a
+/// separate process serving the accelerator's register and memory state). When
+/// an AcceleratorActions carries this, the client creates a new target and
+/// connects to \a connect_url.
+struct AcceleratorConnectionInfo {
+  /// Connection URL the client should connect to (as in "process connect
+  /// <url>"). Required; the remaining fields are optional.
+  std::string connect_url;
+  /// Path to the executable to use when creating the accelerator target. If
+  /// not set, an empty target is created.
+  std::optional<std::string> exe_path;
+  /// Target triple to use as the architecture for the accelerator target.
+  std::optional<std::string> triple;
+  /// If true, connect synchronously: the client blocks until the accelerator
+  /// process is connected and stopped before continuing. If false, the
+  /// connection is made asynchronously.
+  bool synchronous = false;
+};
+
+bool fromJSON(const llvm::json::Value &value, AcceleratorConnectionInfo &data,
+              llvm::json::Path path);
+llvm::json::Value toJSON(const AcceleratorConnectionInfo &data);
+
 /// Actions to be performed in the native process on behalf of an accelerator
 /// plugin. AcceleratorActions are returned in the following contexts:
 ///
@@ -114,6 +137,9 @@ struct AcceleratorActions {
   int64_t identifier = 0;
   /// New breakpoints to set. Nothing to set if this is empty.
   std::vector<AcceleratorBreakpointInfo> breakpoints;
+  /// If set, the client should create a new target and connect to the
+  /// accelerator GDB server described here.
+  std::optional<AcceleratorConnectionInfo> connect_info;
 };
 
 bool fromJSON(const llvm::json::Value &value, AcceleratorActions &data,

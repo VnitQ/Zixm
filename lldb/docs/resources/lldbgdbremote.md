@@ -2774,9 +2774,20 @@ packet when one is hit. Each breakpoint object has the following fields:
 Exactly one of `by_name` or `by_address` must be provided for each
 breakpoint.
 
+An `accelerator_action` may also include a `connect_info` object asking the
+client to create a new target and connect to a separate GDB server that
+serves the accelerator's state (for example a GPU debug stub). It has the
+following fields:
+
+| Key             | Type   | Description |
+|-----------------|--------|-------------|
+| `connect_url`   | string | Connection URL to connect to, as used by `process connect <url>`. |
+| `exe_path`      | string | Optional path to the executable to use when creating the accelerator target. If omitted, an empty target is created. |
+| `triple`        | string | Optional target triple to use as the architecture for the accelerator target. |
+| `synchronous`   | bool   | If true, connect synchronously: the client blocks until the accelerator process is connected and stopped before continuing. If false, the connection is made asynchronously. |
+
 In future patches, each `accelerator_action` will include additional fields
-such as connection info for secondary debug sessions and synchronization
-options.
+such as synchronization options for the accelerator process.
 
 **Priority To Implement:** Required for hardware accelerator debugging
 support. Not needed for non-hardware-accelerator debugging.
