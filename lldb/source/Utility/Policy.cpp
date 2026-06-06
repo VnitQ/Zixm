@@ -24,6 +24,83 @@ Policy PolicyStack::Current() const {
   return p;
 }
 
+// PublicState is the baseline, not a transition. The stack returns to
+// public state by popping the private-state guards, not by pushing a
+// "public" policy on top. This factory exists only as a reference value
+// (tests, dump comparisons); it never reads the current stack.
+Policy Policy::PublicState() { return {}; }
+
+Policy Policy::PrivateState() {
+  Policy p = PolicyStack::Get().Current();
+  p.view = View::Private;
+  p.capabilities.can_load_frame_providers = false;
+  p.capabilities.can_run_frame_recognizers = false;
+  return p;
+}
+
+Policy Policy::PublicStateRunningExpression() {
+  Policy p = PolicyStack::Get().Current();
+  p.capabilities.can_run_breakpoint_actions = false;
+  return p;
+}
+
+PolicyStack::Guard::~Guard() {
+  if (!m_active)
+    return;
+  std::thread::id current = std::this_thread::get_id();
+  if (m_thread_id != current)
+    LLDB_LOG(GetLog(LLDBLog::Process),
+             "PolicyStack::Guard destroyed on thread {0} but was created on "
+             "thread {1}; this would corrupt thread {0}'s policy stack",
+             current, m_thread_id);
+  assert(m_thread_id == current &&
+         "PolicyStack::Guard destroyed on a different thread than the one "
+         "that created it (see preceding log line for thread ids)");
+  Get().Pop();
+}
+
+PolicyStack::Guard::Guard(Guard &&other)
+    : m_thread_id(other.m_thread_id), m_active(other.m_active) {
+  std::thread::id current = std::this_thread::get_id();
+  if (m_thread_id != current)
+    LLDB_LOG(GetLog(LLDBLog::Process),
+             "PolicyStack::Guard move-constructed on thread {0} but was "
+             "created on thread {1}",
+             current, m_thread_id);
+  assert(m_thread_id == current && "PolicyStack::Guard moved across threads "
+                                   "(see preceding log line for thread ids)");
+  other.m_active = false;
+}
+
+PolicyStack::Guard &PolicyStack::Guard::operator=(Guard &&other) {
+  if (this != &other) {
+    std::thread::id current = std::this_thread::get_id();
+    if (other.m_thread_id != current)
+      LLDB_LOG(GetLog(LLDBLog::Process),
+               "PolicyStack::Guard move-assigned on thread {0} from a guard "
+               "created on thread {1}",
+               current, other.m_thread_id);
+    assert(other.m_thread_id == current &&
+           "PolicyStack::Guard move-assigned across threads "
+           "(see preceding log line for thread ids)");
+    if (m_active) {
+      if (m_thread_id != current)
+        LLDB_LOG(GetLog(LLDBLog::Process),
+                 "PolicyStack::Guard destroyed during move-assign on thread "
+                 "{0} but was created on thread {1}",
+                 current, m_thread_id);
+      assert(m_thread_id == current &&
+             "PolicyStack::Guard destroyed on a different thread "
+             "(see preceding log line for thread ids)");
+      Get().Pop();
+    }
+    m_thread_id = other.m_thread_id;
+    m_active = other.m_active;
+    other.m_active = false;
+  }
+  return *this;
+}
+
 void Policy::Dump(Stream &s) const {
   s << "policy: view=" << (view == View::Public ? "public" : "private");
   s << ", capabilities={";
