@@ -597,6 +597,7 @@ set(LLVM_ALL_EXPERIMENTAL_TARGETS
   DirectX
   M68k
   Xtensa
+  SuperH
 )
 
 # List of targets with JIT support:
