@@ -76,7 +76,7 @@ float fun_default FUN(1)
 
 #pragma float_control(except, off)
         float exc_off FUN(5)
-//CHECK-LABEL: define {{.*}} @_Z7exc_offf{{.*}}
+//CHECK-LABEL: define {{.*}} @_Z7exc_offf{{.*}}{
 #if DEFAULT
 //CHECK-DDEFAULT: call float @llvm.fmuladd{{.*}}
 #endif
