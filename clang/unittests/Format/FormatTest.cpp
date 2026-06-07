@@ -14381,6 +14381,9 @@ TEST_F(FormatTest, IncorrectCodeUnbalancedBraces) {
   verifyNoCrash("struct Foo {\n"
                 "  operator foo(bar\n"
                 "};");
+  verifyNoCrash("{ operator } a");
+  verifyNoCrash("{ operator } a }");
+  verifyNoCrash("{ operator } a } b");
   verifyNoCrash("decltype( {\n"
                 "  {");
 }
