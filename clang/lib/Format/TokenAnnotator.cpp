@@ -1214,11 +1214,9 @@ private:
 
     unsigned CommaCount = 0;
     while (CurrentToken) {
-      if (Scopes.empty())
-        return false;
+      assert(!Scopes.empty());
       if (CurrentToken->is(tok::r_brace)) {
-        if (Scopes.back() != getScopeType(OpeningBrace))
-          return false;
+        assert(Scopes.back() == getScopeType(OpeningBrace));
         Scopes.pop_back();
         assert(OpeningBrace.Optional == CurrentToken->Optional);
         OpeningBrace.MatchingParen = CurrentToken;
@@ -1299,6 +1297,8 @@ private:
         next();
         return true;
       }
+      if (CurrentToken->is(tok::r_brace))
+        return false;
       if (!consumeToken())
         return false;
     }

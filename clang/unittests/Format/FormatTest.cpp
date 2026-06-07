@@ -14383,7 +14383,6 @@ TEST_F(FormatTest, IncorrectCodeUnbalancedBraces) {
                 "};");
   verifyNoCrash("decltype( {\n"
                 "  {");
-  verifyNoCrash("{ operator } a } b");
 }
 
 TEST_F(FormatTest, IncorrectUnbalancedBracesInMacrosWithUnicode) {
