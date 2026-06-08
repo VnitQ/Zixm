@@ -14,6 +14,7 @@
 #include "AMDGPURegBankLegalizeHelper.h"
 #include "AMDGPUGlobalISelUtils.h"
 #include "AMDGPUInstrInfo.h"
+#include "AMDGPULaneMaskUtils.h"
 #include "AMDGPURegBankLegalizeRules.h"
 #include "AMDGPURegisterBankInfo.h"
 #include "GCNSubtarget.h"
@@ -75,6 +76,11 @@ bool RegBankLegalizeHelper::findRuleAndApplyMapping(MachineInstr &MI) {
   if (!lower(MI, *Mapping, WFI))
     return false;
 
+  if (!WFI.SgprWaterfallOperandRegs.empty()) {
+    if (!executeInWaterfallLoop(B, WFI))
+      return false;
+  }
+
   return true;
 }
 
@@ -95,20 +101,7 @@ bool RegBankLegalizeHelper::executeInWaterfallLoop(MachineIRBuilder &B,
 
   const SIRegisterInfo *TRI = ST.getRegisterInfo();
   const TargetRegisterClass *WaveRC = TRI->getWaveMaskRegClass();
-  unsigned MovExecOpc, MovExecTermOpc, XorTermOpc, AndSaveExecOpc, ExecReg;
-  if (IsWave32) {
-    MovExecOpc = AMDGPU::S_MOV_B32;
-    MovExecTermOpc = AMDGPU::S_MOV_B32_term;
-    XorTermOpc = AMDGPU::S_XOR_B32_term;
-    AndSaveExecOpc = AMDGPU::S_AND_SAVEEXEC_B32;
-    ExecReg = AMDGPU::EXEC_LO;
-  } else {
-    MovExecOpc = AMDGPU::S_MOV_B64;
-    MovExecTermOpc = AMDGPU::S_MOV_B64_term;
-    XorTermOpc = AMDGPU::S_XOR_B64_term;
-    AndSaveExecOpc = AMDGPU::S_AND_SAVEEXEC_B64;
-    ExecReg = AMDGPU::EXEC;
-  }
+  const AMDGPU::LaneMaskConstants &LMC = AMDGPU::LaneMaskConstants::get(ST);
 
 #ifndef NDEBUG
   const int OrigRangeSize = std::distance(BeginIt, EndIt);
@@ -119,6 +112,7 @@ bool RegBankLegalizeHelper::executeInWaterfallLoop(MachineIRBuilder &B,
   Register InitSaveExecReg = MRI.createVirtualRegister(WaveRC);
 
   // Don't bother using generic instructions/registers for the exec mask.
+  B.setInstr(*WFI.Start);
   B.buildInstr(TargetOpcode::IMPLICIT_DEF).addDef(InitSaveExecReg);
 
   Register SavedExec = MRI.createVirtualRegister(WaveRC);
@@ -270,7 +264,7 @@ bool RegBankLegalizeHelper::executeInWaterfallLoop(MachineIRBuilder &B,
   B.buildIntrinsic(Intrinsic::amdgcn_ballot, CondRegLM).addReg(CondReg);
 
   // Update EXEC, save the original EXEC value to SavedExec.
-  B.buildInstr(AndSaveExecOpc)
+  B.buildInstr(LMC.AndSaveExecOpc)
       .addDef(SavedExec)
       .addReg(CondRegLM, RegState::Kill);
   MRI.setSimpleHint(SavedExec, CondRegLM);
@@ -278,7 +272,10 @@ bool RegBankLegalizeHelper::executeInWaterfallLoop(MachineIRBuilder &B,
   B.setInsertPt(*BodyBB, BodyBB->end());
 
   // Update EXEC, switch all done bits to 0 and all todo bits to 1.
-  B.buildInstr(XorTermOpc).addDef(ExecReg).addReg(ExecReg).addReg(SavedExec);
+  B.buildInstr(LMC.XorTermOpc)
+      .addDef(LMC.ExecReg)
+      .addReg(LMC.ExecReg)
+      .addReg(SavedExec);
 
   // XXX - s_xor_b64 sets scc to 1 if the result is nonzero, so can we use
   // s_cbranch_scc0?
@@ -288,11 +285,11 @@ bool RegBankLegalizeHelper::executeInWaterfallLoop(MachineIRBuilder &B,
 
   // Save the EXEC mask before the loop.
   B.setInsertPt(MBB, MBB.end());
-  B.buildInstr(MovExecOpc).addDef(SaveExecReg).addReg(ExecReg);
+  B.buildInstr(LMC.MovOpc).addDef(SaveExecReg).addReg(LMC.ExecReg);
 
   // Restore the EXEC mask after the loop.
   B.setInsertPt(*RestoreExecBB, RestoreExecBB->begin());
-  B.buildInstr(MovExecTermOpc).addDef(ExecReg).addReg(SaveExecReg);
+  B.buildInstr(LMC.MovTermOpc).addDef(LMC.ExecReg).addReg(SaveExecReg);
 
   // Set the insert point after the original instruction, so any new
   // instructions will be in the remainder.
@@ -837,12 +834,12 @@ bool RegBankLegalizeHelper::lowerSplitBitCount64To32(MachineInstr &MI) {
   // Split 64-bit find-first-bit operations into 32-bit halves:
   //   (ffbh hi:lo)            -> umin(ffbh(hi), uaddsat(ffbh(lo), 32))
   //   (ffbl hi:lo)            -> umin(ffbl(lo), uaddsat(ffbl(hi), 32))
-  //   (ctlz_zero_undef hi:lo) -> umin(ffbh(hi), add(ffbh(lo), 32))
-  //   (cttz_zero_undef hi:lo) -> umin(ffbl(lo), add(ffbl(hi), 32))
+  //   (ctlz_zero_poison hi:lo) -> umin(ffbh(hi), add(ffbh(lo), 32))
+  //   (cttz_zero_poison hi:lo) -> umin(ffbl(lo), add(ffbl(hi), 32))
   unsigned Opc = MI.getOpcode();
 
   // FFBH/FFBL return 0xFFFFFFFF on zero input, using uaddsat to avoid
-  // wrapping. CTLZ/CTTZ guarantee non-zero input (zero_undef), so plain add
+  // wrapping. CTLZ/CTTZ guarantee non-zero input (zero_poison), so plain add
   // is fine.
   unsigned FFBOpc;
   unsigned AddOpc;
@@ -858,12 +855,12 @@ bool RegBankLegalizeHelper::lowerSplitBitCount64To32(MachineInstr &MI) {
     AddOpc = AMDGPU::G_UADDSAT;
     SearchFromMSB = false;
     break;
-  case AMDGPU::G_CTLZ_ZERO_UNDEF:
+  case AMDGPU::G_CTLZ_ZERO_POISON:
     FFBOpc = AMDGPU::G_AMDGPU_FFBH_U32;
     AddOpc = AMDGPU::G_ADD;
     SearchFromMSB = true;
     break;
-  case AMDGPU::G_CTTZ_ZERO_UNDEF:
+  case AMDGPU::G_CTTZ_ZERO_POISON:
     FFBOpc = AMDGPU::G_AMDGPU_FFBL_B32;
     AddOpc = AMDGPU::G_ADD;
     SearchFromMSB = false;
@@ -1258,6 +1255,17 @@ bool RegBankLegalizeHelper::lower(MachineInstr &MI,
     return lowerSplitTo32Select(MI);
   case SplitTo32SExtInReg:
     return lowerSplitTo32SExtInReg(MI);
+  case CtPop64To32: {
+    auto Unmerge = B.buildUnmerge({VgprRB, S32}, MI.getOperand(1).getReg());
+    auto LoPopCnt = B.buildCTPOP({VgprRB, S32}, Unmerge.getReg(0));
+    auto HiPopCnt = B.buildCTPOP({VgprRB, S32}, Unmerge.getReg(1));
+    // Max popcount of two 32-bit values is 64, so this add cannot overflow.
+    B.buildAdd(MI.getOperand(0).getReg(), LoPopCnt, HiPopCnt,
+               MachineInstr::NoSWrap | MachineInstr::NoUWrap);
+
+    MI.eraseFromParent();
+    break;
+  }
   case SplitLoad: {
     LLT DstTy = MRI.getType(MI.getOperand(0).getReg());
     unsigned Size = DstTy.getSizeInBits();
@@ -1443,10 +1451,6 @@ bool RegBankLegalizeHelper::lower(MachineInstr &MI,
     return lowerAbsToS32(MI);
   }
 
-  if (!WFI.SgprWaterfallOperandRegs.empty()) {
-    if (!executeInWaterfallLoop(B, WFI))
-      return false;
-  }
   return true;
 }
 
@@ -1512,9 +1516,16 @@ LLT RegBankLegalizeHelper::getTyFromID(RegBankLLTMappingApplyID ID) {
   case UniInVgprV2S32:
     return LLT::fixed_vector(2, 32);
   case VgprV3S32:
+  case UniInVgprV3S32:
     return LLT::fixed_vector(3, 32);
   case VgprV4S16:
     return LLT::fixed_vector(4, 16);
+  case VgprV8S16:
+  case UniInVgprV8S16:
+    return LLT::fixed_vector(8, 16);
+  case VgprV16S16:
+  case UniInVgprV16S16:
+    return LLT::fixed_vector(16, 16);
   case SgprV4S32:
   case SgprV4S32_WF:
   case SgprV4S32_ReadFirstLane:
@@ -1522,15 +1533,22 @@ LLT RegBankLegalizeHelper::getTyFromID(RegBankLLTMappingApplyID ID) {
   case UniInVgprV4S32:
     return LLT::fixed_vector(4, 32);
   case VgprV8S32:
+  case UniInVgprV8S32:
     return LLT::fixed_vector(8, 32);
   case VgprV2S64:
   case UniInVgprV2S64:
     return LLT::fixed_vector(2, 64);
   case VgprV6S32:
+  case UniInVgprV6S32:
     return LLT::fixed_vector(6, 32);
+  case VgprV16S32:
+  case UniInVgprV16S32:
+    return LLT::fixed_vector(16, 32);
   case VgprV32S16:
+  case UniInVgprV32S16:
     return LLT::fixed_vector(32, 16);
   case VgprV32S32:
+  case UniInVgprV32S32:
     return LLT::fixed_vector(32, 32);
   default:
     return LLT();
@@ -1659,8 +1677,16 @@ RegBankLegalizeHelper::getRegBankFromID(RegBankLLTMappingApplyID ID) {
   case UniInVgprS64:
   case UniInVgprV2S16:
   case UniInVgprV2S32:
+  case UniInVgprV3S32:
   case UniInVgprV4S32:
   case UniInVgprV2S64:
+  case UniInVgprV6S32:
+  case UniInVgprV8S16:
+  case UniInVgprV8S32:
+  case UniInVgprV16S16:
+  case UniInVgprV16S32:
+  case UniInVgprV32S16:
+  case UniInVgprV32S32:
   case UniInVgprB32:
   case UniInVgprB64:
   case UniInVgprB96:
@@ -1694,9 +1720,12 @@ RegBankLegalizeHelper::getRegBankFromID(RegBankLLTMappingApplyID ID) {
   case VgprV2S64:
   case VgprV3S32:
   case VgprV4S16:
+  case VgprV8S16:
+  case VgprV16S16:
   case VgprV4S32:
   case VgprV6S32:
   case VgprV8S32:
+  case VgprV16S32:
   case VgprV32S16:
   case VgprB32:
   case VgprB64:
@@ -1761,9 +1790,12 @@ bool RegBankLegalizeHelper::applyMappingDst(
     case VgprV2S64:
     case VgprV3S32:
     case VgprV4S16:
+    case VgprV8S16:
+    case VgprV16S16:
     case VgprV4S32:
     case VgprV6S32:
     case VgprV8S32:
+    case VgprV16S32:
     case VgprV32S16: {
       assert(Ty == getTyFromID(MethodIDs[OpIdx]));
       assert(RB == getRegBankFromID(MethodIDs[OpIdx]));
@@ -1837,8 +1869,16 @@ bool RegBankLegalizeHelper::applyMappingDst(
     case UniInVgprS64:
     case UniInVgprV2S16:
     case UniInVgprV2S32:
+    case UniInVgprV3S32:
     case UniInVgprV4S32:
-    case UniInVgprV2S64: {
+    case UniInVgprV2S64:
+    case UniInVgprV6S32:
+    case UniInVgprV8S16:
+    case UniInVgprV8S32:
+    case UniInVgprV16S16:
+    case UniInVgprV16S32:
+    case UniInVgprV32S16:
+    case UniInVgprV32S32: {
       assert(Ty == getTyFromID(MethodIDs[OpIdx]));
       assert(RB == SgprRB);
       Register NewVgprDst = MRI.createVirtualRegister({VgprRB, Ty});
@@ -1969,9 +2009,12 @@ bool RegBankLegalizeHelper::applyMappingSrc(
     case VgprV2S64:
     case VgprV3S32:
     case VgprV4S16:
+    case VgprV8S16:
+    case VgprV16S16:
     case VgprV4S32:
     case VgprV6S32:
     case VgprV8S32:
+    case VgprV16S32:
     case VgprV32S16:
     case VgprV32S32: {
       assert(Ty == getTyFromID(MethodIDs[i]));
@@ -2044,7 +2087,6 @@ bool RegBankLegalizeHelper::applyMappingSrc(
           ++End;
         ++End;
 
-        B.setInsertPt(*MI.getParent(), Start);
         WFI.Start = Start;
         WFI.End = End;
       }
