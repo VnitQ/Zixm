@@ -2863,6 +2863,10 @@ let IntrProperties = [IntrNoMem, IntrSpeculatable, IntrNoCreateUndefOrPoison]
   def int_vector_reduce_fmaximum: DefaultAttrsIntrinsic<
                                          [LLVMVectorElementType<0>],
                                          [llvm_anyvector_ty]>;
+  def int_vector_reduce_fminimumnum :
+      DefaultAttrsIntrinsic<[LLVMVectorElementType<0>], [llvm_anyvector_ty]>;
+  def int_vector_reduce_fmaximumnum :
+      DefaultAttrsIntrinsic<[LLVMVectorElementType<0>], [llvm_anyvector_ty]>;
 }
 
 //===------ Matrix intrinsics ---------------------------------------------===//
