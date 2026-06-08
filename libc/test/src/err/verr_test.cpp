@@ -7,30 +7,35 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implementation of err.
+/// Unit tests for verr.
 ///
 //===----------------------------------------------------------------------===//
 
-#include "src/err/err.h"
-#include "src/__support/OSUtil/exit.h"
-#include "src/__support/arg_list.h"
-#include "src/__support/common.h"
-#include "src/__support/macros/config.h"
 #include "src/__support/libc_errno.h"
-#include "src/err/report.h"
+#include "src/err/verr.h"
+#include "test/UnitTest/Test.h"
 
 #include <stdarg.h>
 
-namespace LIBC_NAMESPACE_DECL {
+namespace LIBC_NAMESPACE {
 
-[[noreturn]] LLVM_LIBC_FUNCTION(void, err, (int eval, const char *fmt, ...)) {
-  int saved_errno = libc_errno;
+namespace {
+void call_verr(int eval, const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  internal::ArgList arg_list(args);
-  err_reporting::report(true, saved_errno, fmt, arg_list);
+  verr(eval, fmt, args);
   va_end(args);
-  internal::exit(eval);
+}
+} // namespace
+
+TEST(LlvmLibcVerrTest, VerrExitCode) {
+  libc_errno = 0;
+  EXPECT_EXITS([] { call_verr(1, "test verr"); }, 1);
 }
 
-} // namespace LIBC_NAMESPACE_DECL
+TEST(LlvmLibcVerrTest, VerrNullFormat) {
+  libc_errno = 2;
+  EXPECT_EXITS([] { call_verr(1, nullptr); }, 1);
+}
+
+} // namespace LIBC_NAMESPACE

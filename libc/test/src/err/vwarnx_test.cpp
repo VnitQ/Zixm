@@ -7,22 +7,32 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implementation header for internal error reporting.
+/// Unit tests for vwarnx.
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIBC_SRC_ERR_REPORT_H
-#define LLVM_LIBC_SRC_ERR_REPORT_H
+#include "src/err/vwarnx.h"
+#include "test/UnitTest/Test.h"
 
-#include "src/__support/arg_list.h"
-#include "src/__support/macros/config.h"
+#include <stdarg.h>
 
-namespace LIBC_NAMESPACE_DECL {
-namespace err_reporting {
+namespace LIBC_NAMESPACE {
 
-void report(bool show_err, int err_num, const char *fmt, internal::ArgList &args);
+namespace {
+void call_vwarnx(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  vwarnx(fmt, args);
+  va_end(args);
+}
+} // namespace
 
-} // namespace err_reporting
-} // namespace LIBC_NAMESPACE_DECL
+TEST(LlvmLibcVwarnxTest, VwarnxNoExit) {
+  call_vwarnx("test vwarnx");
+}
 
-#endif // LLVM_LIBC_SRC_ERR_REPORT_H
+TEST(LlvmLibcVwarnxTest, VwarnxNullFormat) {
+  call_vwarnx(nullptr);
+}
+
+} // namespace LIBC_NAMESPACE

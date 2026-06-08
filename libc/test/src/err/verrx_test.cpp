@@ -7,29 +7,32 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implementation of warn.
+/// Unit tests for verrx.
 ///
 //===----------------------------------------------------------------------===//
 
-#include "src/err/warn.h"
-#include "src/__support/arg_list.h"
-#include "src/__support/common.h"
-#include "src/__support/macros/config.h"
-#include "src/__support/libc_errno.h"
-#include "src/err/report.h"
+#include "src/err/verrx.h"
+#include "test/UnitTest/Test.h"
 
 #include <stdarg.h>
 
-namespace LIBC_NAMESPACE_DECL {
+namespace LIBC_NAMESPACE {
 
-LLVM_LIBC_FUNCTION(void, warn, (const char *fmt, ...)) {
-  int saved_errno = libc_errno;
+namespace {
+void call_verrx(int eval, const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  internal::ArgList arg_list(args);
-  err_reporting::report(true, saved_errno, fmt, arg_list);
+  verrx(eval, fmt, args);
   va_end(args);
-  libc_errno = saved_errno;
+}
+} // namespace
+
+TEST(LlvmLibcVerrxTest, VerrxExitCode) {
+  EXPECT_EXITS([] { call_verrx(2, "test verrx"); }, 2);
 }
 
-} // namespace LIBC_NAMESPACE_DECL
+TEST(LlvmLibcVerrxTest, VerrxNullFormat) {
+  EXPECT_EXITS([] { call_verrx(2, nullptr); }, 2);
+}
+
+} // namespace LIBC_NAMESPACE

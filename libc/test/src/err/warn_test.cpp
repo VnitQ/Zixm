@@ -7,22 +7,24 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implementation header for internal error reporting.
+/// Unit tests for warn.
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIBC_SRC_ERR_REPORT_H
-#define LLVM_LIBC_SRC_ERR_REPORT_H
+#include "src/__support/libc_errno.h"
+#include "src/err/warn.h"
+#include "test/UnitTest/Test.h"
 
-#include "src/__support/arg_list.h"
-#include "src/__support/macros/config.h"
+namespace LIBC_NAMESPACE {
 
-namespace LIBC_NAMESPACE_DECL {
-namespace err_reporting {
+TEST(LlvmLibcWarnTest, WarnNoExit) {
+  libc_errno = 0;
+  warn("test warn");
+}
 
-void report(bool show_err, int err_num, const char *fmt, internal::ArgList &args);
+TEST(LlvmLibcWarnTest, WarnNullFormat) {
+  libc_errno = 2;
+  warn(nullptr);
+}
 
-} // namespace err_reporting
-} // namespace LIBC_NAMESPACE_DECL
-
-#endif // LLVM_LIBC_SRC_ERR_REPORT_H
+} // namespace LIBC_NAMESPACE

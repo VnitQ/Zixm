@@ -7,30 +7,35 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implementation of err.
+/// Unit tests for vwarn.
 ///
 //===----------------------------------------------------------------------===//
 
-#include "src/err/err.h"
-#include "src/__support/OSUtil/exit.h"
-#include "src/__support/arg_list.h"
-#include "src/__support/common.h"
-#include "src/__support/macros/config.h"
 #include "src/__support/libc_errno.h"
-#include "src/err/report.h"
+#include "src/err/vwarn.h"
+#include "test/UnitTest/Test.h"
 
 #include <stdarg.h>
 
-namespace LIBC_NAMESPACE_DECL {
+namespace LIBC_NAMESPACE {
 
-[[noreturn]] LLVM_LIBC_FUNCTION(void, err, (int eval, const char *fmt, ...)) {
-  int saved_errno = libc_errno;
+namespace {
+void call_vwarn(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  internal::ArgList arg_list(args);
-  err_reporting::report(true, saved_errno, fmt, arg_list);
+  vwarn(fmt, args);
   va_end(args);
-  internal::exit(eval);
+}
+} // namespace
+
+TEST(LlvmLibcVwarnTest, VwarnNoExit) {
+  libc_errno = 1; // EPERM
+  call_vwarn("test vwarn");
 }
 
-} // namespace LIBC_NAMESPACE_DECL
+TEST(LlvmLibcVwarnTest, VwarnNullFormat) {
+  libc_errno = 2;
+  call_vwarn(nullptr);
+}
+
+} // namespace LIBC_NAMESPACE
