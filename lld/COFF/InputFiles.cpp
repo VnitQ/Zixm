@@ -278,7 +278,8 @@ ObjFile::ObjFile(SymbolTable &symtab, COFFObjectFile *coffObj, bool lazy)
     : InputFile(symtab, ObjectKind, coffObj->getMemoryBufferRef(), lazy),
       coffObj(coffObj) {}
 
-ObjFile *ObjFile::create(COFFLinkerContext &ctx, MemoryBufferRef m, bool lazy) {
+COFFObjectFile *ObjFile::createCOFFObject(COFFLinkerContext &ctx,
+                                          MemoryBufferRef m) {
   // Parse a memory buffer as a COFF file.
   Expected<std::unique_ptr<Binary>> bin = createBinary(m);
   if (!bin)
@@ -289,8 +290,13 @@ ObjFile *ObjFile::create(COFFLinkerContext &ctx, MemoryBufferRef m, bool lazy) {
     Fatal(ctx) << m.getBufferIdentifier() << " is not a COFF file";
 
   bin->release();
-  return make<ObjFile>(ctx.getSymtab(MachineTypes(obj->getMachine())), obj,
-                       lazy);
+  return obj;
+}
+
+ObjFile *ObjFile::create(COFFLinkerContext &ctx, COFFObjectFile *coffObj,
+                         bool lazy) {
+  return make<ObjFile>(ctx.getSymtab(MachineTypes(coffObj->getMachine())),
+                       coffObj, lazy);
 }
 
 void ObjFile::parseLazy() {
