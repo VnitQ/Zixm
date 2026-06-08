@@ -206,7 +206,7 @@ void WebAssemblyAsmPrinter::emitGlobalVariable(const GlobalVariable *GV) {
     computeLegalValueVTs(TLI, GV->getParent()->getContext(),
                          GV->getDataLayout(), GlobalVT, VTs);
 
-    WebAssembly::wasmSymbolSetType(Sym, GlobalVT, VTs);
+    WebAssembly::wasmSymbolSetType(Sym, GlobalVT, VTs, ST->hasAddr64());
   }
 
   emitVisibility(Sym, GV->getVisibility(), !GV->isDeclaration());
