@@ -116,6 +116,7 @@
 #include "llvm/TableGen/StringMatcher.h"
 #include "llvm/TableGen/StringToOffsetTable.h"
 #include "llvm/TableGen/TableGenBackend.h"
+#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <forward_list>
@@ -385,6 +386,23 @@ public:
     // accidentally rely on this behaviour, so it will have to stay like this
     // until they are fixed.
     return ValueName < RHS.ValueName;
+  }
+};
+
+using MatchClassSequence = std::vector<const ClassInfo *>;
+
+struct LessMatchClassSequence {
+  bool operator()(const MatchClassSequence &LHS,
+                  const MatchClassSequence &RHS) const {
+    return std::lexicographical_compare(
+        LHS.begin(), LHS.end(), RHS.begin(), RHS.end(),
+        [](const ClassInfo *LHS, const ClassInfo *RHS) {
+          if (!LHS)
+            return RHS != nullptr;
+          if (!RHS)
+            return false;
+          return LHS->Name < RHS->Name;
+        });
   }
 };
 
@@ -3610,16 +3628,31 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   }
   OS << "};\n\n";
 
-  // Emit the static match table; unused classes get initialized to 0 which is
-  // guaranteed to be InvalidMatchClass.
-  //
-  // FIXME: We can reduce the size of this table very easily. First, we change
-  // it so that store the kinds in separate bit-fields for each index, which
-  // only needs to be the max width used for classes at that index (we also need
-  // to reject based on this during classification). If we then make sure to
-  // order the match kinds appropriately (putting mnemonics last), then we
-  // should only end up using a few bits for each class, especially the ones
-  // following the mnemonic.
+  std::map<MatchClassSequence, unsigned, LessMatchClassSequence>
+      ClassSequenceOffsets;
+  for (const auto &MI : Info.Matchables) {
+    MatchClassSequence Sequence;
+    for (const MatchableInfo::AsmOperand &Op : MI->AsmOperands)
+      Sequence.push_back(Op.Class);
+    Sequence.resize(MaxNumOperands, nullptr);
+    ClassSequenceOffsets.try_emplace(std::move(Sequence), 0);
+  }
+
+  SmallVector<const ClassInfo *> MatchClasses;
+  for (auto &[Sequence, Offset] : ClassSequenceOffsets) {
+    Offset = MatchClasses.size();
+    append_range(MatchClasses, Sequence);
+  }
+
+  const char *MatchClassType = getMinimalTypeForRange(
+      std::distance(Info.Classes.begin(), Info.Classes.end()) +
+      2 /* Include 'InvalidMatchClass' and 'OptionalMatchClass' */);
+  OS << "static const " << MatchClassType << " MatchClassTable[] = {\n";
+  for (const ClassInfo *Class : MatchClasses)
+    OS << "  " << (Class ? Class->Name : "InvalidMatchClass") << ",\n";
+  OS << "};\n\n";
+
+  // Emit the static match table.
   OS << "namespace {\n";
   OS << "  struct MatchEntry {\n";
   OS << "    " << getMinimalTypeForRange(MaxMnemonicIndex) << " Mnemonic;\n";
@@ -3627,11 +3660,8 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   OS << "    " << getMinimalTypeForRange(NumConverters) << " ConvertFn;\n";
   OS << "    " << getMinimalTypeForRange(FeatureBitsets.size())
      << " RequiredFeaturesIdx;\n";
-  OS << "    "
-     << getMinimalTypeForRange(
-            std::distance(Info.Classes.begin(), Info.Classes.end()) +
-            2 /* Include 'InvalidMatchClass' and 'OptionalMatchClass' */)
-     << " Classes[" << MaxNumOperands << "];\n";
+  OS << "    " << getMinimalTypeForRange(MatchClasses.size())
+     << " ClassOffset;\n";
   OS << "    StringRef getMnemonic() const {\n";
   OS << "      return StringRef(MnemonicTable + Mnemonic + 1,\n";
   OS << "                       MnemonicTable[Mnemonic]);\n";
@@ -3680,11 +3710,18 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
         for (const auto &F : MI->RequiredFeatures)
           OS << '_' << F->TheDef->getName();
 
-      OS << ", { ";
+      MatchClassSequence Sequence;
+      for (const MatchableInfo::AsmOperand &Op : MI->AsmOperands)
+        Sequence.push_back(Op.Class);
+      Sequence.resize(MaxNumOperands, nullptr);
+      auto ClassSequence = ClassSequenceOffsets.find(Sequence);
+      assert(ClassSequence != ClassSequenceOffsets.end());
+
+      OS << ", " << ClassSequence->second << " /* { ";
       ListSeparator LS;
       for (const MatchableInfo::AsmOperand &Op : MI->AsmOperands)
         OS << LS << Op.Class->Name;
-      OS << " }, },\n";
+      OS << " } */, },\n";
     }
 
     OS << "};\n\n";
@@ -3819,11 +3856,13 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   if (HasOptionalOperands)
     OS << "    OptionalOperandsMask.reset(0, "
        << MaxNumOperands + HasMnemonicFirst << ");\n";
+  OS << "    const auto *FormalClasses = "
+        "MatchClassTable + it->ClassOffset;\n";
   OS << "    for (unsigned FormalIdx = " << (HasMnemonicFirst ? "0" : "SIndex")
      << ", ActualIdx = " << (HasMnemonicFirst ? "1" : "SIndex")
      << "; FormalIdx != " << MaxNumOperands << "; ++FormalIdx) {\n";
   OS << "      auto Formal = "
-     << "static_cast<MatchClassKind>(it->Classes[FormalIdx]);\n";
+     << "static_cast<MatchClassKind>(FormalClasses[FormalIdx]);\n";
   OS << "      DEBUG_WITH_TYPE(\"asm-matcher\",\n";
   OS << "                      dbgs() << \"  Matching formal operand class \" "
         "<< getMatchClassName(Formal)\n";
