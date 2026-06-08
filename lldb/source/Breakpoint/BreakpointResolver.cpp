@@ -63,6 +63,48 @@ BreakpointResolver::NameToResolverTy(llvm::StringRef name) {
   return UnknownResolver;
 }
 
+bool BreakpointResolver::ResolverTyInMask(uint64_t mask) {
+  if (mask == eResolverUnknown)
+    return false;
+
+  return !((mask & MaskForResolverTy()) == 0);
+}
+
+uint64_t BreakpointResolver::MaskForResolverTy() {
+  ResolverTy thisID = GetResolverTy();
+
+  if (thisID == FileLineResolver)
+    return eResolverFileAndLine;
+  if (thisID == AddressResolver)
+    return eResolverAddress;
+  if (thisID == NameResolver)
+    return eResolverName;
+  if (thisID == FileRegexResolver)
+    return eResolverFileRegex;
+  if (thisID == PythonResolver)
+    return eResolverPython;
+  if (thisID == ExceptionResolver)
+    return eResolverException;
+  return eResolverUnknown;
+}
+
+std::string BreakpointResolver::DescribeMask(uint64_t mask) {
+  std::string result;
+  if (mask & eResolverFileAndLine)
+    result.push_back('F');
+  if (mask & eResolverAddress)
+    result.push_back('A');
+  if (mask & eResolverName)
+    result.push_back('N');
+  if (mask & eResolverFileRegex)
+    result.push_back('S');
+  if (mask & eResolverPython)
+    result.push_back('P');
+  if (mask & eResolverException)
+    result.push_back('E');
+  return result;
+}
+
 BreakpointResolver::BreakpointResolver(const BreakpointSP &bkpt,
                                        const unsigned char resolverTy,
                                        lldb::addr_t offset,
