@@ -1861,7 +1861,8 @@ public:
             // TargetLoweringBase::getByValTypeAlignment.
             AllocAlign = DL.getABITypeAlign(ByValTy);
           }
-          // Byval pointers cannot be passed via variadic arguments.
+          assert(I < Callee->arg_size() &&
+                 "Byval pointers cannot be passed via variadic arguments.");
           auto Obj = Ctx.allocate(
               Size, AllocAlign->value(), Callee->getArg(I)->getName(),
               ArgTy->getPointerAddressSpace(), MemInitKind::Uninitialized,
