@@ -4197,6 +4197,61 @@ ProcessGDBRemote::HandleAcceleratorActions(const AcceleratorActions &actions) {
       return error;
   }
 
+  if (actions.connect_info) {
+    if (llvm::Error error = HandleAcceleratorConnection(actions))
+      return error;
+  }
+
+  return llvm::Error::success();
+}
+
+llvm::Error ProcessGDBRemote::HandleAcceleratorConnection(
+    const AcceleratorActions &actions) {
+  const AcceleratorConnectionInfo &connect_info = *actions.connect_info;
+  Debugger &debugger = GetTarget().GetDebugger();
+
+  // Create a new (empty) target for the accelerator and connect to the GDB
+  // server the plugin is serving.
+  llvm::StringRef exe_path =
+      connect_info.exe_path ? *connect_info.exe_path : llvm::StringRef();
+  llvm::StringRef triple =
+      connect_info.triple ? *connect_info.triple : llvm::StringRef();
+  TargetSP accelerator_target_sp;
+  Status error = debugger.GetTargetList().CreateTarget(
+      debugger, exe_path, triple, eLoadDependentsNo,
+      /*platform_options=*/nullptr, accelerator_target_sp);
+  if (error.Fail())
+    return error.takeError();
+  if (!accelerator_target_sp)
+    return llvm::createStringError("failed to create accelerator target");
+
+  PlatformSP platform_sp = accelerator_target_sp->GetPlatform();
+  if (!platform_sp)
+    return llvm::createStringError(
+        "no platform for the accelerator target connection");
+
+  ProcessSP process_sp =
+      connect_info.synchronous
+          ? platform_sp->ConnectProcessSynchronous(
+                connect_info.connect_url, GetPluginNameStatic(), debugger,
+                *debugger.GetAsyncOutputStream(), accelerator_target_sp.get(),
+                error)
+          : platform_sp->ConnectProcess(connect_info.connect_url,
+                                        GetPluginNameStatic(), debugger,
+                                        accelerator_target_sp.get(), error);
+  if (error.Fail())
+    return error.takeError();
+  if (!process_sp)
+    return llvm::createStringError("failed to connect to the accelerator");
+
+  accelerator_target_sp->SetTargetSessionName(actions.session_name);
+
+  // Broadcast the target creation event so DAP can create a child session
+  auto event_sp = std::make_shared<Event>(
+      Target::eBroadcastBitNewTargetCreated,
+      new Target::TargetEventData(GetTarget().shared_from_this(),
+                                  accelerator_target_sp));
+  GetTarget().BroadcastEvent(event_sp);
   return llvm::Error::success();
 }
 
