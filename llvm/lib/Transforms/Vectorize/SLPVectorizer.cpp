@@ -12800,6 +12800,38 @@ void BoUpSLP::buildTreeRec(ArrayRef<Value *> VLRef, unsigned Depth,
   SmallVector<int> ReuseShuffleIndices;
   SmallVector<Value *> VL(VLRef);
 
+  if (VL.size() > 1 && isa<ICmpInst>(VL[0])) {
+  // Changes icmp eq %x, 0 -> icmp ult %x, 1 when the rest of
+  // the instructions are icmp ult .. . This prevents to move 
+  // towards altShuffle path.
+  bool HasEqZero = false;
+  bool AllUltOrEqZero = all_of(VL, [&HasEqZero](Value *V) {
+    auto *Cmp = dyn_cast<ICmpInst>(V);
+    if (!Cmp)
+      return isa<PoisonValue>(V);
+    if (Cmp->getPredicate() == ICmpInst::ICMP_ULT)
+      return true;
+    if (Cmp->getPredicate() == ICmpInst::ICMP_EQ)
+      if (auto *C = dyn_cast<ConstantInt>(Cmp->getOperand(1)))
+        if (C->isZero()) {
+          HasEqZero = true;
+          return true;
+        }
+    return false;
+  });
+
+  if (HasEqZero && AllUltOrEqZero) {
+    for (Value *V : VL) {
+      auto *Cmp = dyn_cast<ICmpInst>(V);
+      if (!Cmp || Cmp->getPredicate() != ICmpInst::ICMP_EQ)
+        continue;
+      Cmp->setPredicate(ICmpInst::ICMP_ULT);
+      Cmp->setOperand(1, ConstantInt::get(Cmp->getOperand(1)->getType(), 1));
+      LLVM_DEBUG(dbgs() << "SLP: Canonicalized icmp eq 0 to ult 1: "
+                        << *Cmp << "\n");
+    }
+  }
+}
   // Tries to build split node.
   auto TrySplitNode = [&](const InstructionsState &LocalState) {
     SmallVector<Value *> Op1, Op2;
