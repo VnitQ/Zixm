@@ -7450,15 +7450,15 @@ const Decl *Sema::getCanonicalLocalDecl(const Decl *D) {
     return D;
   }
 
-  const auto *CanonFD = FD->getCanonicalDecl();
-  if (FD == CanonFD) {
+  const auto *DefFD = FD->getDefinition();
+  if (!DefFD || FD == DefFD) {
     return D;
   }
 
-  auto &Map = CanonicalLocalDecls[CanonFD];
+  auto &Map = CanonicalLocalDecls[DefFD];
   if (Map.empty()) {
     SmallVector<const Decl *, 8> CanonDecls;
-    for (const auto *De : CanonFD->decls()) {
+    for (const auto *De : DefFD->decls()) {
       if (isMappedLocalDecl(De)) {
         CanonDecls.push_back(De);
       }

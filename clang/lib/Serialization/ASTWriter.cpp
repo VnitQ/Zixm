@@ -3458,7 +3458,7 @@ uint64_t ASTWriter::WriteDeclContextLexicalBlock(ASTContext &Context,
   if (GeneratingReducedBMI && DC->isFunctionOrMethod()) {
     if (const auto *FD = dyn_cast<FunctionDecl>(DC)) {
       if (!FD->isDependentContext() || !FD->isThisDeclarationADefinition()) {
-    return 0;
+        return 0;
       }
     } else {
       return 0;

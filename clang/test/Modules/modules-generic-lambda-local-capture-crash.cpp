@@ -1,3 +1,9 @@
+// This test illustrates the compiler assertion/crash symptom of the bug.
+// - In debug mode (asserts enabled), it fails with an assertion in
+//   LocalInstantiationScope::findInstantiationOf.
+// - In release mode (asserts disabled, e.g. -c opt), it fails with a compiler
+//   segmentation fault (SIGSEGV) during compilation.
+//
 // RUN: rm -rf %t
 // RUN: split-file %s %t
 // RUN: cd %t
@@ -23,7 +29,7 @@
 // RUN:            -fmodule-name=repro \
 // RUN:            -fmodule-file=repro_module_a=repro_module_a.pcm \
 // RUN:            -fmodule-file=repro_wrapper_mock=repro_wrapper_mock.pcm \
-// RUN:            -fsyntax-only repro_main.cpp
+// RUN:            -verify -fsyntax-only repro_main.cpp
 
 //--- module.modulemap
 module TemplateClassModule {
@@ -81,16 +87,20 @@ template <typename T>
 class TemplateClass {
  public:
   template <typename... Args>
-  explicit TemplateClass(Args&&... args) {
-    const auto local_val = GetLocalValue();
-    const auto [a, b] = GetLocalPair();
-    auto holder = make_holder([&](auto x) {
-      Consumer<decltype(x)>{}(local_val);
-      Consumer<decltype(x)>{}(a);
-    });
-    holder.call();
-  }
+  explicit TemplateClass(Args&&... args);
 };
+
+template <typename T>
+template <typename... Args>
+TemplateClass<T>::TemplateClass(Args&&... args) {
+  const auto local_val = GetLocalValue();
+  const auto [a, b] = GetLocalPair();
+  auto holder = make_holder([&](auto x) {
+    Consumer<decltype(x)>{}(local_val);
+    Consumer<decltype(x)>{}(a);
+  });
+  holder.call();
+}
 #endif
 
 //--- module_a.h
@@ -129,6 +139,7 @@ struct Token {
 #endif
 
 //--- repro_main.cpp
+// expected-no-diagnostics
 #include "repro_wrapper.h"
 #include "repro_token.h"
 int main() {

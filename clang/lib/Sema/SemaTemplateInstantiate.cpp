@@ -4405,8 +4405,8 @@ static const Decl *getCanonicalLocalDecl(const Decl *D, Sema &SemaRef) {
       unsigned i = PV->getFunctionScopeIndex();
       if (i < FD->getNumParams() && FD->getParamDecl(i) == PV) {
         return FD->getCanonicalDecl()->getParamDecl(i);
+      }
     }
-  }
   } else if (isa<VarDecl>(D) || isa<BindingDecl>(D)) {
     return SemaRef.getCanonicalLocalDecl(D);
   }
