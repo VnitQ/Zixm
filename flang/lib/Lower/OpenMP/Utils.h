@@ -245,6 +245,8 @@ makeVariantMatchInfo(llvm::omp::VariantMatchInfo &vmi,
                      const parser::modifier::OmpContextSelector &ctxSel,
                      semantics::SemanticsContext &semaCtx, mlir::Location loc);
 
+bool isMetadirectiveEval(lower::pft::Evaluation &eval);
+
 } // namespace omp
 } // namespace lower
 } // namespace Fortran

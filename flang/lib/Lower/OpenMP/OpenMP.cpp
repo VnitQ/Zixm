@@ -4725,6 +4725,134 @@ static void appendConstructTraits(
         llvm::omp::TraitProperty::construct_target_target);
 }
 
+/// If the metadirective evaluation already contains a spliced DO loop (from a
+/// prior call), return it. Otherwise, locate the sibling DO loop that
+/// immediately follows the metadirective in the parent evaluation list, splice
+/// it into the metadirective's own evaluation list, and return a pointer to it.
+/// Returns nullptr if no associated DO loop is found.
+static lower::pft::Evaluation *
+spliceAssociatedDoEval(lower::pft::Evaluation &eval) {
+  if (eval.hasNestedEvaluations()) {
+    lower::pft::Evaluation &nested = eval.getNestedEvaluations().back();
+    return nested.getIf<parser::DoConstruct>() ? &nested : nullptr;
+  }
+
+  auto *parentList = eval.parentConstruct
+                         ? eval.parentConstruct->evaluationList.get()
+                         : &eval.getOwningProcedure()->evaluationList;
+  auto metaIt = llvm::find_if(
+      *parentList, [&](lower::pft::Evaluation &e) { return &e == &eval; });
+  assert(metaIt != parentList->end() &&
+         "metadirective eval not found in parent list");
+
+  auto loopIt = std::next(metaIt);
+  while (loopIt != parentList->end() &&
+         (loopIt->isEndStmt() || loopIt->getIf<parser::CompilerDirective>()))
+    ++loopIt;
+
+  if (loopIt == parentList->end() || !loopIt->getIf<parser::DoConstruct>())
+    return nullptr;
+
+  eval.evaluationList->splice(eval.evaluationList->end(), *parentList, loopIt);
+  return &eval.getNestedEvaluations().back();
+}
+
+static bool hasLoopAssociatedDirective(const ConstructQueue &queue) {
+  return llvm::any_of(queue, [](const auto &item) {
+    return llvm::omp::getDirectiveAssociation(item.id) ==
+           llvm::omp::Association::LoopNest;
+  });
+}
+
+static bool consumesAssociatedEvaluation(const ConstructQueue &queue) {
+  return llvm::any_of(queue, [](const auto &item) {
+    return llvm::omp::getDirectiveAssociation(item.id) !=
+           llvm::omp::Association::None;
+  });
+}
+
+/// Clear all existing DSA flags on \p sym, then set PreDetermined + \p dsa.
+static void applySymbolDSA(semantics::Symbol &sym,
+                           semantics::Symbol::Flag dsa) {
+  using Symbol = semantics::Symbol;
+  Symbol::Flags dataSharingAttributeFlags{
+      Symbol::Flag::OmpShared,       Symbol::Flag::OmpPrivate,
+      Symbol::Flag::OmpFirstPrivate, Symbol::Flag::OmpLastPrivate,
+      Symbol::Flag::OmpReduction,    Symbol::Flag::OmpLinear};
+  sym.flags() &=
+      ~(dataSharingAttributeFlags |
+        Symbol::Flags{Symbol::Flag::OmpExplicit, Symbol::Flag::OmpImplicit,
+                      Symbol::Flag::OmpPreDetermined});
+  sym.flags() |= Symbol::Flags{Symbol::Flag::OmpPreDetermined, dsa};
+}
+
+class SymbolDSAGuard {
+public:
+  ~SymbolDSAGuard() {
+    for (auto &[sym, flags] : llvm::reverse(savedFlags))
+      sym->flags() = flags;
+  }
+
+  void setSymbolDSA(semantics::Symbol &sym, semantics::Symbol::Flag dsa) {
+    if (!llvm::any_of(savedFlags,
+                      [&](const auto &entry) { return entry.first == &sym; }))
+      savedFlags.emplace_back(&sym, sym.flags());
+    applySymbolDSA(sym, dsa);
+  }
+
+private:
+  llvm::SmallVector<std::pair<semantics::Symbol *, semantics::Symbol::Flags>, 4>
+      savedFlags;
+};
+
+/// Extract the induction variable symbol from a DO construct.
+static semantics::Symbol *
+getDoConstructIVSymbol(const parser::DoConstruct &doConstruct) {
+  if (const auto &loopCtrl = doConstruct.GetLoopControl())
+    if (auto *bounds = std::get_if<parser::LoopControl::Bounds>(&loopCtrl->u))
+      return bounds->Name().thing.symbol;
+  return nullptr;
+}
+
+static int64_t getCollapseValue(const parser::OmpDirectiveSpecification &spec) {
+  for (const parser::OmpClause &clause : spec.Clauses().v)
+    if (const auto *collapse =
+            std::get_if<parser::OmpClause::Collapse>(&clause.u))
+      if (const auto value = semantics::GetIntValue(collapse->v))
+        return *value;
+  return 1;
+}
+
+/// Mark loop induction variable data-sharing attributes for a
+/// metadirective-selected loop variant. Semantic analysis cannot mark these
+/// because the variant is resolved at lowering time.
+static void
+markMetadirectiveLoopIVs(semantics::SemanticsContext &semaCtx,
+                         const parser::OmpDirectiveSpecification &spec,
+                         lower::pft::Evaluation &loopEval,
+                         SymbolDSAGuard &dsaGuard) {
+  using Symbol = semantics::Symbol;
+
+  int64_t affectedDepth = std::max<int64_t>(getCollapseValue(spec), 1);
+  Symbol::Flag ivDSA;
+  if (!llvm::omp::allSimdSet.test(spec.DirId()))
+    ivDSA = Symbol::Flag::OmpPrivate;
+  else if (affectedDepth == 1 && semaCtx.langOptions().OpenMPVersion < 60)
+    ivDSA = Symbol::Flag::OmpLinear;
+  else
+    ivDSA = Symbol::Flag::OmpLastPrivate;
+
+  lower::pft::Evaluation *doEval = &loopEval;
+  for (int64_t level = 0; level < affectedDepth; ++level) {
+    auto *doConstruct = doEval->getIf<parser::DoConstruct>();
+    assert(doConstruct && "expected associated DO construct");
+    if (semantics::Symbol *sym = getDoConstructIVSymbol(*doConstruct))
+      dsaGuard.setSymbolDSA(*sym, ivDSA);
+    if (level + 1 < affectedDepth)
+      doEval = getNestedDoConstruct(*doEval);
+  }
+}
+
 static void genMetadirective(lower::AbstractConverter &converter,
                              lower::SymMap &symTable,
                              semantics::SemanticsContext &semaCtx,
@@ -4888,23 +5016,41 @@ static void genMetadirective(lower::AbstractConverter &converter,
     }
   }
 
+  auto makeVariantQueue = [&](const parser::OmpDirectiveSpecification &spec) {
+    List<Clause> variantClauses = makeClauses(spec.Clauses(), semaCtx);
+    return ConstructQueue{
+        buildConstructQueue(converter.getFirOpBuilder().getModule(), semaCtx,
+                            eval, spec.source, spec.DirId(), variantClauses)};
+  };
+
+  bool hasLoopAssociatedCandidate = false;
+  for (const MetadirectiveCandidate &candidate : candidates) {
+    if (candidate.spec &&
+        hasLoopAssociatedDirective(makeVariantQueue(*candidate.spec))) {
+      hasLoopAssociatedCandidate = true;
+      break;
+    }
+  }
+  if (!hasLoopAssociatedCandidate && fallback)
+    hasLoopAssociatedCandidate =
+        hasLoopAssociatedDirective(makeVariantQueue(*fallback));
+  if (hasLoopAssociatedCandidate)
+    (void)spliceAssociatedDoEval(eval);
+
   // Lower a single resolved candidate.
   auto genVariant = [&](const parser::OmpDirectiveSpecification *spec) {
     if (!spec) {
       genNestedEvaluations(converter, eval);
       return;
     }
-    List<Clause> variantClauses = makeClauses(spec->Clauses(), semaCtx);
     mlir::Location variantLoc = converter.genLocation(spec->source);
-    ConstructQueue queue{
-        buildConstructQueue(converter.getFirOpBuilder().getModule(), semaCtx,
-                            eval, spec->source, spec->DirId(), variantClauses)};
+    ConstructQueue queue = makeVariantQueue(*spec);
 
     if (llvm::any_of(queue, [](const auto &item) {
-          return llvm::omp::getDirectiveAssociation(item.id) ==
-                 llvm::omp::Association::LoopNest;
+          return llvm::omp::allTargetSet.test(item.id);
         })) {
-      TODO(variantLoc, "loop-associated METADIRECTIVE variant");
+      TODO(variantLoc,
+           "TARGET construct selected by METADIRECTIVE (host-eval)");
     }
 
     if (llvm::any_of(queue, [](const auto &item) {
@@ -4916,8 +5062,22 @@ static void genMetadirective(lower::AbstractConverter &converter,
       TODO(variantLoc, "declarative METADIRECTIVE variant");
     }
 
+    bool hasLoopAssociation = hasLoopAssociatedDirective(queue);
+    if (hasLoopAssociation) {
+      lower::pft::Evaluation *loopEval = spliceAssociatedDoEval(eval);
+      if (!loopEval)
+        TODO(variantLoc, "loop-associated METADIRECTIVE without associated DO");
+      SymbolDSAGuard dsaGuard;
+      markMetadirectiveLoopIVs(semaCtx, *spec, *loopEval, dsaGuard);
+      genOMPDispatch(converter, symTable, semaCtx, eval, variantLoc, queue,
+                     queue.begin());
+      return;
+    }
+
     genOMPDispatch(converter, symTable, semaCtx, eval, variantLoc, queue,
                    queue.begin());
+    if (!consumesAssociatedEvaluation(queue) && eval.hasNestedEvaluations())
+      genNestedEvaluations(converter, eval);
   };
 
   auto selectBestCandidate =
