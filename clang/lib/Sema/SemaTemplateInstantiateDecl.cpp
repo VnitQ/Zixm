@@ -7421,3 +7421,67 @@ void Sema::PerformDependentDiagnostics(const DeclContext *Pattern,
     }
   }
 }
+
+static bool isMappedLocalDecl(const Decl *D) {
+  if (const auto *VD = dyn_cast<VarDecl>(D)) {
+    return VD->isLocalVarDeclOrParm() && !isa<ParmVarDecl>(VD);
+  }
+  return isa<BindingDecl>(D);
+}
+
+const Decl *Sema::getCanonicalLocalDecl(const Decl *D) {
+  if (isa<ParmVarDecl>(D)) {
+    return D;
+  }
+
+  const auto *VD = dyn_cast<VarDecl>(D);
+  const auto *BD = dyn_cast<BindingDecl>(D);
+  if (!VD && !BD) {
+    return D;
+  }
+
+  if (VD && !VD->isLocalVarDeclOrParm()) {
+    return D;
+  }
+
+  const DeclContext *DC = VD ? VD->getDeclContext() : BD->getDeclContext();
+  const auto *FD = dyn_cast<FunctionDecl>(DC);
+  if (!FD) {
+    return D;
+  }
+
+  const auto *CanonFD = FD->getCanonicalDecl();
+  if (FD == CanonFD) {
+    return D;
+  }
+
+  auto &Map = CanonicalLocalDecls[CanonFD];
+  if (Map.empty()) {
+    SmallVector<const Decl *, 8> CanonDecls;
+    for (const auto *De : CanonFD->decls()) {
+      if (isMappedLocalDecl(De)) {
+        CanonDecls.push_back(De);
+      }
+    }
+
+    SmallVector<const Decl *, 8> LocalDecls;
+    for (const auto *De : FD->decls()) {
+      if (isMappedLocalDecl(De)) {
+        LocalDecls.push_back(De);
+      }
+    }
+
+    if (CanonDecls.size() == LocalDecls.size()) {
+      for (size_t I = 0; I < LocalDecls.size(); ++I) {
+        Map[LocalDecls[I]] = CanonDecls[I];
+      }
+    }
+  }
+
+  const auto It = Map.find(D);
+  if (It != Map.end()) {
+    return It->second;
+  }
+
+  return D;
+}

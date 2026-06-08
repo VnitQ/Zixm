@@ -3455,8 +3455,15 @@ uint64_t ASTWriter::WriteDeclContextLexicalBlock(ASTContext &Context,
     return 0;
 
   // In reduced BMI, we don't care the declarations in functions.
-  if (GeneratingReducedBMI && DC->isFunctionOrMethod())
+  if (GeneratingReducedBMI && DC->isFunctionOrMethod()) {
+    if (const auto *FD = dyn_cast<FunctionDecl>(DC)) {
+      if (!FD->isDependentContext() || !FD->isThisDeclarationADefinition()) {
     return 0;
+      }
+    } else {
+      return 0;
+    }
+  }
 
   uint64_t Offset = Stream.GetCurrentBitNo();
   SmallVector<DeclID, 128> KindDeclPairs;
