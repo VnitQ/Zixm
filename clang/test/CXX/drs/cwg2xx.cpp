@@ -695,6 +695,41 @@ namespace cwg241 { // cwg241: 9
   }
 } // namespace cwg241
 
+namespace cwg242 { // cwg242: 2.8
+  struct A {};
+  struct I1 : A {};
+  struct I2 : A {};
+  struct D : I1, I2 {};
+
+  A *upcast(D *p) {
+    return (A *)(p);
+    // expected-error@-1 {{error: ambiguous conversion from derived class 'cwg242::D' to base class 'cwg242::A'}}
+  }
+
+  D *downcast(A *p) {
+    return (D *)(p);
+    // expected-error@-1 {{ambiguous cast from base 'cwg242::A' to derived 'cwg242::D'}}
+  }
+
+  struct V {};
+  struct B : virtual V {};
+
+  B *virt_downcast(V *p) {
+    return (B *)(p);
+    // expected-error@-1 {{cannot cast 'cwg242::V *' to 'B *' via virtual base 'cwg242::V'}}
+  }
+
+  A &ref_upcast(D &r) {
+    return (A &)(r);
+    // expected-error@-1 {{ambiguous conversion from derived class 'cwg242::D' to base class 'cwg242::A'}}
+  }
+
+  int D::*ptm_cast(int A::*p) {
+    return (int D::*)(p);
+    // expected-error@-1 {{ambiguous conversion from pointer to member of base class 'cwg242::A' to pointer to member of derived class 'cwg242::D'}}
+  }
+} // namespace cwg242
+
 namespace cwg243 { // cwg243: 2.8
   struct B;
   struct A {
