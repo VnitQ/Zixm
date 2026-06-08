@@ -603,12 +603,22 @@ void SearchableTableEmitter::emitGenericTable(const GenericTable &Table,
   OS << "constexpr " << Table.CppTypeName << " " << Table.Name << "[] = {\n";
   for (const auto &[Idx, Entry] : enumerate(Entries)) {
     OS << "  { ";
+    ListSeparator LS;
     if (Entry) {
-      ListSeparator LS;
       for (const auto &Field : Table.Fields)
         OS << LS
            << primaryRepresentation(Table.Locs[0], Field,
                                     Entry->getValueInit(Field.Name));
+    } else if (Table.AllowSparseTable) {
+      // For empty rows emit a sentinel value as a key, so we can return null
+      // during lookup. Value is constructed such that LookupKey != KeyField.
+      for (const auto &Field : Table.Fields) {
+        OS << LS;
+        if (Field.Name == Table.PrimaryKey->Fields[0].Name)
+          OS << "0x" << utohexstr((DirectLookupSlots - 1) ^ Idx);
+        else
+          OS << "{}";
+      }
     }
     OS << " }, // " << Idx << "\n";
   }
@@ -619,8 +629,12 @@ void SearchableTableEmitter::emitGenericTable(const GenericTable &Table,
     emitLookupDeclaration(Table, *Table.PrimaryKey, OS);
     OS << " {\n";
     const GenericField &Field = Table.PrimaryKey->Fields[0];
-    OS << "  assert(" << Field.Name << " < " << DirectLookupSlots << ");\n";
-    OS << "  return &" << Table.Name << "[" << Field.Name << "];\n";
+    OS << "  if (" << Field.Name << " >= " << DirectLookupSlots << ")\n";
+    OS << "    return nullptr;\n";
+    OS << "  const auto *Entry = &" << Table.Name << "[" << Field.Name
+       << "];\n";
+    OS << "  return Entry->" << Field.Name << " == " << Field.Name
+       << " ? Entry : nullptr;\n";
     OS << "}\n";
   } else if (Table.PrimaryKey) {
     // Indexes are sorted "{ Thing, PrimaryIdx }" arrays, so that a binary
