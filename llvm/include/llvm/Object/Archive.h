@@ -431,6 +431,13 @@ public:
     return std::move(ThinBuffers);
   }
 
+  static constexpr auto kWholeArchiveString =
+      StringLiteral::withInnerNUL("-wholearchive\0");
+
+  bool isWholeArchive() const {
+    return StringTable.starts_with(kWholeArchiveString);
+  }
+
   std::unique_ptr<AbstractArchiveMemberHeader>
   createArchiveMemberHeader(const char *RawHeaderPtr, uint64_t Size,
                             Error *Err) const;
