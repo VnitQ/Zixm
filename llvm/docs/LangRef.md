@@ -2922,7 +2922,7 @@ fn -> other_fn -> other_fn ; fn is norecurse
     and redirect the call to a modular implementation function instead.
 
     The compiler reports that an implementation aspect is needed by issuing a
-    relocation for the symbol `<impl_name>_<aspect>``. This arranges for code
+    relocation for the symbol `<impl_name>_<aspect>`. This arranges for code
     and data needed to support the aspect of the implementation to be brought
     into the link to satisfy weak references in the modular implemenation
     function.
@@ -2964,8 +2964,8 @@ attributes are supported:
     `_ZGV<isa><mask><vlen><parameters>_<scalar_name>`. When present,
     the optional token `(<vector_redirection>)` informs the compiler
     that a custom name is provided in addition to the standard one
-    (custom names can be provided for example via the use of ``declare
-    variant`` in OpenMP 5.0). The declaration of the variant must be
+    (custom names can be provided for example via the use of `declare
+    variant` in OpenMP 5.0). The declaration of the variant must be
     present in the IR Module. The signature of the vector variant is
     determined by the rules of the Vector Function ABI (VFABI)
     specifications of the target. For Arm and X86, the VFABI can be
@@ -3277,7 +3277,7 @@ attributes, an assume operand bundle may also encode a `separate_storage`
 operand bundle. This has the form:
 
 ```llvm
-separate_storage(<val1>, <val2>)``
+separate_storage(<val1>, <val2>)
 ```
 
 This indicates that no pointer {ref}`based <pointeraliasing>` on one of its
@@ -4784,7 +4784,7 @@ In general vector elements are laid out in memory in the same way as
 {ref}`array types <t_array>`. Such an analogy works fine as long as the vector
 elements are byte sized. However, when the elements of the vector aren't byte
 sized it gets a bit more complicated. One way to describe the layout is by
-describing what happens when a vector such as <N x iM> is bitcasted to an
+describing what happens when a vector such as `<N x iM>` is bitcasted to an
 integer type with N*M bits, and then following the rules for storing such an
 integer to memory.
 
@@ -6237,7 +6237,7 @@ X86:
   statement.
 - `jr`: An 8, 16, 32, or 64-bit integer gpr16. It won't be extended to gpr32
   when feature `egpr` or `inline-asm-use-gpr32` is on.
-- `jR`: An 8, 16, 32, or 64-bit integer gpr32 when feature `egpr`` is on.
+- `jR`: An 8, 16, 32, or 64-bit integer gpr32 when feature `egpr` is on.
   Otherwise, same as `r`.
 
 XCore:
@@ -7363,9 +7363,9 @@ tuples this way:
    to be relative within that inner type.
 
 A memory access with an access tag `(BaseTy1, AccessTy1, Offset1)`
-aliases a memory access with an access tag ``(BaseTy2, AccessTy2,
+aliases a memory access with an access tag `(BaseTy2, AccessTy2,
 Offset2)` if either `(BaseTy1, Offset1)` is reachable from `(Base2,
-Offset2)` via the `Parent`` relation or vice versa. If memory accesses
+Offset2)` via the `Parent` relation or vice versa. If memory accesses
 alias even though they are noalias according to `!tbaa` metadata, the
 behavior is undefined.
 
@@ -7405,8 +7405,8 @@ OuterStructTy = {"Outer", (FloatScalarTy, 0), (DoubleScalarTy, 4),
                  (InnerStructTy, 12)}
 ```
 
-with (e.g.) `ImmediateParent(OuterStructTy, 12)` = ``(InnerStructTy,
-0)`, `ImmediateParent(InnerStructTy, 0)` = `(IntScalarTy, 0)``, and
+with (e.g.) `ImmediateParent(OuterStructTy, 12)` = `(InnerStructTy,
+0)`, `ImmediateParent(InnerStructTy, 0)` = `(IntScalarTy, 0)`, and
 `ImmediateParent(IntScalarTy, 0)` = `(CharScalarTy, 0)`.
 
 (tbaa_node_representation)=
@@ -7559,11 +7559,11 @@ result of that instruction, in ULPs, thus potentially allowing the
 compiler to use a more efficient but less accurate method of computing
 it. ULP is defined as follows:
 
-    If `x` is a real number that lies between two finite consecutive
-    floating-point numbers `a` and `b`, without being equal to one
-    of them, then `ulp(x) = |b - a|`, otherwise `ulp(x)` is the
-    distance between the two non-equal finite floating-point numbers
-    nearest `x`. Moreover, `ulp(NaN)` is `NaN`.
+> If `x` is a real number that lies between two finite consecutive
+> floating-point numbers `a` and `b`, without being equal to one
+> of them, then `ulp(x) = |b - a|`, otherwise `ulp(x)` is the
+> distance between the two non-equal finite floating-point numbers
+> nearest `x`. Moreover, `ulp(NaN)` is `NaN`.
 
 The metadata node shall consist of a single positive float type number
 representing the maximum relative error, for example:
@@ -7716,8 +7716,8 @@ arguments encoded explicitly before.
 In the code below, the `pthread_create` function is marked as a broker
 through the `!callback !1` metadata. In the example, there is only one
 callback encoding, namely `!2`, associated with the broker. This encoding
-identifies the callback function as the second argument of the broker (``i64
-2``) and the sole argument of the callback function as the third one of the
+identifies the callback function as the second argument of the broker (`i64
+2`) and the sole argument of the callback function as the third one of the
 broker function (`i64 3`).
 
 % FIXME why does the llvm-sphinx-docs builder give a highlighting error if the below is set to highlight as 'llvm', despite that we have misc.highlighting_failure set?
@@ -8651,9 +8651,9 @@ information, it is also used to derive the basic block profile count.
 For more information, see {doc}`BranchWeightMetadata`.
 
 (prof_node_VP)=
+(vp)=
 
-VP
-""
+##### VP
 
 VP (value profile) metadata can be attached to instructions that have
 value profile information. Currently this is indirect calls (where it
@@ -11581,9 +11581,9 @@ allocation on any convenient boundary compatible with the type.
 '`type`' may be any sized type.
 
 Structs containing scalable vectors cannot be used in allocas unless all
-fields are the same scalable vector type (e.g., ``{<vscale x 2 x i32>,
-<vscale x 2 x i32>}` contains the same type while `{<vscale x 2 x i32>,
-<vscale x 2 x i64>}`` doesn't).
+fields are the same scalable vector type (e.g.,
+`{<vscale x 2 x i32>, <vscale x 2 x i32>}` contains the same type while
+`{<vscale x 2 x i32>, <vscale x 2 x i64>}` doesn't).
 
 ##### Semantics:
 
@@ -11921,10 +11921,10 @@ equal, it tries to store a new value into the memory.
 There are three arguments to the '`cmpxchg`' instruction: an address
 to operate on, a value to compare to the value currently be at that
 address, and a new value to place at that address if the compared values
-are equal. The type of '<cmp>' must be an integer or pointer type whose
+are equal. The type of `<cmp>` must be an integer or pointer type whose
 bit width is a power of two greater than or equal to eight.
-'<cmp>' and '<new>' must
-have the same type, and the type of '<pointer>' must be a pointer to
+`<cmp>` and `<new>` must
+have the same type, and the type of `<pointer>` must be a pointer to
 that type. If the `cmpxchg` is marked as `volatile`, then the
 optimizer is not allowed to modify the number or order of execution of
 this `cmpxchg` with other {ref}`volatile operations <volatile>`.
@@ -11943,7 +11943,7 @@ performance.
 
 The alignment is only optional when parsing textual IR; for in-memory IR, it is
 always present. If unspecified, the alignment is assumed to be equal to the
-size of the '<value>' type. Note that this default alignment assumption is
+size of the `<value>` type. Note that this default alignment assumption is
 different from the alignment used for the load/store instructions when align
 isn't specified.
 
@@ -12031,11 +12031,11 @@ operation. The operation must be one of the following keywords:
 -  usub_cond
 -  usub_sat
 
-For all of these operations, the type of '<value>' must be a type whose bit width is a power of two greater than or equal to eight.
+For all of these operations, the type of `<value>` must be a type whose bit width is a power of two greater than or equal to eight.
 For add/sub/and/nand/or/xor/max/min/umax/umin/uinc_wrap/udec_wrap/usub_cond/usub_sat, this must be an integer type, or, if the `elementwise` modifier is present, a fixed vector of integer type.
 For fadd/fsub/fmax/fmin/fmaximum/fminimum/fmaximumnum/fminimumnum, this must be a floating-point or fixed vector of floating-point type.
 For xchg, this must be an integer type, floating-point type, or pointer type, or, if the `elementwise` modifier is present, a fixed vector of integer type, floating-point type, or pointer type.
-The type of the '<pointer>' operand must be a pointer to the type of '<value>'.
+The type of the `<pointer>` operand must be a pointer to the type of `<value>`.
 If the `atomicrmw` is marked as `volatile`, then the optimizer is not allowed to modify the
 number or order of execution of this `atomicrmw` with other
 {ref}`volatile operations <volatile>`.
@@ -12046,7 +12046,7 @@ performance.
 
 The alignment is only optional when parsing textual IR; for in-memory IR, it is
 always present. If unspecified, the alignment is assumed to be equal to the
-size of the '<value>' type. Note that this default alignment assumption is
+size of the `<value>` type. Note that this default alignment assumption is
 different from the alignment used for the load/store instructions when align
 isn't specified.
 
@@ -14929,8 +14929,8 @@ int val = my_struct->b;
 In this example, the frontend doesn't know the exact physical layout, but
 knows those logical layouts are lowered to the same physical layout:
 
-    - `{ i32, i32, i32, i32 }`
-    - `[ i32 x 4 ]`
+- `{ i32, i32, i32, i32 }`
+- `[ i32 x 4 ]`
 
 This means is is valid to lower the following code to either:
 
@@ -15037,30 +15037,30 @@ declare i64 @llvm.get.dynamic.area.offset.i64()
 
 ##### Overview:
 
-      The '`llvm.get.dynamic.area.offset.*`' intrinsic family is used to
-      get the offset from native stack pointer to the address of the most
-      recent dynamic alloca on the caller's stack. These intrinsics are
-      intended for use in combination with
-      {ref}`llvm.stacksave <int_stacksave>` to get a
-      pointer to the most recent dynamic alloca. This is useful, for example,
-      for AddressSanitizer's stack unpoisoning routines.
+The '`llvm.get.dynamic.area.offset.*`' intrinsic family is used to
+get the offset from native stack pointer to the address of the most
+recent dynamic alloca on the caller's stack. These intrinsics are
+intended for use in combination with
+{ref}`llvm.stacksave <int_stacksave>` to get a
+pointer to the most recent dynamic alloca. This is useful, for example,
+for AddressSanitizer's stack unpoisoning routines.
 
 ##### Semantics:
 
-      These intrinsics return a non-negative integer value that can be used to
-      get the address of the most recent dynamic alloca, allocated by {ref}`alloca <i_alloca>`
-      on the caller's stack. In particular, for targets where stack grows downwards,
-      adding this offset to the native stack pointer would get the address of the most
-      recent dynamic alloca. For targets where stack grows upwards, the situation is a bit more
-      complicated, because subtracting this value from stack pointer would get the address
-      one past the end of the most recent dynamic alloca.
+These intrinsics return a non-negative integer value that can be used to
+get the address of the most recent dynamic alloca, allocated by {ref}`alloca <i_alloca>`
+on the caller's stack. In particular, for targets where stack grows downwards,
+adding this offset to the native stack pointer would get the address of the most
+recent dynamic alloca. For targets where stack grows upwards, the situation is a bit more
+complicated, because subtracting this value from stack pointer would get the address
+one past the end of the most recent dynamic alloca.
 
-      Although for most targets `llvm.get.dynamic.area.offset <int_get_dynamic_area_offset>`
-      returns just a zero, for others, such as PowerPC and PowerPC64, it returns a
-      compile-time-known constant value.
+Although for most targets `llvm.get.dynamic.area.offset <int_get_dynamic_area_offset>`
+returns just a zero, for others, such as PowerPC and PowerPC64, it returns a
+compile-time-known constant value.
 
-      The return value type of {ref}`llvm.get.dynamic.area.offset <int_get_dynamic_area_offset>`
-      must match the target's {ref}`alloca address space <alloca_addrspace>` type.
+The return value type of {ref}`llvm.get.dynamic.area.offset <int_get_dynamic_area_offset>`
+must match the target's {ref}`alloca address space <alloca_addrspace>` type.
 
 (int_prefetch)=
 
@@ -20415,8 +20415,8 @@ declare <vscale x 16 x i1> @llvm.loop.dependence.war.mask.nxv16i1.i64(i64 %addrA
 
 ##### Overview:
 
-Given a vector load from address %addrA followed by a vector store to address
-%addrB, this instruction generates a mask where an active lane indicates that
+Given a vector load from address `%addrA` followed by a vector store to address
+`%addrB`, this instruction generates a mask where an active lane indicates that
 the write-after-read sequence can be performed safely for that lane, without the
 danger of a write-after-read hazard occurring.
 
@@ -20436,8 +20436,9 @@ The intrinsic returns `poison` if the distance between `%addrA` and `%addrB`
 is smaller than `VF * %elementsize` and either `%addrA + VF * %elementSize`
 or `%addrB + VF * %elementSize` wrap.
 
-The element of the result mask is active when loading from %addrA then storing to
-%addrB is safe and doesn't result in a write-after-read hazard, meaning that:
+The element of the result mask is active when loading from `%addrA` then
+storing to `%addrB` is safe and doesn't result in a write-after-read hazard,
+meaning that:
 
 * (addrB - addrA) <= 0 (guarantees that all lanes are loaded before any stores), or
 * elementSize * lane < (addrB - addrA) (guarantees that this lane is loaded
@@ -20497,9 +20498,9 @@ declare <vscale x 16 x i1> @llvm.loop.dependence.raw.mask.nxv16i1.i64(i64 %addrA
 
 ##### Overview:
 
-Given a vector store to address %addrA followed by a vector load from address
-%addrB, this instruction generates a mask where an active lane indicates that the
-read-after-write sequence can be performed safely for that lane, without a
+Given a vector store to address `%addrA` followed by a vector load from address
+`%addrB`, this instruction generates a mask where an active lane indicates that
+the read-after-write sequence can be performed safely for that lane, without a
 read-after-write hazard or a store-to-load forwarding hazard being introduced.
 
 A read-after-write hazard occurs when a read-after-write sequence for a given
@@ -20523,8 +20524,8 @@ The intrinsic returns `poison` if the distance between `%addrA` and `%addrB`
 is smaller than `VF * %elementsize` and either `%addrA + VF * %elementSize`
 or `%addrB + VF * %elementSize` wrap.
 
-The element of the result mask is active when storing to %addrA then loading from
-%addrB is safe and doesn't result in aliasing, meaning that:
+The element of the result mask is active when storing to `%addrA` then
+loading from `%addrB` is safe and doesn't result in aliasing, meaning that:
 
 * elementSize * lane < abs(addrB - addrA) (guarantees that the store of this lane
   occurs before loading from this address), or
@@ -20872,13 +20873,13 @@ declare vectorty @llvm.matrix.transpose.*(vectorty %In, i32 <Rows>, i32 <Cols>)
 
 ##### Overview:
 
-The '`llvm.matrix.transpose.*`' intrinsics treat `%In` as a ``<Rows> x
-<Cols>`` matrix and return the transposed matrix in the result vector.
+The '`llvm.matrix.transpose.*`' intrinsics treat `%In` as a
+`<Rows> x <Cols>` matrix and return the transposed matrix in the result vector.
 
 ##### Arguments:
 
-The first argument `%In` is a vector that corresponds to a ``<Rows> x
-<Cols>` matrix. Thus, arguments `<Rows>` and `<Cols>`` correspond to the
+The first argument `%In` is a vector that corresponds to a
+`<Rows> x <Cols>` matrix. Thus, arguments `<Rows>` and `<Cols>` correspond to the
 number of rows and columns, respectively, and must be positive, constant
 integers. The returned vector must have `<Rows> * <Cols>` elements, and have
 the same float or integer element type as `%In`.
@@ -20894,14 +20895,14 @@ declare vectorty @llvm.matrix.multiply.*(vectorty %A, vectorty %B, i32 <OuterRow
 
 ##### Overview:
 
-The '`llvm.matrix.multiply.*`' intrinsics treat `%A` as a ``<OuterRows> x
-<Inner>` matrix, `%B` as a `<Inner> x <OuterColumns>`` matrix, and
+The '`llvm.matrix.multiply.*`' intrinsics treat `%A` as a
+`<OuterRows> x <Inner>` matrix, `%B` as a `<Inner> x <OuterColumns>` matrix, and
 multiplies them. The result matrix is returned in the result vector.
 
 ##### Arguments:
 
-The first vector argument `%A` corresponds to a matrix with ``<OuterRows> *
-<Inner>` elements, and the second argument `%B`` to a matrix with
+The first vector argument `%A` corresponds to a matrix with
+`<OuterRows> * <Inner>` elements, and the second argument `%B` to a matrix with
 `<Inner> * <OuterColumns>` elements. Arguments `<OuterRows>`,
 `<Inner>` and `<OuterColumns>` must be positive, constant integers. The
 returned vector must have `<OuterRows> * <OuterColumns>` elements.
@@ -20966,8 +20967,8 @@ declare void @llvm.matrix.column.major.store.v9f64.i32(
 
 ##### Overview:
 
-The '`llvm.matrix.column.major.store.*`' intrinsics store the ``<Rows> x
-<Cols>` matrix in `%In` to memory using a stride of `%Stride`` between
+The '`llvm.matrix.column.major.store.*`' intrinsics store the
+`<Rows> x <Cols>` matrix in `%In` to memory using a stride of `%Stride` between
 columns.  Independent of `%Stride`'s bitwidth, the offset is computed using
 the target daya layout's pointer index type.  If `<IsVolatile>` is true, the
 intrinsic is considered a {ref}`volatile memory access <volatile>`.
@@ -20977,8 +20978,8 @@ specified as an attribute on the argument.
 
 ##### Arguments:
 
-The first argument `%In` is a vector that corresponds to a ``<Rows> x
-<Cols>` matrix to be stored to memory. The second argument `%Ptr`` is a
+The first argument `%In` is a vector that corresponds to a
+`<Rows> x <Cols>` matrix to be stored to memory. The second argument `%Ptr` is a
 pointer to the vector type of `%In`, and is the start address of the matrix
 in memory. The third argument `%Stride` is a positive integer for which
 `%Stride >= <Rows>`.  `%Stride` is used to compute the column memory
@@ -21402,7 +21403,6 @@ returned can then be {ref}`bitcast and executed <int_trampoline>`.
 
 
 (int_vp)=
-(vp)=
 
 ### Vector Predication Intrinsics
 VP intrinsics are intended for predicated SIMD/vector code.  A typical VP
@@ -23107,7 +23107,7 @@ operation.
 The '`llvm.vp.reduce.fmul`' intrinsic performs the floating-point `MUL`
 reduction ({ref}`llvm.vector.reduce.fmul <int_vector_reduce_fmul>`) of the
 vector argument `val` on each enabled lane, multiplying it by the scalar
-`start_value``. Disabled lanes are treated as containing the neutral value
+`start_value`. Disabled lanes are treated as containing the neutral value
 `1.0` (i.e., having no effect on the reduction operation). If no lanes are
 enabled, the resulting value will be equal to the starting value.
 
@@ -24016,7 +24016,7 @@ The '`llvm.experimental.vp.strided.load`' intrinsic loads, into a vector, multip
 values from memory in the same way as the {ref}`llvm.vp.gather <int_vp_gather>` intrinsic,
 where the vector of pointers is in the form:
 
-   `%ptrs = <%ptr, %ptr + %stride, %ptr + 2 * %stride, ... >`,
+`%ptrs = <%ptr, %ptr + %stride, %ptr + 2 * %stride, ... >`,
 
 with '`ptr`' previously casted to a pointer '`i8`', '`stride`' always interpreted as a signed
 integer and all arithmetic occurring in the pointer type.
@@ -24072,7 +24072,7 @@ The '`llvm.experimental.vp.strided.store`' intrinsic stores the elements of
 '`val`' in the same way as the {ref}`llvm.vp.scatter <int_vp_scatter>` intrinsic,
 where the vector of pointers is in the form:
 
-	`%ptrs = <%ptr, %ptr + %stride, %ptr + 2 * %stride, ... >`,
+`%ptrs = <%ptr, %ptr + %stride, %ptr + 2 * %stride, ... >`,
 
 with '`ptr`' previously casted to a pointer '`i8`', '`stride`' always interpreted as a signed
 integer and all arithmetic occurring in the pointer type.
@@ -29209,7 +29209,7 @@ correct both if it returns `true` and if it returns `false`.
 
 When used in a branch condition, it selects one of the two paths:
 
-* `true``: Executes the UBSan check and reports any failures.
+* `true`: Executes the UBSan check and reports any failures.
 
 * `false`: Bypasses the check, assuming it always succeeds.
 
