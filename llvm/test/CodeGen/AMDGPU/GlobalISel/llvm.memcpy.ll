@@ -12,32 +12,37 @@ define amdgpu_cs void @memcpy_p1i8(ptr addrspace(1) %dst, ptr addrspace(1) %src)
 ; LOOP-NEXT:    s_mov_b32 s3, 0xf000
 ; LOOP-NEXT:  .LBB0_1: ; %static-memcpy-expansion-main-body
 ; LOOP-NEXT:    ; =>This Inner Loop Header: Depth=1
+; LOOP-NEXT:    s_waitcnt expcnt(5)
+; LOOP-NEXT:    buffer_load_ubyte v5, v[2:3], s[0:3], 0 addr64 offset:1
 ; LOOP-NEXT:    s_waitcnt expcnt(1)
 ; LOOP-NEXT:    buffer_load_ubyte v4, v[2:3], s[0:3], 0 addr64
-; LOOP-NEXT:    buffer_load_ubyte v5, v[2:3], s[0:3], 0 addr64 offset:1
-; LOOP-NEXT:    buffer_load_ubyte v6, v[2:3], s[0:3], 0 addr64 offset:2
 ; LOOP-NEXT:    buffer_load_ubyte v7, v[2:3], s[0:3], 0 addr64 offset:3
-; LOOP-NEXT:    buffer_load_ubyte v8, v[2:3], s[0:3], 0 addr64 offset:4
+; LOOP-NEXT:    buffer_load_ubyte v6, v[2:3], s[0:3], 0 addr64 offset:2
 ; LOOP-NEXT:    buffer_load_ubyte v9, v[2:3], s[0:3], 0 addr64 offset:5
-; LOOP-NEXT:    buffer_load_ubyte v10, v[2:3], s[0:3], 0 addr64 offset:6
+; LOOP-NEXT:    buffer_load_ubyte v8, v[2:3], s[0:3], 0 addr64 offset:4
 ; LOOP-NEXT:    s_waitcnt expcnt(0)
 ; LOOP-NEXT:    buffer_load_ubyte v11, v[2:3], s[0:3], 0 addr64 offset:7
+; LOOP-NEXT:    buffer_load_ubyte v10, v[2:3], s[0:3], 0 addr64 offset:6
 ; LOOP-NEXT:    buffer_load_ubyte v12, v[2:3], s[0:3], 0 addr64 offset:8
-; LOOP-NEXT:    s_waitcnt vmcnt(7)
+; LOOP-NEXT:    s_waitcnt vmcnt(8)
 ; LOOP-NEXT:    v_lshlrev_b32_e32 v5, 8, v5
+; LOOP-NEXT:    s_waitcnt vmcnt(7)
 ; LOOP-NEXT:    v_or_b32_e32 v4, v5, v4
 ; LOOP-NEXT:    buffer_load_ubyte v5, v[2:3], s[0:3], 0 addr64 offset:9
-; LOOP-NEXT:    s_waitcnt vmcnt(6)
+; LOOP-NEXT:    s_waitcnt vmcnt(7)
 ; LOOP-NEXT:    v_lshlrev_b32_e32 v7, 24, v7
+; LOOP-NEXT:    s_waitcnt vmcnt(6)
 ; LOOP-NEXT:    v_lshlrev_b32_e32 v6, 16, v6
 ; LOOP-NEXT:    v_or_b32_e32 v6, v7, v6
 ; LOOP-NEXT:    buffer_load_ubyte v7, v[2:3], s[0:3], 0 addr64 offset:10
-; LOOP-NEXT:    s_waitcnt vmcnt(5)
+; LOOP-NEXT:    s_waitcnt vmcnt(6)
 ; LOOP-NEXT:    v_lshlrev_b32_e32 v9, 8, v9
+; LOOP-NEXT:    s_waitcnt vmcnt(5)
 ; LOOP-NEXT:    v_or_b32_e32 v8, v9, v8
 ; LOOP-NEXT:    buffer_load_ubyte v9, v[2:3], s[0:3], 0 addr64 offset:11
-; LOOP-NEXT:    s_waitcnt vmcnt(4)
+; LOOP-NEXT:    s_waitcnt vmcnt(5)
 ; LOOP-NEXT:    v_lshlrev_b32_e32 v11, 24, v11
+; LOOP-NEXT:    s_waitcnt vmcnt(4)
 ; LOOP-NEXT:    v_lshlrev_b32_e32 v10, 16, v10
 ; LOOP-NEXT:    v_or_b32_e32 v10, v11, v10
 ; LOOP-NEXT:    buffer_load_ubyte v11, v[2:3], s[0:3], 0 addr64 offset:12
