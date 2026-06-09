@@ -2228,6 +2228,11 @@ class LSRInstance {
   // instructions to form LCSSA for them later.
   SmallSetVector<Instruction *, 4> InsertedNonLCSSAInsts;
 
+  // Track instructions rewritten by Rewrite() to CSE identical ones that arise
+  // when multiple fixups for the same LSRUse end up with the same operands
+  // (e.g. duplicate icmp instructions in ICmpZero fixups sharing one IV).
+  SmallVector<Instruction *, 8> RewrittenInsts;
+
   void OptimizeShadowIV();
   bool FindIVUserForCond(Instruction *Cond, IVStrideUse *&CondUse);
   Instruction *OptimizeMax(ICmpInst *Cond, IVStrideUse *&CondUse);
@@ -6083,6 +6088,28 @@ void LSRInstance::Rewrite(const LSRUse &LU, const LSRFixup &LF,
       LF.UserInst->setOperand(0, FullV);
     else
       LF.UserInst->replaceUsesOfWith(LF.OperandValToReplace, FullV);
+
+    // If this rewritten instruction is identical to one we already
+    // rewrote (same opcode and operands), replace it with the earlier one.
+    bool ReplacedWithPrev = false;
+    for (Instruction *Prev : RewrittenInsts) {
+      if (LU.Kind != LSRUse::ICmpZero && LU.Kind != LSRUse::Basic)
+        continue;
+
+      if (!LF.UserInst->isIdenticalTo(Prev) || !DT.dominates(Prev, LF.UserInst))
+        continue;
+
+      if (IVIncInsertPos == LF.UserInst)
+        IVIncInsertPos = Prev;
+      LLVM_DEBUG(dbgs() << "replaced (" << *LF.UserInst << ") with (" << *Prev
+                        << ")\n");
+      LF.UserInst->replaceAllUsesWith(Prev);
+      DeadInsts.emplace_back(LF.UserInst);
+      ReplacedWithPrev = true;
+      break;
+    }
+    if (!ReplacedWithPrev)
+      RewrittenInsts.push_back(LF.UserInst);
   }
 
   if (auto *OperandIsInstr = dyn_cast<Instruction>(LF.OperandValToReplace))
