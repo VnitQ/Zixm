@@ -40,6 +40,13 @@ class DexterNodeError(Error):
         return f"Error with node: {self.node}: {self.msg}"
 
 
+@dataclass
+class FileLabels:
+    """Small utility class for passing the set of labels associated with a particular file."""
+
+    file: str
+    labels: Dict[str, int]
+
 ###################
 ## Structural Nodes: These are used as keys in the Script, and collectively define Dexter's actions when running a test:
 ##                   how it steps and navigates through the debuggee program, and what information it collects from the
@@ -115,7 +122,7 @@ class Where:
         yaml.add_constructor("!and", Where.get_constructor(True), loader)
         yaml.add_representer(Where, Where.representer)
 
-    def get_lines(self, labels: Dict[str, int]) -> range:
+    def get_lines(self, labels: FileLabels) -> range:
         """Returns the range of line numbers that this Where references, returning an empty range if this Where does not
         refer to any lines."""
         if not self.lines:
@@ -194,7 +201,7 @@ class Line:
 
     value: Union[int, "Label"]
 
-    def to_line(self, labels: Dict[str, int]) -> int:
+    def to_line(self, labels: FileLabels) -> int:
         if isinstance(self.value, int):
             return self.value
         return self.value.to_line(labels)
@@ -212,7 +219,7 @@ class DexRange:
         return f"[{self.start} - {self.stop}]"
 
     # We use an inclusive range in Dexter scripts, while python ranges are exclusive.
-    def to_range(self, labels: Dict[str, int]) -> range:
+    def to_range(self, labels: FileLabels) -> range:
         return range(self.start.to_line(labels), self.stop.to_line(labels) + 1)
 
     @staticmethod
@@ -238,7 +245,7 @@ class DexRange:
 class Label:
     name: str
 
-    def to_line(self, labels: Dict[str, int]) -> int:
+    def to_line(self, file_labels: FileLabels) -> int:
         # Labels may contain offsets, which is accounted for here.
         raw_label = self.name.strip()
         label_str = raw_label
@@ -247,9 +254,11 @@ class Label:
             identifier, sign, number = match.groups()
             offset = int(number) if sign == "+" else -int(number)
             label_str = identifier
-        if label_str not in labels:
-            raise DexterNodeError(self, f'Label "{label_str}" not found')
-        return labels[label_str] + offset
+        if label_str not in file_labels.labels:
+            raise DexterNodeError(
+                self, f'Label "{label_str}" not found in file "{file_labels.file}"'
+            )
+        return file_labels.labels[label_str] + offset
 
     def __repr__(self):
         return f"Label({self.name})"

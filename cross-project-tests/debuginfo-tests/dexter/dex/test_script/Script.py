@@ -18,6 +18,7 @@ import yaml
 
 from dex.test_script.Nodes import (
     Expect,
+    FileLabels,
     Where,
     setup_yaml_parser,
 )
@@ -71,8 +72,8 @@ class LabelDict:
     def has_labels(self, file: str) -> bool:
         return file in self.file_to_labels_to_lines
 
-    def get_labels(self, file: str) -> Dict[str, int]:
-        return self.file_to_labels_to_lines[file]
+    def get_labels(self, file: str) -> FileLabels:
+        return FileLabels(file, self.file_to_labels_to_lines[file])
 
 class Scope:
     """Helper class used to simplify queries about the context of a Node in the Dexter Script. The context for a given
@@ -224,7 +225,7 @@ class DexterScript:
 
         self.visit_script(visit_where=collect_file)
 
-    def get_labels(self, file: str) -> Dict[str, int]:
+    def get_labels(self, file: str) -> FileLabels:
         if not self.label_dict.has_labels(file):
             self.label_dict.set_labels_from_file(self.context, file, self.base_dir)
         return self.label_dict.get_labels(file)

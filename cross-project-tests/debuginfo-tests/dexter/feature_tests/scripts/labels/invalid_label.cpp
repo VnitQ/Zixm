@@ -7,7 +7,8 @@ int main() {
     return b - a; // !dex_label unused
 }
 
-// CHECK: error: Error with node: Label(used): Label "used" not found
+// CHECK:      error: Error with node: Label(used): Label "used" not found
+// CHECK-SAME: in file "{{.*}}/invalid_label.cpp"
 
 /*
 ---

@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 
 from dex.dextIR import FrameIR, StepIR
 from dex.test_script import DexterScript, Scope
-from dex.test_script.Nodes import Expect, Value, Where
+from dex.test_script.Nodes import Expect, FileLabels, Value, Where
 
 
 def is_subpath(subpath: str, superpath: str) -> bool:
@@ -28,7 +28,7 @@ def is_subpath(subpath: str, superpath: str) -> bool:
 def match_where_to_frame(
     where: Where,
     frame: FrameIR,
-    labels: Dict[str, int],
+    labels: FileLabels,
 ) -> bool:
     """A very simple matcher, returns True iff `where` matches `frame`."""
     if where.file is not None and not is_subpath(where.file, frame.loc.path):
