@@ -12525,29 +12525,29 @@ define void @mscatter_shuffle_rotate(<8 x i16> %val, ptr %base) {
 ;
 ; RV64ZVE32F-LABEL: mscatter_shuffle_rotate:
 ; RV64ZVE32F:       # %bb.0:
-; RV64ZVE32F-NEXT:    addi a1, a0, 6
-; RV64ZVE32F-NEXT:    addi a2, a0, 4
-; RV64ZVE32F-NEXT:    addi a3, a0, 2
-; RV64ZVE32F-NEXT:    addi a4, a0, 14
-; RV64ZVE32F-NEXT:    addi a5, a0, 12
-; RV64ZVE32F-NEXT:    addi a6, a0, 10
-; RV64ZVE32F-NEXT:    addi a7, a0, 8
+; RV64ZVE32F-NEXT:    addi a1, a0, 8
 ; RV64ZVE32F-NEXT:    vsetivli zero, 1, e16, m1, ta, ma
 ; RV64ZVE32F-NEXT:    vslidedown.vi v9, v8, 1
-; RV64ZVE32F-NEXT:    vse16.v v8, (a7)
-; RV64ZVE32F-NEXT:    vse16.v v9, (a6)
+; RV64ZVE32F-NEXT:    vse16.v v8, (a1)
+; RV64ZVE32F-NEXT:    addi a1, a0, 10
+; RV64ZVE32F-NEXT:    vse16.v v9, (a1)
 ; RV64ZVE32F-NEXT:    vslidedown.vi v9, v8, 2
-; RV64ZVE32F-NEXT:    vse16.v v9, (a5)
+; RV64ZVE32F-NEXT:    addi a1, a0, 12
+; RV64ZVE32F-NEXT:    vse16.v v9, (a1)
 ; RV64ZVE32F-NEXT:    vslidedown.vi v9, v8, 3
-; RV64ZVE32F-NEXT:    vse16.v v9, (a4)
+; RV64ZVE32F-NEXT:    addi a1, a0, 14
+; RV64ZVE32F-NEXT:    vse16.v v9, (a1)
 ; RV64ZVE32F-NEXT:    vslidedown.vi v9, v8, 4
 ; RV64ZVE32F-NEXT:    vse16.v v9, (a0)
 ; RV64ZVE32F-NEXT:    vslidedown.vi v9, v8, 5
-; RV64ZVE32F-NEXT:    vse16.v v9, (a3)
+; RV64ZVE32F-NEXT:    addi a1, a0, 2
+; RV64ZVE32F-NEXT:    vse16.v v9, (a1)
 ; RV64ZVE32F-NEXT:    vslidedown.vi v9, v8, 6
+; RV64ZVE32F-NEXT:    addi a1, a0, 4
 ; RV64ZVE32F-NEXT:    vslidedown.vi v8, v8, 7
-; RV64ZVE32F-NEXT:    vse16.v v9, (a2)
-; RV64ZVE32F-NEXT:    vse16.v v8, (a1)
+; RV64ZVE32F-NEXT:    addi a0, a0, 6
+; RV64ZVE32F-NEXT:    vse16.v v9, (a1)
+; RV64ZVE32F-NEXT:    vse16.v v8, (a0)
 ; RV64ZVE32F-NEXT:    ret
   %ptrs = getelementptr inbounds i16, ptr %base, <8 x i64>  <i64 4, i64 5, i64 6, i64 7, i64 0, i64 1, i64 2, i64 3>
   call void @llvm.masked.scatter.v8i16.v8p0(<8 x i16> %val, <8 x ptr> %ptrs, i32 2, <8 x i1> splat (i1 true))
