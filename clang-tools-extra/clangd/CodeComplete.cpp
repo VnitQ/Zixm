@@ -1027,13 +1027,18 @@ struct CompletionRecorder : public CodeCompleteConsumer {
 
   // Build a CodeCompletion string for R, which must be from Results.
   // The CCS will be owned by this recorder.
-  CodeCompletionString *codeCompletionString(const CodeCompletionResult &R) {
+  // By default (BuildSnippet = false) the CompletionString is building a
+  // signature for the completion popup. When BuildSnippet is set the built
+  // CompletionString is the snippet to be filled by the editor.
+  CodeCompletionString *codeCompletionString(const CodeCompletionResult &R,
+                                             bool BuildSnippetSuffix = false) {
     // CodeCompletionResult doesn't seem to be const-correct. We own it, anyway.
     return const_cast<CodeCompletionResult &>(R).CreateCodeCompletionString(
         *CCSema, CCContext, *CCAllocator, CCTUInfo,
         /*IncludeBriefComments=*/false,
-        /*SuppressFuncParamType=*/Opts.ArgumentLists ==
-            Config::ArgumentListsPolicy::NamePlaceholders);
+        /*SuppressFuncParamType=*/BuildSnippetSuffix &&
+            Opts.ArgumentLists ==
+                Config::ArgumentListsPolicy::NamePlaceholders);
   }
 
 private:
@@ -2187,7 +2192,8 @@ private:
     std::optional<CodeCompletionBuilder> Builder;
     for (const auto &Item : Bundle) {
       CodeCompletionString *SemaCCS =
-          Item.SemaResult ? Recorder->codeCompletionString(*Item.SemaResult)
+          Item.SemaResult ? Recorder->codeCompletionString(
+                                *Item.SemaResult, /*BuildSnippetSuffix=*/true)
                           : nullptr;
       if (!Builder)
         Builder.emplace(Recorder ? &Recorder->CCSema->getASTContext() : nullptr,
