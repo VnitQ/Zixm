@@ -115,9 +115,9 @@ static void hugifyForOldKernel(uint8_t *From, uint8_t *To) {
 
   __prctl(PR_SET_THP_DISABLE, 0, 0, 0, 0);
   // Maps out the existing hot code.
-  const void *Addr =
-      __mmap(reinterpret_cast<uint64_t>(From), Size, PROT_READ | PROT_WRITE,
-             MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  const void *Addr = __mmap(reinterpret_cast<uint64_t>(From), Size,
+                            PROT_READ | PROT_WRITE | PROT_EXEC,
+                            MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (isErrValue(Addr)) {
     char Msg[] =
         "[hugify] failed to mmap memory for large page move terminating\n";
