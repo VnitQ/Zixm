@@ -1114,6 +1114,198 @@ void CIRGenFunction::emitAtomicExprWithMemOrder(
                                     emitAtomicOpFn);
 }
 
+static RValue emitLibCallForAtomicExpr(CIRGenFunction &cgf, AtomicExpr *e,
+                                       Address atomicPtr, Address dest,
+                                       Address val1, uint64_t atomicTySize,
+                                       QualType resultTy) {
+  mlir::Location loc = cgf.getLoc(e->getSourceRange());
+
+  llvm::SmallVector<mlir::Value> args;
+  // For non-optimized library calls, the size is the first parameter.
+  args.push_back(cgf.getBuilder().getConstInt(loc, cgf.sizeTy, atomicTySize));
+
+  // The atomic address is the second parameter.
+  // The OpenCL atomic library functions only accept pointer arguments to
+  // generic address space.
+  auto castToGenericAddrSpace = [&](mlir::Value v, QualType pt) {
+    if (!e->isOpenCL())
+      return v;
+
+    assert(!cir::MissingFeatures::openCL());
+    cgf.cgm.errorNYI(loc, "emitLibCallForAtomicExpr: openCL");
+    return v;
+  };
+  args.push_back(cgf.getBuilder().createPtrBitcast(
+      castToGenericAddrSpace(atomicPtr.emitRawPointer(),
+                             e->getPtr()->getType()),
+      cgf.voidTy));
+
+  // The next 1-3 parameters are op-dependent.
+  cir::FuncOp callee;
+  QualType retTy;
+  bool hasRetTy = false;
+  switch (e->getOp()) {
+  case AtomicExpr::AO__c11_atomic_init:
+  case AtomicExpr::AO__opencl_atomic_init:
+    llvm_unreachable("Already handled!");
+
+  // void __atomic_store(size_t size, void *mem, void *val, int order)
+  case AtomicExpr::AO__atomic_store:
+  case AtomicExpr::AO__atomic_store_n:
+  case AtomicExpr::AO__c11_atomic_store:
+  case AtomicExpr::AO__scoped_atomic_store:
+  case AtomicExpr::AO__scoped_atomic_store_n: {
+    auto runtimeFuncTy = cir::FuncType::get(
+        &cgf.getMLIRContext(),
+        {cgf.sizeTy, cgf.voidPtrTy, cgf.voidPtrTy, cgf.sInt32Ty},
+        /*optionalReturnType=*/{}, /*varArg=*/false);
+    callee = cgf.cgm.createRuntimeFunction(runtimeFuncTy, "__atomic_store");
+    retTy = cgf.getContext().VoidTy;
+    hasRetTy = true;
+    args.push_back(cgf.getBuilder().createPtrBitcast(
+        castToGenericAddrSpace(val1.emitRawPointer(), e->getVal1()->getType()),
+        cgf.voidTy));
+    break;
+  }
+
+  // void __atomic_load(size_t size, void *mem, void *return, int order)
+  case AtomicExpr::AO__atomic_load:
+  case AtomicExpr::AO__atomic_load_n:
+  case AtomicExpr::AO__c11_atomic_load:
+  case AtomicExpr::AO__scoped_atomic_load:
+  case AtomicExpr::AO__scoped_atomic_load_n: {
+    auto runtimeFuncTy = cir::FuncType::get(
+        &cgf.getMLIRContext(),
+        {cgf.sizeTy, cgf.voidPtrTy, cgf.voidPtrTy, cgf.sInt32Ty},
+        /*optionalReturnType=*/{}, /*varArg=*/false);
+    callee = cgf.cgm.createRuntimeFunction(runtimeFuncTy, "__atomic_load");
+    break;
+  }
+
+  case AtomicExpr::AO__atomic_add_fetch:
+  case AtomicExpr::AO__scoped_atomic_add_fetch:
+  case AtomicExpr::AO__atomic_fetch_add:
+  case AtomicExpr::AO__c11_atomic_fetch_add:
+  case AtomicExpr::AO__hip_atomic_fetch_add:
+  case AtomicExpr::AO__opencl_atomic_fetch_add:
+  case AtomicExpr::AO__scoped_atomic_fetch_add:
+  case AtomicExpr::AO__atomic_and_fetch:
+  case AtomicExpr::AO__scoped_atomic_and_fetch:
+  case AtomicExpr::AO__atomic_fetch_and:
+  case AtomicExpr::AO__c11_atomic_fetch_and:
+  case AtomicExpr::AO__hip_atomic_fetch_and:
+  case AtomicExpr::AO__opencl_atomic_fetch_and:
+  case AtomicExpr::AO__scoped_atomic_fetch_and:
+  case AtomicExpr::AO__atomic_or_fetch:
+  case AtomicExpr::AO__scoped_atomic_or_fetch:
+  case AtomicExpr::AO__atomic_fetch_or:
+  case AtomicExpr::AO__c11_atomic_fetch_or:
+  case AtomicExpr::AO__hip_atomic_fetch_or:
+  case AtomicExpr::AO__opencl_atomic_fetch_or:
+  case AtomicExpr::AO__scoped_atomic_fetch_or:
+  case AtomicExpr::AO__atomic_sub_fetch:
+  case AtomicExpr::AO__scoped_atomic_sub_fetch:
+  case AtomicExpr::AO__atomic_fetch_sub:
+  case AtomicExpr::AO__c11_atomic_fetch_sub:
+  case AtomicExpr::AO__hip_atomic_fetch_sub:
+  case AtomicExpr::AO__opencl_atomic_fetch_sub:
+  case AtomicExpr::AO__scoped_atomic_fetch_sub:
+  case AtomicExpr::AO__atomic_xor_fetch:
+  case AtomicExpr::AO__scoped_atomic_xor_fetch:
+  case AtomicExpr::AO__atomic_fetch_xor:
+  case AtomicExpr::AO__c11_atomic_fetch_xor:
+  case AtomicExpr::AO__hip_atomic_fetch_xor:
+  case AtomicExpr::AO__opencl_atomic_fetch_xor:
+  case AtomicExpr::AO__scoped_atomic_fetch_xor:
+  case AtomicExpr::AO__atomic_nand_fetch:
+  case AtomicExpr::AO__atomic_fetch_nand:
+  case AtomicExpr::AO__c11_atomic_fetch_nand:
+  case AtomicExpr::AO__scoped_atomic_fetch_nand:
+  case AtomicExpr::AO__scoped_atomic_nand_fetch:
+  case AtomicExpr::AO__atomic_min_fetch:
+  case AtomicExpr::AO__atomic_fetch_min:
+  case AtomicExpr::AO__c11_atomic_fetch_min:
+  case AtomicExpr::AO__hip_atomic_fetch_min:
+  case AtomicExpr::AO__opencl_atomic_fetch_min:
+  case AtomicExpr::AO__scoped_atomic_fetch_min:
+  case AtomicExpr::AO__scoped_atomic_min_fetch:
+  case AtomicExpr::AO__atomic_max_fetch:
+  case AtomicExpr::AO__atomic_fetch_max:
+  case AtomicExpr::AO__c11_atomic_fetch_max:
+  case AtomicExpr::AO__hip_atomic_fetch_max:
+  case AtomicExpr::AO__opencl_atomic_fetch_max:
+  case AtomicExpr::AO__scoped_atomic_fetch_max:
+  case AtomicExpr::AO__scoped_atomic_max_fetch:
+  case AtomicExpr::AO__atomic_test_and_set:
+  case AtomicExpr::AO__atomic_clear:
+    llvm_unreachable("Integral atomic operations always become atomicrmw!");
+
+  case AtomicExpr::AO__atomic_compare_exchange:
+  case AtomicExpr::AO__atomic_compare_exchange_n:
+  case AtomicExpr::AO__c11_atomic_compare_exchange_weak:
+  case AtomicExpr::AO__c11_atomic_compare_exchange_strong:
+  case AtomicExpr::AO__hip_atomic_compare_exchange_weak:
+  case AtomicExpr::AO__hip_atomic_compare_exchange_strong:
+  case AtomicExpr::AO__opencl_atomic_compare_exchange_weak:
+  case AtomicExpr::AO__opencl_atomic_compare_exchange_strong:
+  case AtomicExpr::AO__scoped_atomic_compare_exchange:
+  case AtomicExpr::AO__scoped_atomic_compare_exchange_n:
+
+  case AtomicExpr::AO__atomic_exchange:
+  case AtomicExpr::AO__atomic_exchange_n:
+  case AtomicExpr::AO__c11_atomic_exchange:
+  case AtomicExpr::AO__hip_atomic_exchange:
+  case AtomicExpr::AO__opencl_atomic_exchange:
+  case AtomicExpr::AO__scoped_atomic_exchange:
+  case AtomicExpr::AO__scoped_atomic_exchange_n:
+
+  case AtomicExpr::AO__hip_atomic_store:
+  case AtomicExpr::AO__opencl_atomic_store:
+
+  case AtomicExpr::AO__hip_atomic_load:
+  case AtomicExpr::AO__opencl_atomic_load:
+
+  default:
+    cgf.cgm.errorNYI(loc, "emitLibCallForAtomicExpr: atomic op NYI");
+    return RValue::get(nullptr);
+  }
+
+  if (e->isOpenCL()) {
+    assert(!cir::MissingFeatures::openCL());
+    cgf.cgm.errorNYI(loc, "emitLibCallForAtomicExpr: openCL");
+    return RValue::get(nullptr);
+  }
+
+  // By default, assume we return a value of the atomic type.
+  if (!hasRetTy) {
+    // Value is returned through parameter before the order.
+    retTy = cgf.getContext().VoidTy;
+    args.push_back(cgf.getBuilder().createPtrBitcast(
+        castToGenericAddrSpace(dest.emitRawPointer(), retTy), cgf.voidTy));
+  }
+
+  // Order is always the last parameter.
+  args.push_back(cgf.emitScalarExpr(e->getOrder()));
+  if (e->isOpenCL()) {
+    assert(!cir::MissingFeatures::openCL());
+    cgf.cgm.errorNYI(loc, "emitLibCallForAtomicExpr: openCL");
+    return RValue::get(nullptr);
+  }
+
+  mlir::Value res = cgf.emitRuntimeCall(loc, callee, args);
+
+  // The value is returned directly from the libcall.
+  if (e->isCmpXChg())
+    return RValue::get(res);
+
+  if (resultTy->isVoidType())
+    return RValue::get(nullptr);
+
+  return cgf.convertTempToRValue(
+      dest.withElementType(cgf.getBuilder(), cgf.convertTypeForMem(resultTy)),
+      resultTy, e->getExprLoc());
+}
+
 RValue CIRGenFunction::emitAtomicExpr(AtomicExpr *e) {
   QualType atomicTy = e->getPtr()->getType()->getPointeeType();
   QualType memTy = atomicTy;
@@ -1324,11 +1516,8 @@ RValue CIRGenFunction::emitAtomicExpr(AtomicExpr *e) {
   // the size-optimized libcall variants, which are only valid up to 16 bytes.)
   //
   // See: https://llvm.org/docs/Atomics.html#libcalls-atomic
-  if (useLibCall) {
-    assert(!cir::MissingFeatures::atomicUseLibCall());
-    cgm.errorNYI(e->getSourceRange(), "emitAtomicExpr: emit atomic lib call");
-    return RValue::get(nullptr);
-  }
+  if (useLibCall)
+    return emitLibCallForAtomicExpr(*this, e, ptr, dest, val1, size, resultTy);
 
   bool isStore = e->getOp() == AtomicExpr::AO__c11_atomic_store ||
                  e->getOp() == AtomicExpr::AO__opencl_atomic_store ||
