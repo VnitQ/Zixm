@@ -624,6 +624,9 @@ Improvements to Clang's diagnostics
 
 - Clang now rejects inline asm constraints and clobbers that contain an
   embedded null character, instead of silently truncating them. (#GH173900)
+  
+- Added warnings for floating-point exception function calls (fenv.h) without enabling floating-point
+  exception behavior via the appropriate flags or pragmas on supported targets. (#GH128239)
 
 - Diagnostics for the C++11 range-based for statement now report the correct
   iterator type in notes for invalid iterator types.
