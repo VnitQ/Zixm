@@ -3361,7 +3361,10 @@ static mlir::omp::DistributeOp genStandaloneDistribute(
 
   DataSharingProcessor dsp(converter, semaCtx, item->clauses, eval,
                            /*shouldCollectPreDeterminedSymbols=*/true,
-                           enableDelayedPrivatizationStaging, symTable);
+                           enableDelayedPrivatization, symTable);
+  // Dynamic private arrays cannot safely be allocated in GPU scratch when the
+  // descriptor is captured through the distribute callback.
+  dsp.setForceHeapAllocationForPrivateDynamicArrays();
   dsp.processStep1();
   dsp.processStep2(&distributeClauseOps);
 
@@ -3563,6 +3566,7 @@ static mlir::omp::DistributeOp genCompositeDistributeParallelDo(
                            /*shouldCollectPreDeterminedSymbols=*/true,
                            /*useDelayedPrivatization=*/true, symTable);
   dsp.processStep1();
+  dsp.setForceHeapAllocationForPrivateDynamicArrays();
   dsp.processStep2(&parallelClauseOps);
 
   ObjectEntryBlockArgs parallelArgs;
