@@ -55,6 +55,56 @@ CODE_PREFIX = """\
 //===----------------------------------------------------------------------===//
 """
 
+# Keep concatenated string literals below MSVC's 64 KiB limit.
+MAX_SYMBOL_STRING_LITERAL_BYTES = 48 * 1024
+
+
+def SymbolTableRowSize(symbol_row):
+    name, namespace, header = symbol_row
+    return len(("%s%s\0%s\0" % (namespace, name, header)).encode("utf-8"))
+
+
+def EmitSymbolRows(symbol_rows, partition_string_tables):
+    if not partition_string_tables:
+        for name, namespace, header in symbol_rows:
+            print("SYMBOL(%s, %s, %s)" % (name, namespace, header))
+        return
+
+    symbol_groups = []
+    for symbol_row in symbol_rows:
+        qualified_name = symbol_row[1], symbol_row[0]
+        if not symbol_groups or symbol_groups[-1][0] != qualified_name:
+            symbol_groups.append((qualified_name, []))
+        symbol_groups[-1][1].append(symbol_row)
+
+    string_tables = []
+    current_string_table = []
+    # Each StringTable chunk has a leading empty string and a final sentinel.
+    current_string_table_size = 2
+    for _, symbol_group in symbol_groups:
+        group_size = sum(SymbolTableRowSize(row) for row in symbol_group)
+        if group_size + 2 > MAX_SYMBOL_STRING_LITERAL_BYTES:
+            raise ValueError("symbol mapping group exceeds string table limit")
+        if (
+            current_string_table
+            and current_string_table_size + group_size > MAX_SYMBOL_STRING_LITERAL_BYTES
+        ):
+            string_tables.append(current_string_table)
+            current_string_table = []
+            current_string_table_size = 2
+        current_string_table.extend(symbol_group)
+        current_string_table_size += group_size
+    if current_string_table:
+        string_tables.append(current_string_table)
+    if not string_tables:
+        string_tables.append([])
+
+    for table_index, string_table in enumerate(string_tables):
+        print("SYMBOL_MAP_BEGIN(%d)" % table_index)
+        for name, namespace, header in string_table:
+            print("SYMBOL(%s, %s, %s)" % (name, namespace, header))
+        print("SYMBOL_MAP_END(%d)" % table_index)
+
 
 def ParseArg():
     parser = argparse.ArgumentParser(description="Generate StdGen file")
@@ -263,6 +313,7 @@ def main():
         exit("Path %s doesn't exist!" % symbol_index_root)
 
     symbols = cppreference_parser.GetSymbols(parse_pages)
+    symbol_rows = []
 
     # We don't have version information from the unzipped offline HTML files.
     # so we use the modified time of the symbol_index.html as the version.
@@ -279,7 +330,7 @@ def main():
                 s.headers.extend(AdditionalHeadersForIOSymbols(s))
                 for header in s.headers:
                     # SYMBOL(unqualified_name, namespace, header)
-                    print("SYMBOL(%s, %s, %s)" % (s.name, s.namespace, header))
+                    symbol_rows.append((s.name, s.namespace, header))
         elif len(symbol.headers) == 0:
             sys.stderr.write("No header found for symbol %s\n" % symbol.name)
         else:
@@ -288,6 +339,7 @@ def main():
                 "Ambiguous header for symbol %s: %s\n"
                 % (symbol.name, ", ".join(symbol.headers))
             )
+    EmitSymbolRows(symbol_rows, args.symbols == "cpp")
 
 
 if __name__ == "__main__":

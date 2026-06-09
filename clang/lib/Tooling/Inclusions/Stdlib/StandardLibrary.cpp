@@ -10,10 +10,13 @@
 #include "clang/AST/Decl.h"
 #include "clang/Basic/LangOptions.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringTable.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
+#include <cstdint>
+#include <limits>
 #include <optional>
 
 namespace clang {
@@ -23,6 +26,108 @@ namespace stdlib {
 namespace {
 // Symbol name -> Symbol::ID, within a namespace.
 using NSSymbolMap = llvm::DenseMap<llvm::StringRef, unsigned>;
+
+using SymbolNamespaceLength = uint8_t;
+static constexpr size_t MaxSymbolMappingStringLiteralSize = 48 * 1024;
+
+template <size_t Size>
+constexpr SymbolNamespaceLength getSymbolNamespaceLength(const char (&)[Size]) {
+  static_assert(Size - 1 <= std::numeric_limits<SymbolNamespaceLength>::max(),
+                "symbol namespace length does not fit in one byte");
+  return static_cast<SymbolNamespaceLength>(Size - 1);
+}
+
+template <size_t Size>
+constexpr bool
+hasValidSymbolMappingStringTableLayout(const char (&Strings)[Size]) {
+  static_assert(Size >= 2, "symbol mapping string table is missing sentinels");
+  static_assert(Size <= MaxSymbolMappingStringLiteralSize,
+                "symbol mapping string literal exceeds the MSVC-safe limit");
+  return Strings[0] == '\0' && Strings[Size - 2] == '\0' &&
+         Strings[Size - 1] == '\0';
+}
+
+static constexpr char CSymbolStrings[] = {"\0"
+#define SYMBOL(Name, NS, Header) #NS #Name "\0" #Header "\0"
+#include "CSpecialSymbolMap.inc"
+#include "CSymbolMap.inc"
+#undef SYMBOL
+};
+static constexpr SymbolNamespaceLength CNamespaceLengths[] = {
+#define SYMBOL(Name, NS, Header) getSymbolNamespaceLength(#NS),
+#include "CSpecialSymbolMap.inc"
+#include "CSymbolMap.inc"
+#undef SYMBOL
+};
+static_assert(hasValidSymbolMappingStringTableLayout(CSymbolStrings));
+
+static constexpr char CXXSpecialSymbolStrings[] = {"\0"
+#define SYMBOL(Name, NS, Header) #NS #Name "\0" #Header "\0"
+#include "StdSpecialSymbolMap.inc"
+#undef SYMBOL
+};
+static constexpr SymbolNamespaceLength CXXSpecialNamespaceLengths[] = {
+#define SYMBOL(Name, NS, Header) getSymbolNamespaceLength(#NS),
+#include "StdSpecialSymbolMap.inc"
+#undef SYMBOL
+};
+static_assert(hasValidSymbolMappingStringTableLayout(CXXSpecialSymbolStrings));
+
+#define SYMBOL_MAP_BEGIN(Index)                                                \
+  static constexpr char CXXSymbolStrings##Index[] = "\0"
+#define SYMBOL(Name, NS, Header) #NS #Name "\0" #Header "\0"
+#define SYMBOL_MAP_END(Index)                                                  \
+  ;                                                                            \
+  static_assert(                                                               \
+      hasValidSymbolMappingStringTableLayout(CXXSymbolStrings##Index));
+#include "StdSymbolMap.inc"
+#undef SYMBOL_MAP_END
+#undef SYMBOL
+#undef SYMBOL_MAP_BEGIN
+
+#define SYMBOL_MAP_BEGIN(Index)                                                \
+  static constexpr SymbolNamespaceLength CXXNamespaceLengths##Index[] = {
+#define SYMBOL(Name, NS, Header) getSymbolNamespaceLength(#NS),
+#define SYMBOL_MAP_ARRAY_END                                                   \
+  }                                                                            \
+  ;
+#define SYMBOL_MAP_END(Index) SYMBOL_MAP_ARRAY_END
+#include "StdSymbolMap.inc"
+#undef SYMBOL_MAP_END
+#undef SYMBOL_MAP_ARRAY_END
+#undef SYMBOL
+#undef SYMBOL_MAP_BEGIN
+
+static constexpr char CXXTsSymbolStrings[] = {"\0"
+#define SYMBOL(Name, NS, Header) #NS #Name "\0" #Header "\0"
+#include "StdTsSymbolMap.inc"
+#undef SYMBOL
+};
+static constexpr SymbolNamespaceLength CXXTsNamespaceLengths[] = {
+#define SYMBOL(Name, NS, Header) getSymbolNamespaceLength(#NS),
+#include "StdTsSymbolMap.inc"
+#undef SYMBOL
+};
+static_assert(hasValidSymbolMappingStringTableLayout(CXXTsSymbolStrings));
+
+struct SymbolMappingTable {
+  // Strings contains the initial empty string followed by alternating
+  // qualified symbol names and header names. NamespaceLengths has one entry
+  // for each qualified symbol name and header name pair.
+  llvm::StringTable Strings;
+  ArrayRef<SymbolNamespaceLength> NamespaceLengths;
+};
+
+static StringRef
+readSymbolMappingString(const SymbolMappingTable &Table,
+                        llvm::StringTable::Offset &StringOffset) {
+  assert(StringOffset.value() < Table.Strings.size() - 1 &&
+         "missing symbol mapping string");
+  StringRef Result = Table.Strings[StringOffset];
+  StringOffset =
+      llvm::StringTable::Offset(StringOffset.value() + Result.size() + 1);
+  return Result;
+}
 
 // A Mapping per language.
 struct SymbolHeaderMapping {
@@ -54,37 +159,31 @@ static const SymbolHeaderMapping *getMappingPerLang(Lang L) {
   return LanguageMappings[static_cast<unsigned>(L)];
 }
 
-static int countSymbols(Lang Language) {
-  ArrayRef<const char *> Symbols;
-#define SYMBOL(Name, NS, Header) #NS #Name,
-  switch (Language) {
-  case Lang::C: {
-    static constexpr const char *CSymbols[] = {
-#include "CSpecialSymbolMap.inc"
-#include "CSymbolMap.inc"
-    };
-    Symbols = CSymbols;
-    break;
+static unsigned countSymbols(ArrayRef<SymbolMappingTable> SymbolMappingTables) {
+  unsigned Count = 0;
+  StringRef Previous;
+  for (const SymbolMappingTable &Table : SymbolMappingTables) {
+    llvm::StringTable::Offset StringOffset(1);
+    for (size_t I = 0; I != Table.NamespaceLengths.size(); ++I) {
+      StringRef QName = readSymbolMappingString(Table, StringOffset);
+      readSymbolMappingString(Table, StringOffset);
+      if (Previous != QName) {
+        ++Count;
+        Previous = QName;
+      }
+    }
+    assert(StringOffset.value() == Table.Strings.size() - 1 &&
+           "unexpected symbol mapping string");
   }
-  case Lang::CXX: {
-    static constexpr const char *CXXSymbols[] = {
-#include "StdSpecialSymbolMap.inc"
-#include "StdSymbolMap.inc"
-#include "StdTsSymbolMap.inc"
-    };
-    Symbols = CXXSymbols;
-    break;
-  }
-  }
-#undef SYMBOL
-  return llvm::DenseSet<StringRef>(llvm::from_range, Symbols).size();
+  return Count;
 }
 
-static int initialize(Lang Language) {
+static int initialize(Lang Language,
+                      ArrayRef<SymbolMappingTable> SymbolMappingTables) {
   SymbolHeaderMapping *Mapping = new SymbolHeaderMapping();
   LanguageMappings[static_cast<unsigned>(Language)] = Mapping;
 
-  unsigned SymCount = countSymbols(Language);
+  unsigned SymCount = countSymbols(SymbolMappingTables);
   Mapping->SymbolCount = SymCount;
   Mapping->SymbolNames =
       new std::remove_reference_t<decltype(*Mapping->SymbolNames)>[SymCount];
@@ -137,42 +236,48 @@ static int initialize(Lang Language) {
     NSSymbols.try_emplace(QName.drop_front(NSLen), SymIndex);
   };
 
-  struct Symbol {
-    const char *QName;
-    unsigned NSLen;
-    const char *HeaderName;
-  };
-#define SYMBOL(Name, NS, Header)                                               \
-  {#NS #Name, static_cast<decltype(Symbol::NSLen)>(StringRef(#NS).size()),     \
-   #Header},
-  switch (Language) {
-  case Lang::C: {
-    static constexpr Symbol CSymbols[] = {
-#include "CSpecialSymbolMap.inc"
-#include "CSymbolMap.inc"
-    };
-    for (const Symbol &S : CSymbols)
-      Add(S.QName, S.NSLen, S.HeaderName);
-    break;
+  for (const SymbolMappingTable &Table : SymbolMappingTables) {
+    llvm::StringTable::Offset StringOffset(1);
+    for (SymbolNamespaceLength NSLen : Table.NamespaceLengths) {
+      StringRef QName = readSymbolMappingString(Table, StringOffset);
+      StringRef HeaderName = readSymbolMappingString(Table, StringOffset);
+      Add(QName, NSLen, HeaderName);
+    }
+    assert(StringOffset.value() == Table.Strings.size() - 1 &&
+           "unexpected symbol mapping string");
   }
-  case Lang::CXX: {
-    static constexpr Symbol CXXSymbols[] = {
-#include "StdSpecialSymbolMap.inc"
-#include "StdSymbolMap.inc"
-#include "StdTsSymbolMap.inc"
-    };
-    for (const Symbol &S : CXXSymbols)
-      Add(S.QName, S.NSLen, S.HeaderName);
-    break;
-  }
-  }
-#undef SYMBOL
 
   Mapping->HeaderNames = new llvm::StringRef[Mapping->HeaderIDs->size()];
   for (const auto &E : *Mapping->HeaderIDs)
     Mapping->HeaderNames[E.second] = E.first;
 
   return 0;
+}
+
+static int initialize(Lang Language) {
+  switch (Language) {
+  case Lang::C: {
+    const SymbolMappingTable SymbolMappingTables[] = {
+        {llvm::StringTable(CSymbolStrings), CNamespaceLengths}};
+    return initialize(Language, SymbolMappingTables);
+  }
+  case Lang::CXX: {
+    const SymbolMappingTable SymbolMappingTables[] = {
+        {llvm::StringTable(CXXSpecialSymbolStrings),
+         CXXSpecialNamespaceLengths},
+#define SYMBOL(Name, NS, Header)
+#define SYMBOL_MAP_BEGIN(Index)                                                \
+  {llvm::StringTable(CXXSymbolStrings##Index), CXXNamespaceLengths##Index},
+#define SYMBOL_MAP_END(Index)
+#include "StdSymbolMap.inc"
+#undef SYMBOL_MAP_END
+#undef SYMBOL_MAP_BEGIN
+#undef SYMBOL
+        {llvm::StringTable(CXXTsSymbolStrings), CXXTsNamespaceLengths}};
+    return initialize(Language, SymbolMappingTables);
+  }
+  }
+  llvm_unreachable("unknown language");
 }
 
 static void ensureInitialized() {
