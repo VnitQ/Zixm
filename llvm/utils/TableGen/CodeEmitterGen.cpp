@@ -29,6 +29,7 @@
 #include "Common/VarLenCodeEmitterGen.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Format.h"
@@ -53,6 +54,14 @@ namespace {
 // and the value is a list of cases which share the same body.
 using CaseMapT = std::map<std::string, std::vector<unsigned>>;
 
+struct BaseEncodingPool {
+  std::vector<APInt> Values;
+  std::vector<unsigned> Indices;
+  unsigned IndexBitWidth = 0;
+
+  bool empty() const { return Values.empty(); }
+};
+
 class CodeEmitterGen {
   const RecordKeeper &RK;
   CodeGenTarget Target;
@@ -74,9 +83,14 @@ private:
                                const std::string &VarName, std::string &Case,
                                std::string &BitOffsetCase);
 
+  APInt getInstructionBaseValue(const CodeGenInstruction *CGI, unsigned HwMode);
+  void buildBaseEncodingPool(
+      ArrayRef<const CodeGenInstruction *> NumberedInstructions);
+  void emitBaseEncodingPool(raw_ostream &O);
   void emitInstructionBaseValues(
       raw_ostream &O, ArrayRef<const CodeGenInstruction *> NumberedInstructions,
       unsigned HwMode = DefaultMode);
+  BaseEncodingPool BaseEncodings;
   unsigned BitWidth = 0u;
   bool UseAPInt = false;
 };
@@ -361,6 +375,98 @@ static void emitInstBits(raw_ostream &OS, const APInt &Bits) {
     OS << ((I > 0) ? ", " : "") << "UINT64_C(" << Bits.getRawData()[I] << ")";
 }
 
+APInt CodeEmitterGen::getInstructionBaseValue(const CodeGenInstruction *CGI,
+                                              unsigned HwMode) {
+  const Record *R = CGI->TheDef;
+  const Record *EncodingDef = R;
+  if (const Record *RV = R->getValueAsOptionalDef("EncodingInfos")) {
+    EncodingInfoByHwMode EBM(RV, CGH);
+    if (!EBM.hasMode(HwMode))
+      return APInt(BitWidth, 0);
+    EncodingDef = EBM.get(HwMode);
+  }
+
+  const BitsInit *BI = EncodingDef->getValueAsBitsInit("Inst");
+  APInt Value(BitWidth, 0);
+  for (unsigned I = 0, E = BI->getNumBits(); I != E; ++I) {
+    if (const auto *B = dyn_cast<BitInit>(BI->getBit(I)); B && B->getValue())
+      Value.setBit(I);
+  }
+  return Value;
+}
+
+void CodeEmitterGen::buildBaseEncodingPool(
+    ArrayRef<const CodeGenInstruction *> NumberedInstructions) {
+  assert(UseAPInt && "pooling is only used for multiword encodings");
+
+  const unsigned NumWords = APInt::getNumWords(BitWidth);
+  DenseMap<APInt, unsigned> ValueToIndex;
+  for (const CodeGenInstruction *CGI : NumberedInstructions) {
+    APInt Value = getInstructionBaseValue(CGI, DefaultMode);
+    auto [It, Inserted] =
+        ValueToIndex.try_emplace(Value, BaseEncodings.Values.size());
+    if (Inserted)
+      BaseEncodings.Values.push_back(std::move(Value));
+    BaseEncodings.Indices.push_back(It->second);
+  }
+
+  const uint64_t NumValues = BaseEncodings.Values.size();
+  if (NumValues <= (UINT64_C(1) << 8))
+    BaseEncodings.IndexBitWidth = 8;
+  else if (NumValues <= (UINT64_C(1) << 16))
+    BaseEncodings.IndexBitWidth = 16;
+  else if (NumValues <= (UINT64_C(1) << 32))
+    BaseEncodings.IndexBitWidth = 32;
+  else
+    BaseEncodings = {};
+
+  const uint64_t RawSize =
+      uint64_t(NumberedInstructions.size()) * NumWords * sizeof(uint64_t);
+  const uint64_t PooledSize =
+      NumValues * NumWords * sizeof(uint64_t) +
+      uint64_t(NumberedInstructions.size()) * (BaseEncodings.IndexBitWidth / 8);
+  if (BaseEncodings.empty() || PooledSize >= RawSize)
+    BaseEncodings = {};
+}
+
+static StringRef getIndexType(unsigned BitWidth) {
+  switch (BitWidth) {
+  case 8:
+    return "uint8_t";
+  case 16:
+    return "uint16_t";
+  case 32:
+    return "uint32_t";
+  }
+  llvm_unreachable("unsupported base encoding index width");
+}
+
+void CodeEmitterGen::emitBaseEncodingPool(raw_ostream &O) {
+  const unsigned NumWords = APInt::getNumWords(BitWidth);
+  O << "  static const uint64_t InstBits[][" << NumWords << "] = {\n";
+  for (const APInt &Value : BaseEncodings.Values) {
+    O << "    {";
+    emitInstBits(O, Value);
+    O << "},\n";
+  }
+  O << "  };\n";
+
+  StringRef IndexType = getIndexType(BaseEncodings.IndexBitWidth);
+  O << "  static const " << IndexType << " InstBitsIndices[] = {\n";
+  for (auto [I, Index] : enumerate(BaseEncodings.Indices)) {
+    if (I % 16 == 0)
+      O << "    ";
+    O << Index << ",";
+    if (I % 16 == 15 || I + 1 == BaseEncodings.Indices.size())
+      O << "\n";
+    else
+      O << " ";
+  }
+  O << "  };\n";
+  O << "  static_assert(sizeof(InstBits) / sizeof(InstBits[0]) <=\n"
+       "                (UINT64_C(1) << (sizeof(InstBitsIndices[0]) * 8)));\n";
+}
+
 void CodeEmitterGen::emitInstructionBaseValues(
     raw_ostream &O, ArrayRef<const CodeGenInstruction *> NumberedInstructions,
     unsigned HwMode) {
@@ -372,29 +478,7 @@ void CodeEmitterGen::emitInstructionBaseValues(
 
   for (const CodeGenInstruction *CGI : NumberedInstructions) {
     const Record *R = CGI->TheDef;
-    const Record *EncodingDef = R;
-    if (const Record *RV = R->getValueAsOptionalDef("EncodingInfos")) {
-      EncodingInfoByHwMode EBM(RV, CGH);
-      if (EBM.hasMode(HwMode)) {
-        EncodingDef = EBM.get(HwMode);
-      } else {
-        // If the HwMode does not match, then Encoding '0'
-        // should be generated.
-        APInt Value(BitWidth, 0);
-        O << "    ";
-        emitInstBits(O, Value);
-        O << "," << '\t' << "// " << R->getName() << "\n";
-        continue;
-      }
-    }
-    const BitsInit *BI = EncodingDef->getValueAsBitsInit("Inst");
-
-    // Start by filling in fixed values.
-    APInt Value(BitWidth, 0);
-    for (unsigned I = 0, E = BI->getNumBits(); I != E; ++I) {
-      if (const auto *B = dyn_cast<BitInit>(BI->getBit(I)); B && B->getValue())
-        Value.setBit(I);
-    }
+    APInt Value = getInstructionBaseValue(CGI, HwMode);
     O << "    ";
     emitInstBits(O, Value);
     O << "," << '\t' << "// " << R->getName() << "\n";
@@ -436,6 +520,8 @@ void CodeEmitterGen::run(raw_ostream &O) {
     BitWidth = std::max(BitWidth, BI->getNumBits());
   }
   UseAPInt = BitWidth > 64;
+  if (UseAPInt && HwModes.empty())
+    buildBaseEncodingPool(EncodedInstructions);
 
   // Emit function declaration
   if (UseAPInt) {
@@ -453,7 +539,10 @@ void CodeEmitterGen::run(raw_ostream &O) {
   }
 
   // Emit instruction base values
-  emitInstructionBaseValues(O, EncodedInstructions, DefaultMode);
+  if (BaseEncodings.empty())
+    emitInstructionBaseValues(O, EncodedInstructions, DefaultMode);
+  else
+    emitBaseEncodingPool(O);
   if (!HwModes.empty()) {
     // Emit table for instrs whose encodings are controlled by HwModes.
     for (unsigned HwMode : HwModes) {
@@ -498,10 +587,17 @@ void CodeEmitterGen::run(raw_ostream &O) {
   if (UseAPInt) {
     int NumWords = APInt::getNumWords(BitWidth);
     O << "  if (Scratch.getBitWidth() != " << BitWidth << ")\n"
-      << "    Scratch = Scratch.zext(" << BitWidth << ");\n"
-      << "  Inst = APInt(" << BitWidth << ", ArrayRef(InstBits + TableIndex * "
-      << NumWords << ", " << NumWords << "));\n"
-      << "  APInt &Value = Inst;\n"
+      << "    Scratch = Scratch.zext(" << BitWidth << ");\n";
+    if (BaseEncodings.empty()) {
+      O << "  Inst = APInt(" << BitWidth
+        << ", ArrayRef(InstBits + TableIndex * " << NumWords << ", " << NumWords
+        << "));\n";
+    } else {
+      O << "  unsigned InstBitsIndex = InstBitsIndices[TableIndex];\n"
+        << "  Inst = APInt(" << BitWidth
+        << ", ArrayRef(InstBits[InstBitsIndex]));\n";
+    }
+    O << "  APInt &Value = Inst;\n"
       << "  APInt &op = Scratch;\n"
       << "  switch (opcode) {\n";
   } else {
