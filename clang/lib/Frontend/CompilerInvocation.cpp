@@ -5082,8 +5082,7 @@ bool CompilerInvocation::CreateFromArgsImpl(
   ParseFileSystemArgs(Res.getFileSystemOpts(), Args, Diags);
   ParseMigratorArgs(Res.getMigratorOpts(), Args, Diags);
   ParseAnalyzerArgs(Res.getAnalyzerOpts(), Args, Diags);
-  ParseDiagnosticArgs(Res.getDiagnosticOpts(), Args, &Diags,
-                      /*DefaultDiagColor=*/true);
+  ParseDiagnosticArgs(Res.getDiagnosticOpts(), Args, &Diags);
   ParseFrontendArgs(Res.getFrontendOpts(), Args, Diags, LangOpts.IsHeaderFile);
   // FIXME: We shouldn't have to pass the DashX option around here
   InputKind DashX = Res.getFrontendOpts().DashX;
