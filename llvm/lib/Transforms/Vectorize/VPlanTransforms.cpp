@@ -4214,9 +4214,10 @@ struct EarlyExitInfo {
   VPIRBasicBlock *EarlyExitVPBB;
   VPValue *CondToExit;
 };
-static VPValue *repairSSA(VPValue *Src, VPBasicBlock *SrcVPBB, VPValue *Other,
-                          VPBasicBlock *VPBB, VPDominatorTree &VPDT,
-                          DenseMap<VPBlockBase *, VPPhi *> &Phis) {
+static VPValue *repairSSAImpl(VPValue *Src, VPBasicBlock *SrcVPBB,
+                              VPValue *Other, VPBasicBlock *VPBB,
+                              VPDominatorTree &VPDT,
+                              DenseMap<VPBlockBase *, VPPhi *> &Phis) {
 
   if (VPDT.dominates(SrcVPBB, VPBB))
     return Src;
@@ -4227,8 +4228,8 @@ static VPValue *repairSSA(VPValue *Src, VPBasicBlock *SrcVPBB, VPValue *Other,
 
   SmallVector<VPValue *> InVals;
   for (auto *Pred : VPBB->predecessors())
-    InVals.push_back(
-        repairSSA(Src, SrcVPBB, Other, cast<VPBasicBlock>(Pred), VPDT, Phis));
+    InVals.push_back(repairSSAImpl(Src, SrcVPBB, Other,
+                                   cast<VPBasicBlock>(Pred), VPDT, Phis));
   if (all_equal(InVals))
     return InVals[0];
 
@@ -4239,11 +4240,12 @@ static VPValue *repairSSA(VPValue *Src, VPBasicBlock *SrcVPBB, VPValue *Other,
 
 /// Insert phi nodes to maintain SSA starting from \p VPBB, such that the
 /// resulting value is \p \Src on all paths that go through \p SrcVPBB, and \p
-/// Other otherwise.
+/// Other otherwise. Use if the CFG has been modified such that a def no longer
+/// dominates all its uses.
 static VPValue *repairSSA(VPValue *Src, VPBasicBlock *SrcVPBB, VPValue *Other,
                           VPBasicBlock *VPBB, VPDominatorTree &VPDT) {
   DenseMap<VPBlockBase *, VPPhi *> Phis;
-  return repairSSA(Src, SrcVPBB, Other, VPBB, VPDT, Phis);
+  return repairSSAImpl(Src, SrcVPBB, Other, VPBB, VPDT, Phis);
 }
 
 // After handling early exits, the CondToExits and live outs may no longer be in
