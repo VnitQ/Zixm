@@ -125,7 +125,7 @@ static void hugifyForOldKernel(uint8_t *From, uint8_t *To) {
   }
 
   // Mark the hot code page to be huge page.
-  if (__madvise(From, Size, MADV_HUGEPAGE) == -1) {
+  if (__madvise(From, Size, MADV_HUGEPAGE) < 0) {
     char Msg[] = "[hugify] setting MADV_HUGEPAGE is failed\n";
     reportError(Msg, sizeof(Msg));
   }
@@ -160,9 +160,9 @@ extern "C" void __bolt_hugify_self_impl() {
     return;
   }
 
-  if (__madvise(From, (To - From), MADV_HUGEPAGE) == -1) {
-    char Msg[] = "[hugify] failed to allocate large page\n";
+  if (__madvise(From, (To - From), MADV_HUGEPAGE) < 0) {
     // TODO: allow user to control the failure behavior.
+    char Msg[] = "[hugify] setting MADV_HUGEPAGE is failed\n";
     reportError(Msg, sizeof(Msg));
   }
 }
