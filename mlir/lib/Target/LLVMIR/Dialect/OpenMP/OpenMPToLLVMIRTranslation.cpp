@@ -457,10 +457,7 @@ static LogicalResult checkImplementationStatus(Operation &op) {
         checkAllocate(op, result);
         checkTaskReduction(op, result);
       })
-      .Case([&](omp::TaskwaitOp op) {
-        checkDepend(op, result);
-        checkNowait(op, result);
-      })
+      .Case([&](omp::TaskwaitOp op) { checkNowait(op, result); })
       .Case([&](omp::TaskloopContextOp op) {
         checkAllocate(op, result);
         checkInReduction(op, result);
@@ -3717,7 +3714,14 @@ convertOmpTaskwaitOp(omp::TaskwaitOp twOp, llvm::IRBuilderBase &builder,
   if (failed(checkImplementationStatus(*twOp)))
     return failure();
 
-  moduleTranslation.getOpenMPBuilder()->createTaskwait(builder.saveIP());
+  llvm::OpenMPIRBuilder::DependenciesInfo dds;
+  if (failed(buildDependData(
+          twOp.getDependVars(), twOp.getDependKinds(), twOp.getDependIterated(),
+          twOp.getDependIteratedKinds(), builder, moduleTranslation, dds))) {
+    return failure();
+  }
+
+  moduleTranslation.getOpenMPBuilder()->createTaskwait(builder.saveIP(), dds);
   return success();
 }
 
