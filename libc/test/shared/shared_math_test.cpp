@@ -150,6 +150,7 @@ TEST(LlvmLibcSharedMathTest, AllFloat16) {
   EXPECT_FP_EQ(0x0p+0f16, LIBC_NAMESPACE::shared::nearbyintf16(0.0f16));
   EXPECT_FP_EQ(0x0p+0f16, LIBC_NAMESPACE::shared::rintf16(0.0f16));
   EXPECT_EQ(1, LIBC_NAMESPACE::shared::iscanonicalf16(0.0f16));
+  EXPECT_EQ(0, LIBC_NAMESPACE::shared::isnanf16(0.0f16));
   EXPECT_EQ(0, LIBC_NAMESPACE::shared::issignalingf16(0.0f16));
   EXPECT_TRUE(FPBits(LIBC_NAMESPACE::shared::nanf16("")).is_nan());
   EXPECT_FP_EQ(0x0p+0f16, LIBC_NAMESPACE::shared::roundf16(0.0f16));
@@ -751,8 +752,10 @@ TEST(LlvmLibcSharedMathTest, AllFloat128) {
 
 TEST(LlvmLibcSharedMathTest, AllBFloat16) {
   using FPBits = LIBC_NAMESPACE::fputil::FPBits<bfloat16>;
-  EXPECT_FP_EQ(bfloat16(0.0), LIBC_NAMESPACE::shared::atanbf16(bfloat16(0.0)));
+  EXPECT_FP_EQ(bfloat16(0x1.921fb6p0f),
+               LIBC_NAMESPACE::shared::acosbf16(bfloat16(0.0f)));
   EXPECT_FP_EQ(bfloat16(0.0), LIBC_NAMESPACE::shared::asinbf16(bfloat16(0.0)));
+  EXPECT_FP_EQ(bfloat16(0.0), LIBC_NAMESPACE::shared::atanbf16(bfloat16(0.0)));
   EXPECT_FP_EQ(bfloat16(5.0), LIBC_NAMESPACE::shared::bf16add(2.0, 3.0));
   EXPECT_FP_EQ(bfloat16(2.0f), LIBC_NAMESPACE::shared::bf16divf(4.0f, 2.0f));
   EXPECT_FP_EQ(bfloat16(2.0), LIBC_NAMESPACE::shared::bf16div(4.0, 2.0));
