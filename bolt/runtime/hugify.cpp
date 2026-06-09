@@ -59,40 +59,39 @@ static void getKernelVersion(uint32_t *Val) {
   }
 }
 
-/// Check whether the kernel supports THP via corresponding sysfs entry.
-/// thp works only starting from 5.10
-static bool hasPagecacheTHPSupport() {
+/// Check whether the THP enabled via corresponding sysfs entry.
+static bool isThpEnabled() {
   char Buf[64];
+  bool ThpEnabled = false;
 
   const int FD =
       __open("/sys/kernel/mm/transparent_hugepage/enabled", O_RDONLY, 0);
   if (FD < 0)
-    return false;
+    return ThpEnabled;
 
   memset(Buf, 0, sizeof(Buf));
   const size_t Res = __read(FD, Buf, sizeof(Buf));
-  if (Res < 0)
-    return false;
+  if (Res > 0 && (strStr(Buf, "[always]") || strStr(Buf, "[madvise]")))
+    ThpEnabled = true;
 
-  if (!strStr(Buf, "[always]") && !strStr(Buf, "[madvise]")) {
-    DEBUG(report("[hugify] THP support is not enabled.\n");)
-    return false;
-  }
+  __close(FD);
 
+  return ThpEnabled;
+}
+
+/// Check whether the THP is supported for pagecache (read-only, non-shmem).
+/// The feature works only starting from 5.4
+static bool hasPagecacheTHPSupport() {
   struct KernelVersionTy {
-    uint32_t major;
-    uint32_t minor;
-    uint32_t release;
-  };
-
-  KernelVersionTy KernelVersion;
+    uint32_t major = 0;
+    uint32_t minor = 0;
+    uint32_t release = 0;
+  } KernelVersion;
 
   getKernelVersion((uint32_t *)&KernelVersion);
-  if (KernelVersion.major >= 6 ||
-      (KernelVersion.major == 5 && KernelVersion.minor >= 10))
-    return true;
 
-  return false;
+  return KernelVersion.major >= 6 ||
+         (KernelVersion.major == 5 && KernelVersion.minor >= 4);
 }
 
 static void hugifyForOldKernel(uint8_t *From, uint8_t *To) {
@@ -153,17 +152,24 @@ extern "C" void __bolt_hugify_self_impl() {
   DEBUG(reportNumber("[hugify] aligned huge page from: ", (uint64_t)From, 16);)
   DEBUG(reportNumber("[hugify] aligned huge page to: ", (uint64_t)To, 16);)
 
-  if (!hasPagecacheTHPSupport()) {
-    DEBUG(report(
-              "[hugify] workaround with memory alignment for kernel < 5.10\n");)
-    hugifyForOldKernel(From, To);
+  // MADV_COLLAPSE (since Linux 6.1) ignores [never] state
+  if (!isThpEnabled()) {
+    DEBUG(report("[hugify] THP support is not enabled.\n");)
     return;
   }
 
-  if (__madvise(From, (To - From), MADV_HUGEPAGE) < 0) {
-    // TODO: allow user to control the failure behavior.
-    char Msg[] = "[hugify] setting MADV_HUGEPAGE is failed\n";
-    reportError(Msg, sizeof(Msg));
+  if (hasPagecacheTHPSupport()) {
+    DEBUG(report("[hugify] THP for pagecache is supported.\n");)
+    if (__madvise(From, (To - From), MADV_HUGEPAGE) < 0) {
+      // TODO: allow user to control the failure behavior.
+      char Msg[] = "[hugify] setting MADV_HUGEPAGE is failed\n";
+      reportError(Msg, sizeof(Msg));
+    }
+
+  } else {
+    DEBUG(report("[hugify] THP for pagecache is not supported. The "
+                 "copy-map-madvise approach is used\n");)
+    hugifyForOldKernel(From, To);
   }
 }
 
