@@ -225,26 +225,26 @@ void test() {
   set.find(*object());
   set.contains(*object());
   set.add(*object());
-  // expected-warning@-1{{Call argument is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument '*object()' of 'WTF::HashSet<RefPtr<RefCounted>>::add<RefCounted>' is a raw reference to ref-countable type 'RefCounted'}}
   set.remove(*object());
-  // expected-warning@-1{{Call argument is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument '*object()' of 'WTF::HashSet<RefPtr<RefCounted>>::remove<RefCounted>' is a raw reference to ref-countable type 'RefCounted'}}
 
   HashMap<Ref<RefCounted>, unsigned> map;
   map.find(*object());
   map.contains(*object());
   map.inlineGet(*object());
   map.add(*object());
-  // expected-warning@-1{{Call argument is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument '*object()' of 'WTF::HashMap<Ref<RefCounted>, unsigned int>::add<RefCounted>' is a raw reference to ref-countable type 'RefCounted'}}
   map.remove(*object());
-  // expected-warning@-1{{Call argument is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument '*object()' of 'WTF::HashMap<Ref<RefCounted>, unsigned int>::remove<RefCounted>' is a raw reference to ref-countable type 'RefCounted'}}
 
   WeakHashSet<Ref<RefCounted>> weakSet;
   weakSet.find(*object());
   weakSet.contains(*object());
   weakSet.add(*object());
-  // expected-warning@-1{{Call argument is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument '*object()' of 'WTF::WeakHashSet<Ref<RefCounted>>::add<RefCounted>' is a raw reference to ref-countable type 'RefCounted'}}
   weakSet.remove(*object());
-  // expected-warning@-1{{Call argument is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument '*object()' of 'WTF::WeakHashSet<Ref<RefCounted>>::remove<RefCounted>' is a raw reference to ref-countable type 'RefCounted'}}
 
   Vector<Ref<RefCounted>> vector;
   vector.at(0);
@@ -253,9 +253,9 @@ void test() {
   vector.reverseFind(*object());
   vector.contains(*object());
   vector.append(*object());
-  // expected-warning@-1{{Call argument is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument '*object()' of 'WTF::Vector<Ref<RefCounted>>::append<RefCounted>' is a raw reference to ref-countable type 'RefCounted'}}
   vector.remove(*object());
-  // expected-warning@-1{{Call argument is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument '*object()' of 'WTF::Vector<Ref<RefCounted>>::remove<RefCounted>' is a raw reference to ref-countable type 'RefCounted'}}
 
   auto* obj = object();
   vector.findIf([&](Ref<RefCounted> key) { return key.ptr() == obj; });

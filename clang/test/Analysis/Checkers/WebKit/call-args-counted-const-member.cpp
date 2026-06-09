@@ -20,7 +20,7 @@ private:
 void Foo::bar() {
   m_obj1->method();
   m_obj2->method();
-  // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument 'this->m_obj2' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
 }
 
 } // namespace call_args_const_refptr_member
@@ -41,7 +41,7 @@ private:
 void Foo::bar() {
   m_obj1->method();
   m_obj2->method();
-  // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument 'this->m_obj2' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
   obj1().method();
 }
 
@@ -87,10 +87,10 @@ private:
 void Foo::bar() {
   m_obj1->method();
   m_obj2->method();
-  // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument 'this->m_obj2' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
   ensureObj3().method();
   badEnsureObj4().method();
-  // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument 'this->badEnsureObj4()' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
   ensureObj5()->method();
 }
 
@@ -112,7 +112,7 @@ private:
 void Foo::bar() {
   m_obj1->method();
   m_obj2->method();
-  // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument 'this->m_obj2' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
   obj1().method();
 }
 

@@ -9,7 +9,7 @@ void some_function();
 namespace simple {
   void foo() {
     consume_refcntbl(provide());
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' of 'consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
   }
 
   // Test that the checker works with [[clang::suppress]].
@@ -23,7 +23,7 @@ namespace multi_arg {
   void consume_refcntbl(int, RefCountable* foo, bool);
   void foo() {
     consume_refcntbl(42, provide(), true);
-    // expected-warning@-1{{Call argument for parameter 'foo' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' for parameter 'foo' of 'multi_arg::consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
   }
 }
 
@@ -47,9 +47,9 @@ namespace methods {
     Consumer c;
 
     c.consume_ptr(provide());
-    // expected-warning@-1{{Call argument for parameter 'ptr' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' for parameter 'ptr' of 'methods::Consumer::consume_ptr' is a raw pointer to ref-countable type 'RefCountable'}}
     c.consume_ref(*provide());
-    // expected-warning@-1{{Call argument for parameter 'ref' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument '*provide()' for parameter 'ref' of 'methods::Consumer::consume_ref' is a raw reference to ref-countable type}}
   }
 
   void foo2() {
@@ -57,7 +57,7 @@ namespace methods {
       void consume(RefCountable*) { some_function(); }
       void whatever() {
         consume(provide());
-        // expected-warning@-1{{Call argument is uncounted and unsafe}}
+        // expected-warning@-1{{Call argument 'provide()' of 'methods::foo2()::Consumer::consume' is a raw pointer to ref-countable type 'RefCountable'}}
       }
     };
   }
@@ -67,7 +67,7 @@ namespace methods {
       void consume(RefCountable*) { some_function(); }
       void whatever() {
         this->consume(provide());
-        // expected-warning@-1{{Call argument is uncounted and unsafe}}
+        // expected-warning@-1{{Call argument 'provide()' of 'methods::foo3()::Consumer::consume' is a raw pointer to ref-countable type 'RefCountable'}}
       }
     };
   }
@@ -78,22 +78,22 @@ namespace casts {
 
   void foo() {
     consume_refcntbl(provide());
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' of 'consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
 
     consume_refcntbl(static_cast<RefCountable*>(provide()));
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'static_cast<RefCountable *>(provide())' of 'consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
 
     consume_refcntbl(dynamic_cast<RefCountable*>(provide()));
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'dynamic_cast<RefCountable *>(provide())' of 'consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
 
     consume_refcntbl(const_cast<RefCountable*>(provide()));
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'const_cast<RefCountable *>(provide())' of 'consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
 
     consume_refcntbl(reinterpret_cast<RefCountable*>(provide()));
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'reinterpret_cast<RefCountable *>(provide())' of 'consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
 
     consume_refcntbl(downcast(provide()));
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'downcast(provide())' of 'consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
 
     consume_refcntbl(
       static_cast<RefCountable*>(
@@ -104,7 +104,7 @@ namespace casts {
         )
       )
     );
-    // expected-warning@-8{{Call argument is uncounted and unsafe}}
+    // expected-warning@-8{{Call argument 'static_cast<RefCountable *>(downcast(static_cast<R...' of 'consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
   }
 }
 
@@ -124,7 +124,7 @@ namespace ref_counted_lookalike {
     Decoy D;
 
     consume_refcntbl(D.get());
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'D.get()' of 'consume_refcntbl' is a raw pointer to ref-countable type 'RefCountable'}}
   }
 }
 
@@ -306,7 +306,7 @@ namespace default_arg {
   RefCountable* global;
 
   void function_with_default_arg(RefCountable* param = global);
-  // expected-warning@-1{{Call argument for parameter 'param' is uncounted and unsafe}}
+  // expected-warning@-1{{Call argument 'global' for parameter 'param' of 'default_arg::function_with_default_arg' is a raw pointer to ref-countable type 'RefCountable'}}
 
   void foo() {
     function_with_default_arg();
@@ -318,7 +318,7 @@ namespace cxx_member_func {
   void foo() {
     provide()->trivial();
     provide()->method();
-    // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
     provideProtected()->method();
     (provideProtected())->method();
   };
@@ -347,13 +347,13 @@ namespace cxx_member_operator_call {
   void foo12() {
     Foo f;
     f + global;
-    // expected-warning@-1{{Call argument for parameter 'bad' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'global' for parameter 'bad' of 'cxx_member_operator_call::Foo::operator+' is a raw pointer to ref-countable type 'RefCountable'}}
     f - global;
-    // expected-warning@-1{{Call argument for parameter 'bad' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'global' for parameter 'bad' of 'cxx_member_operator_call::operator-' is a raw pointer to ref-countable type 'RefCountable'}}
     f(global);
-    // expected-warning@-1{{Call argument for parameter 'bad' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'global' for parameter 'bad' of 'cxx_member_operator_call::Foo::operator()' is a raw pointer to ref-countable type 'RefCountable'}}
     container()[0] = 3;
-    // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'container()' for 'this' parameter of 'cxx_member_operator_call::Container::operator[]' is a raw pointer to ref-countable type 'cxx_member_operator_call::Container'}}
   }
 }
 
@@ -367,11 +367,11 @@ namespace call_function_ptr {
 
   void foo(void (*consume)(void*, RefCountableWithWeakPtr*), void (*consumeVar)(RefCountableWithWeakPtr*, ...), void (RefCountableWithWeakPtr::*method)()) {
     consume(nullptr, provide());
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' is a raw pointer to ref-countable type 'call_function_ptr::RefCountableWithWeakPtr}}
     consumeVar(nullptr, provide());
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' is a raw pointer to ref-countable type 'call_function_ptr::RefCountableWithWeakPtr}}
     (provide()->*method)();
-    // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' for 'this' parameter is a raw pointer to ref-countable type 'call_function_ptr::RefCountableWithWeakPtr'}}
   }
 
   template <typename T, typename U, typename... Arg>
@@ -388,9 +388,9 @@ namespace call_with_ptr_on_ref {
     bar(v ? nullptr : provideProtected().ptr());
     bar(baz() ? provideProtected().ptr() : nullptr);
     bar(v ? provide() : provideProtected().ptr());
-    // expected-warning@-1{{Call argument for parameter 'bad' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'v ? provide() : provideProtected().ptr()' for parameter 'bad' of 'call_with_ptr_on_ref::bar' is a raw pointer to ref-countable type 'RefCountable'}}
     bar(v ? provideProtected().ptr() : provide());
-    // expected-warning@-1{{Call argument for parameter 'bad' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'v ? provideProtected().ptr() : provide()' for parameter 'bad' of 'call_with_ptr_on_ref::bar' is a raw pointer to ref-countable type 'RefCountable'}}
   }
 }
 
@@ -459,7 +459,7 @@ namespace call_with_explicit_construct {
   class Obj {
   public:
     Obj(RefCountable* obj = provide(), RefCountable* otherObj = nullptr) {
-      // expected-warning@-1{{Call argument for parameter 'obj' is uncounted and unsafe}}
+      // expected-warning@-1{{Call argument 'provide()' for parameter 'obj' of 'call_with_explicit_construct::Obj::Obj' is a raw pointer to ref-countable type 'RefCountable'}}
       consume_refcntbl(obj);
       if (otherObj)
         otherObj->method();
@@ -472,13 +472,13 @@ namespace call_with_explicit_construct {
   void foo(RefCountable* arg) {
     Obj obj1;
     Obj obj2(provide());
-    // expected-warning@-1{{Call argument for parameter 'obj' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' for parameter 'obj' of 'call_with_explicit_construct::Obj::Obj' is a raw pointer to ref-countable type 'RefCountable'}}
     Obj obj3(*provide());
-    // expected-warning@-1{{Call argument for parameter 'obj' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument '*provide()' for parameter 'obj' of 'call_with_explicit_construct::Obj::Obj' is a raw reference to ref-countable type 'RefCountable'}}
     Obj obj4(Ref<RefCountable> { *provide() }.get());
     Obj obj5(arg);
     Obj obj6(arg, provide());
-    // expected-warning@-1{{Call argument for parameter 'otherObj' is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' for parameter 'otherObj' of 'call_with_explicit_construct::Obj::Obj' is a raw pointer to ref-countable type 'RefCountable'}}
   }
 }
 
@@ -511,9 +511,9 @@ namespace call_on_member {
 
     void doWork() {
       m_obj->method();
-      // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+      // expected-warning@-1{{Call argument 'this->m_obj' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
       m_obj.get()->method();
-      // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+      // expected-warning@-1{{Call argument 'this->m_obj.get()' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
       m_constObj->method();
     }
 
@@ -546,7 +546,7 @@ namespace call_on_member {
 
   void foo() {
     provide()->constObj().method();
-    // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()->constObj()' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
     Ref { provide()->constObj() }->method();
     RefPtr { provide() }->constObj().method();
   }
@@ -564,9 +564,9 @@ namespace call_with_weak_ptr {
   void foo() {
     WeakPtr weakPtr = provide();
     consume(weakPtr);
-    // expected-warning@-1{{Call argument is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'weakPtr' of 'call_with_weak_ptr::consume' is a raw pointer to ref-countable type 'call_with_weak_ptr::RefCountableWithWeakPtr'}}
     weakPtr->method();
-    // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'weakPtr' for 'this' parameter of 'RefCountable::method' is a raw pointer to ref-countable type 'RefCountable'}}
   }
 
   struct Provider {

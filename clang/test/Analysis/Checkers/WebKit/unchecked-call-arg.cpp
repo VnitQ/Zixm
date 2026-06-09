@@ -30,7 +30,7 @@ public:
 CheckedObject* provide();
 void foo() {
   provide()->doWork();
-  // expected-warning@-1{{Call argument for 'this' parameter is unchecked and unsafe}}
+  // expected-warning@-1{{Call argument 'provide()' for 'this' parameter of 'CheckedObject::doWork' is a raw pointer to CheckedPtr capable type 'CheckedObject'}}
 }
 
 void doWorkWithObject(const CheckedObject&);
