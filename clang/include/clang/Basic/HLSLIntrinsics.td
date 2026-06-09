@@ -1202,7 +1202,6 @@ If \a Val is negative, this result is undefined. If \a Val is 0, this
 function returns negative infinity.
 }];
   let VaryingTypes = [HalfTy, FloatTy];
-  let VaryingMatDims = [];
 }
 
 // Returns the base-10 logarithm of the input value, Val.
@@ -1216,7 +1215,6 @@ If \a Val is negative, this result is undefined. If \a Val is 0, this
 function returns negative infinity.
 }];
   let VaryingTypes = [HalfTy, FloatTy];
-  let VaryingMatDims = [];
 }
 
 // Returns the base-2 logarithm of the input value, Val.
@@ -1230,7 +1228,6 @@ If \a Val is negative, this result is undefined. If \a Val is 0, this
 function returns negative infinity.
 }];
   let VaryingTypes = [HalfTy, FloatTy];
-  let VaryingMatDims = [];
 }
 
 // Returns the result of M * A + B (multiply-add).
