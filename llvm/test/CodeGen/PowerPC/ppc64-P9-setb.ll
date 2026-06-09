@@ -673,7 +673,6 @@ define i64 @setb27(i64 %a, i64 %b) {
 ; CHECK-PWR8-NEXT:    addic r6, r5, -1
 ; CHECK-PWR8-NEXT:    subfe r5, r6, r5
 ; CHECK-PWR8-NEXT:    isellt r3, r3, r5
-; CHECK-PWR8-NEXT:    extsw r3, r3
 ; CHECK-PWR8-NEXT:    blr
   %t1 = icmp slt i64 %a, %b
   %t2 = icmp ne i64 %b, %a
@@ -699,7 +698,6 @@ define i64 @setb28(i64 %a, i64 %b) {
 ; CHECK-PWR8-NEXT:    addic r6, r5, -1
 ; CHECK-PWR8-NEXT:    subfe r5, r6, r5
 ; CHECK-PWR8-NEXT:    iselgt r3, r3, r5
-; CHECK-PWR8-NEXT:    extsw r3, r3
 ; CHECK-PWR8-NEXT:    blr
   %t1 = icmp sgt i64 %b, %a
   %t2 = icmp ne i64 %b, %a

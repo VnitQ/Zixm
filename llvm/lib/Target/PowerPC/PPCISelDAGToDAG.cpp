@@ -217,6 +217,7 @@ namespace {
     bool tryBitfieldInsert(SDNode *N);
     bool tryBitPermutation(SDNode *N);
     bool tryIntCompareInGPR(SDNode *N);
+    bool trySelectThreeWayCompare(SDNode *N);
 
     // tryTLSXFormLoad - Convert an ISD::LOAD fed by a PPCISD::ADD_TLS into
     // an X-Form load instruction with the offset being a relocation coming from
@@ -3765,6 +3766,7 @@ IntegerCompareEliminator::get64BitZExtCompare(SDValue LHS, SDValue RHS,
       return SDValue(CurDAG->getMachineNode(PPC::RLDICL, dl, MVT::i64, LHS,
                                             S->getI64Imm(1, dl),
                                             S->getI64Imm(63, dl)), 0);
+
     SDValue SRADINode =
       SDValue(CurDAG->getMachineNode(PPC::SRADI, dl, MVT::i64,
                                      LHS, S->getI64Imm(63, dl)), 0);
@@ -4050,6 +4052,126 @@ SDValue IntegerCompareEliminator::getSETCCInGPR(SDValue Compare,
 }
 
 } // end anonymous namespace
+
+bool PPCDAGToDAGISel::trySelectThreeWayCompare(SDNode *N) {
+  // Match pattern: select (setcc a, b, setlt), -1, (zext (setcc a, b, setgt))
+  // This is the three-way comparison pattern (like C++20 operator<=>)
+  // Generate optimal code using single comparison with MFOCRF
+
+  if (N->getOpcode() != ISD::SELECT)
+    return false;
+
+  EVT ResVT = N->getValueType(0);
+  if (ResVT != MVT::i32 && ResVT != MVT::i64)
+    return false;
+  // Only optimize for targets with MFOCRF support
+  if (!Subtarget->hasMFOCRF())
+    return false;
+
+  SDValue Cond = N->getOperand(0);
+  SDValue TrueVal = N->getOperand(1);
+  SDValue FalseVal = N->getOperand(2);
+
+  // Check if condition is SETCC with SETLT
+  if (Cond.getOpcode() != ISD::SETCC)
+    return false;
+
+  ISD::CondCode CC = cast<CondCodeSDNode>(Cond.getOperand(2))->get();
+  if (CC != ISD::SETLT)
+    return false;
+
+  SDValue LHS = Cond.getOperand(0);
+  SDValue RHS = Cond.getOperand(1);
+
+  // Check operand types - support both i32 and i64
+  EVT CmpVT = LHS.getValueType();
+  if (CmpVT != MVT::i32 && CmpVT != MVT::i64)
+    return false;
+
+  if (RHS.getValueType() != CmpVT)
+    return false;
+
+  // Check if TrueVal is -1
+  ConstantSDNode *TrueConst = dyn_cast<ConstantSDNode>(TrueVal);
+  if (!TrueConst || !TrueConst->isAllOnes())
+    return false;
+
+  // Check if FalseVal is ZERO_EXTEND
+  if (FalseVal.getOpcode() != ISD::ZERO_EXTEND)
+    return false;
+
+  SDValue InnerSetcc = FalseVal.getOperand(0);
+  if (InnerSetcc.getOpcode() != ISD::SETCC)
+    return false;
+
+  // Check if inner SETCC is SETGT with same operands
+  ISD::CondCode InnerCC = cast<CondCodeSDNode>(InnerSetcc.getOperand(2))->get();
+  if (InnerCC != ISD::SETGT)
+    return false;
+
+  SDValue InnerLHS = InnerSetcc.getOperand(0);
+  SDValue InnerRHS = InnerSetcc.getOperand(1);
+
+  if (LHS != InnerLHS || RHS != InnerRHS)
+    return false;
+
+  // Pattern matched! Generate optimal code:
+  // Since CR is 32-bit and MFOCRF8 puts CR in bits 32:63,
+  // we use RLWINM/RLWINM8 for both 32-bit and 64-bit:
+  //   cmpw       LHS, RHS
+  //   mfocrf     r, CR7
+  //   rlwinm     LT, r, 29, 31, 31  (extract LT bit from CR7)
+  //   rlwinm     GT, r, 30, 31, 31  (extract GT bit from CR7)
+  //   subf       result, LT, GT     (GT - LT = -1/0/1)
+
+  SDLoc dl(N);
+  bool Is64BitCmp = (CmpVT == MVT::i64);
+  bool Is64BitRes = (ResVT == MVT::i64);
+
+  unsigned CmpOpc = Is64BitCmp ? PPC::CMPD : PPC::CMPW;
+  SDValue Cmp =
+      SDValue(CurDAG->getMachineNode(CmpOpc, dl, MVT::i32, LHS, RHS), 0);
+
+  // Force the comparison result into CR7 so we know exact bit positions
+  SDValue CR7Reg = CurDAG->getRegister(PPC::CR7, MVT::i32);
+  SDValue InGlue;  // Null incoming flag value
+  SDValue CopyToReg = CurDAG->getCopyToReg(CurDAG->getEntryNode(), dl, CR7Reg, Cmp, InGlue);
+  SDValue Glue = CopyToReg.getValue(1);
+
+  // Now use MFOCRF with CR7
+  unsigned MFOCRFOpc = Is64BitRes ? PPC::MFOCRF8 : PPC::MFOCRF;
+  EVT MFVT = Is64BitRes ? MVT::i64 : MVT::i32;
+  SDValue MFOCRF = SDValue(CurDAG->getMachineNode(MFOCRFOpc, dl, MFVT, CR7Reg, Glue), 0);
+
+  // Extract LT and GT bits from CR7
+  SDValue LTBit, GTBit;
+
+  // Extract LT and GT bits from CR7 using RLWINM for both modes
+  unsigned RLWinmOpc = Is64BitRes ? PPC::RLWINM8 : PPC::RLWINM;
+
+  // Extract LT (Bit 28 -> Rotate Left 29 -> Bit 31)
+  SDValue LTOps[] = {MFOCRF, CurDAG->getTargetConstant(29, dl, MVT::i32),
+                     CurDAG->getTargetConstant(31, dl, MVT::i32),
+                     CurDAG->getTargetConstant(31, dl, MVT::i32)};
+  LTBit = SDValue(CurDAG->getMachineNode(RLWinmOpc, dl, ResVT, LTOps), 0);
+
+  // Extract GT (Bit 29 -> Rotate Left 30 -> Bit 31)
+  SDValue GTOps[] = {MFOCRF, CurDAG->getTargetConstant(30, dl, MVT::i32),
+                     CurDAG->getTargetConstant(31, dl, MVT::i32),
+                     CurDAG->getTargetConstant(31, dl, MVT::i32)};
+  GTBit = SDValue(CurDAG->getMachineNode(RLWinmOpc, dl, ResVT, GTOps), 0);
+
+  // Compute result: GT - LT (match result type)
+  // If LT: 0 - 1 = -1
+  // If GT: 1 - 0 = 1
+  // If EQ: 0 - 0 = 0
+  unsigned SubOpc = Is64BitRes ? PPC::SUBF8 : PPC::SUBF;
+  SDValue Result =
+      SDValue(CurDAG->getMachineNode(SubOpc, dl, ResVT, LTBit, GTBit), 0);
+
+  ReplaceNode(N, Result.getNode());
+  return true;
+}
 
 bool PPCDAGToDAGISel::tryIntCompareInGPR(SDNode *N) {
   if (N->getValueType(0) != MVT::i32 &&
@@ -5271,6 +5393,11 @@ void PPCDAGToDAGISel::Select(SDNode *N) {
 
   // Try to emit integer compares as GPR-only sequences (i.e. no use of CR).
   if (tryIntCompareInGPR(N))
+    return;
+
+  // Try to match the three-way comparison pattern:
+  // select (setcc a, b, setlt), -1, (zext (setcc a, b, setgt))
+  if (trySelectThreeWayCompare(N))
     return;
 
   switch (N->getOpcode()) {

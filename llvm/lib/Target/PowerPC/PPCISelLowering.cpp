@@ -16140,6 +16140,99 @@ SDValue PPCTargetLowering::combineSignExtendSetCC(SDNode *N,
   return Sube;
 }
 
+// Optimize: sign_extend(select(cond, op1, op2))
+// where operands are constants, zero_extend, or sign_extend
+// For 64-bit targets, we can eliminate the outer sign_extend by hoisting
+// operations to i64, reducing one instruction.
+SDValue PPCTargetLowering::combineSignExtendSelect(SDNode *N,
+                                                   DAGCombinerInfo &DCI) const {
+  // Only optimize on 64-bit targets where i64 is a legal type
+  if (!Subtarget.isPPC64())
+    return SDValue();
+
+  assert(N->getOpcode() == ISD::SIGN_EXTEND && "Expected SIGN_EXTEND node");
+
+  EVT VT = N->getValueType(0);
+  if (VT != MVT::i64)
+    return SDValue();
+
+  SDValue N0 = N->getOperand(0);
+
+  // Check if operand is a SELECT node with i32 result type
+  if (N0.getOpcode() != ISD::SELECT || N0.getValueType() != MVT::i32)
+    return SDValue();
+
+  // Only optimize if the SELECT has a single use to avoid duplicating work
+  if (!N0.hasOneUse())
+    return SDValue();
+
+  SDValue Cond = N0.getOperand(0);
+  SDValue TrueVal = N0.getOperand(1);
+  SDValue FalseVal = N0.getOperand(2);
+
+  // Check if operands are constants or extend operations
+  // This optimization is beneficial when we can avoid intermediate i32
+  // operations
+
+  auto IsOptimizableOperand = [](SDValue V) -> bool {
+    if (isa<ConstantSDNode>(V))
+      return true;
+    if (V.getOpcode() == ISD::ZERO_EXTEND || V.getOpcode() == ISD::SIGN_EXTEND)
+      return true;
+    return false;
+  };
+
+  bool TrueIsOptimizable = IsOptimizableOperand(TrueVal);
+  bool FalseIsOptimizable = IsOptimizableOperand(FalseVal);
+
+  // Only optimize if at least one operand matches our pattern
+  if (!TrueIsOptimizable && !FalseIsOptimizable)
+    return SDValue();
+
+  // Check hasOneUse for extend nodes to avoid duplication
+  if ((TrueVal.getOpcode() == ISD::ZERO_EXTEND ||
+       TrueVal.getOpcode() == ISD::SIGN_EXTEND) &&
+      !TrueVal.hasOneUse())
+    return SDValue();
+  if ((FalseVal.getOpcode() == ISD::ZERO_EXTEND ||
+       FalseVal.getOpcode() == ISD::SIGN_EXTEND) &&
+      !FalseVal.hasOneUse())
+    return SDValue();
+
+  // Pattern matched: sext(select(cond, op1, op2))
+  // Transform to: select(cond, sext(op1), sext(op2))
+  // This eliminates the outer sign_extend operation.
+
+  SelectionDAG &DAG = DCI.DAG;
+  SDLoc dl(N);
+
+  // Helper to extend operand to i64
+  auto ExtendOperand = [&](SDValue Op) -> SDValue {
+    if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
+      // Sign-extend constant
+      return DAG.getConstant(C->getSExtValue(), dl, MVT::i64);
+    } else if (Op.getOpcode() == ISD::ZERO_EXTEND) {
+      // Extend zero_extend: zext(x) -> zext_i64(x)
+      return DAG.getNode(ISD::ZERO_EXTEND, dl, MVT::i64, Op.getOperand(0));
+    } else if (Op.getOpcode() == ISD::SIGN_EXTEND) {
+      // Extend sign_extend: sext(x) -> sext_i64(x)
+      return DAG.getNode(ISD::SIGN_EXTEND, dl, MVT::i64, Op.getOperand(0));
+    } else {
+      // Sign-extend other values
+      return DAG.getNode(ISD::SIGN_EXTEND, dl, MVT::i64, Op);
+    }
+  };
+
+  SDValue NewTrueVal = ExtendOperand(TrueVal);
+  SDValue NewFalseVal = ExtendOperand(FalseVal);
+
+  // Create the new i64 select
+  SDValue NewSelect =
+      DAG.getNode(ISD::SELECT, dl, MVT::i64, Cond, NewTrueVal, NewFalseVal);
+
+  return NewSelect;
+}
+
 SDValue PPCTargetLowering::combineSetCC(SDNode *N,
                                         DAGCombinerInfo &DCI) const {
   assert(N->getOpcode() == ISD::SETCC &&
@@ -17814,6 +17907,8 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
   case ISD::SIGN_EXTEND:
     if (SDValue SECC = combineSignExtendSetCC(N, DCI))
       return SECC;
+    if (SDValue SEXT = combineSignExtendSelect(N, DCI))
+      return SEXT;
     [[fallthrough]];
   case ISD::ZERO_EXTEND:
     if (SDValue RetV = combineZextSetccWithZero(N, DCI.DAG))
