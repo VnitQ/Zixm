@@ -1398,18 +1398,18 @@ read packet: $cputype:16777223;cpusubtype:3;ostype:darwin;vendor:apple;endian:li
 Key value pairs are one of:
 * `cputype`: is a number that is the mach-o CPU type that is being debugged (base 10)
 * `cpusubtype`: is a number that is the mach-o CPU subtype type that is being debugged (base 10)
-* `triple`: a string for the target triple (x86_64-apple-macosx) that can be used to specify arch + vendor + os in one entry
+* `triple`: a hex encoded string for the target triple (for example x86_64-apple-macosx) that can be used to specify arch + vendor + os in one entry
 * `vendor`: a string for the vendor (apple), not needed if "triple" is specified
 * `ostype`: a string for the OS being debugged (macosx, linux, freebsd, ios, watchos), not needed if "triple" is specified
 * `endian`: is one of "little", "big", or "pdp"
 * `ptrsize`: an unsigned number that represents how big pointers are in bytes on the debug target
-* `hostname`: the hostname of the host that is running the GDB server if available
-* `os_build`: a string for the OS build for the remote host as a string value
-* `os_kernel`: a string describing the kernel version
+* `hostname`: optional, a hex encoded string of the hostname of the host that is running the GDB server
+* `os_build`: a hex encoded string for the OS build for the remote host as a string value
+* `os_kernel`: a hex encoded string describing the kernel version
 * `os_version`: a version string that represents the current OS version (10.8.2)
 * `watchpoint_exceptions_received`: one of "before" or "after" to specify if a watchpoint is triggered before or after the pc when it stops
 * `default_packet_timeout`: an unsigned number that specifies the default timeout in seconds
-* `distribution_id`: optional. For linux, specifies distribution id (e.g. ubuntu, fedora, etc.)
+* `distribution_id`: optional hex encoded string. For linux, specifies distribution id (e.g. ubuntu, fedora, etc.)
 * `osmajor`: optional, specifies the major version number of the OS (e.g. for macOS 10.12.2, it would be 10)
 * `osminor`: optional, specifies the minor version number of the OS (e.g. for macOS 10.12.2, it would be 12)
 * `ospatch`: optional, specifies the patch level number of the OS (e.g. for macOS 10.12.2, it would be 2)
