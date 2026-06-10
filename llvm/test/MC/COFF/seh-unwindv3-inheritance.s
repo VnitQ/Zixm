@@ -83,13 +83,16 @@ different_numops:
 // CHECK-LABEL:  StartAddress: different_numops
 // CHECK:        NumberOfOps: 2
 // CHECK:        NumberOfEpilogs: 2
+// V3 emits epilog descriptors in descending address order (tail-relative
+// offsets), so the later partial (1-op) epilog is Epilog [0].
 // CHECK:        Epilog [0] {
-// CHECK:          NumberOfOps: 2
-// CHECK:          FirstOp: 0x0
-// CHECK:        }
-// Epilog 1: different NumberOfOps ΓÇö gets its own full descriptor, not inherited
-// CHECK:        Epilog [1] {
 // CHECK:          NumberOfOps: 1
+// CHECK:          FirstOp: 0x0
+// CHECK:          ALLOC_SMALL Size=0x20
+// CHECK:        }
+// Epilog 1: different NumberOfOps — gets its own full descriptor, not inherited
+// CHECK:        Epilog [1] {
+// CHECK:          NumberOfOps: 2
 // CHECK:          FirstOp: 0x0
 // CHECK:          ALLOC_SMALL Size=0x20
 
@@ -125,13 +128,14 @@ different_wods:
 // CHECK-LABEL:  StartAddress: different_wods
 // CHECK:        NumberOfOps: 3
 // CHECK:        NumberOfEpilogs: 2
-// Epilog 0: PUSH RDI, found in prolog pool
+// Descriptors are in descending address order, so the later epilog
+// (PUSH RBX) is Epilog [0].
 // CHECK:        Epilog [0] {
 // CHECK:          NumberOfOps: 1
-// CHECK:          PUSH Reg=RDI
+// CHECK:          PUSH Reg=RBX
 // CHECK:        }
-// Epilog 1: PUSH RBX ΓÇö different FirstOp, so NOT inherited
+// Epilog 1: PUSH RDI — different FirstOp, so NOT inherited
 // CHECK:        Epilog [1] {
 // CHECK:          NumberOfOps: 1
-// CHECK:          PUSH Reg=RBX
+// CHECK:          PUSH Reg=RDI
 // CHECK:       ]
