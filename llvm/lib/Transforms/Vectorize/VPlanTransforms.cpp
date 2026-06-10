@@ -4285,6 +4285,26 @@ static void repairEarlyExitSSA(VPlan &Plan, VPDominatorTree &VPDT,
     }
 }
 
+/// Splits \p LatchVPBB so it only contains the IV increment recipes.
+static VPBasicBlock *splitLatchAtIVInc(VPBasicBlock *LatchVPBB) {
+  auto It = std::prev(LatchVPBB->getTerminator()->getIterator());
+  while (!match(
+      It->getVPSingleValue(),
+      m_CombineOr(m_Add(m_Isa<VPWidenIntOrFpInductionRecipe>(), m_LiveIn()),
+                  m_Sub(m_Isa<VPWidenIntOrFpInductionRecipe>(), m_LiveIn()),
+                  m_VPInstruction<Instruction::GetElementPtr>(
+                      m_Isa<VPWidenPointerInductionRecipe>(), m_LiveIn())))) {
+    assert(!It->mayReadOrWriteMemory() && !It->mayHaveSideEffects() &&
+           "Instruction with side effects between IV increment and branch?");
+    if (It == LatchVPBB->begin())
+      return LatchVPBB;
+    It = std::prev(It);
+  }
+  LatchVPBB = LatchVPBB->splitAt(It);
+  LatchVPBB->setName("vector.latch");
+  return LatchVPBB;
+}
+
 /// Update \p Plan to mask memory operations in the loop based on whether the
 /// early exit is taken or not.
 static bool handleUncountableExitsWithSideEffects(
@@ -4292,18 +4312,22 @@ static bool handleUncountableExitsWithSideEffects(
     VPBasicBlock *HeaderVPBB, VPBasicBlock *LatchVPBB, VPBasicBlock *MiddleVPBB,
     Loop *TheLoop, PredicatedScalarEvolution &PSE, DominatorTree &DT,
     AssumptionCache *AC, VPDominatorTree &VPDT) {
+  VPBasicBlock *OrigLatchVPBB = LatchVPBB;
+  LatchVPBB = splitLatchAtIVInc(LatchVPBB);
 
-  // Disconnect early exiting blocks from successors, remove branches. We
-  // currently don't support multiple uses for recipes involved in creating
-  // the uncountable exit condition.
+  // Connect early exiting blocks to the latch. We currently don't support
+  // multiple uses for recipes involved in creating the uncountable exit
+  // condition.
   for (auto &Exit : Exits) {
     if (Exit.EarlyExitingVPBB == LatchVPBB)
       continue;
 
     for (VPRecipeBase &R : Exit.EarlyExitVPBB->phis())
       cast<VPIRPhi>(&R)->removeIncomingValueFor(Exit.EarlyExitingVPBB);
-    Exit.EarlyExitingVPBB->getTerminator()->eraseFromParent();
+    // Remove the use of the condition, it will be replaced with the mask later.
+    Exit.EarlyExitingVPBB->getTerminator()->setOperand(0, Plan.getFalse());
     VPBlockUtils::disconnectBlocks(Exit.EarlyExitingVPBB, Exit.EarlyExitVPBB);
+    VPBlockUtils::connectBlocks(Exit.EarlyExitingVPBB, LatchVPBB);
   }
 
   // We can abandon a VPlan entirely if we return false here, so we shouldn't
@@ -4369,7 +4393,7 @@ static bool handleUncountableExitsWithSideEffects(
 
   // Find an insertion point. Default to the end of the header but override
   // if we find a memory op that needs masking before the condition load.
-  auto InsertIt = HeaderVPBB->end();
+  auto InsertIt = HeaderVPBB->getTerminator()->getIterator();
   VPRecipeBase *CondR = (*Cond)->getDefiningRecipe();
   bool CondMoveNeeded = CondR->getParent() != HeaderVPBB;
   for (VPRecipeBase &R : *HeaderVPBB) {
@@ -4403,19 +4427,30 @@ static bool handleUncountableExitsWithSideEffects(
   VPValue *Zero = Plan.getZero(IVScalarTy);
   FirstActive = MaskBuilder.createScalarZExtOrTrunc(FirstActive, IVScalarTy,
                                                     FirstActiveTy, DebugLoc());
-  VPValue *Mask = MaskBuilder.createNaryOp(VPInstruction::ActiveLaneMask,
-                                           {Zero, FirstActive, ALMMultiplier},
-                                           DebugLoc(), "uncountable.exit.mask");
+  VPInstruction *Mask = MaskBuilder.createNaryOp(
+      VPInstruction::ActiveLaneMask, {Zero, FirstActive, ALMMultiplier},
+      DebugLoc(), "uncountable.exit.mask");
 
-  // Convert all other memory operations to use the mask.
+  // Convert the branch conditions to use the mask.
+  for (auto &Exit : Exits) {
+    Exit.EarlyExitingVPBB->getTerminator()->setOperand(0, Mask);
+
+    // If the header is an early exiting block, split it and move the branch up.
+    if (Exit.EarlyExitingVPBB == HeaderVPBB) {
+      VPBasicBlock *Split = HeaderVPBB->splitAt(std::next(Mask->getIterator()));
+      Split->getTerminator()->moveAfter(Mask);
+      VPBlockUtils::disconnectBlocks(Split, LatchVPBB);
+      VPBlockUtils::connectBlocks(HeaderVPBB, LatchVPBB);
+    }
+  }
+
+  // TODO: Remove restriction on conditional memory operations in the loop.
+  VPDT.recalculate(Plan);
   for (VPBasicBlock *VPBB : vp_rpo_plain_cfg_loop_body(HeaderVPBB))
     for (VPRecipeBase &R : *VPBB)
-      if (R.mayReadOrWriteMemory() && &R != CondLoad) {
-        // TODO: Handle conditional memory operations in the loop.
-        if (!VPDT.dominates(R.getParent(), LatchVPBB))
+      if (R.mayReadOrWriteMemory() && &R != CondLoad)
+        if (!VPDT.dominates(R.getParent(), OrigLatchVPBB))
           return false;
-        cast<VPInstruction>(&R)->addMask(Mask);
-      }
 
   // Update middle block branch to compare (IV + however many lanes were active)
   // against the full trip count, since we may be exiting the vector loop early.
@@ -4438,6 +4473,9 @@ static bool handleUncountableExitsWithSideEffects(
     return false;
   VPPhi *ContinueIV = cast<VPPhi>(Phis.begin());
   ContinueIV->setOperand(0, ExitIV);
+
+  repairEarlyExitSSA(Plan, VPDT, Exits, LatchVPBB, MiddleVPBB);
+
   return true;
 }
 
