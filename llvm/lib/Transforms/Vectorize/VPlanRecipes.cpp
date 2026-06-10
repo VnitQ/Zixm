@@ -2042,20 +2042,9 @@ void VPWidenCallRecipe::execute(VPTransformState &State) {
   assert(State.VF.isVector() && "not widening");
   assert(Variant != nullptr && "Can't create vector function.");
 
-  FunctionType *VFTy = Variant->getFunctionType();
-  // Add return type if intrinsic is overloaded on it.
   SmallVector<Value *, 4> Args;
-  for (const auto &I : enumerate(args())) {
-    Value *Arg;
-    // Some vectorized function variants may also take a scalar argument,
-    // e.g. linear parameters for pointers. This needs to be the scalar value
-    // from the start of the respective part when interleaving.
-    if (!VFTy->getParamType(I.index())->isVectorTy())
-      Arg = State.get(I.value(), VPLane(0));
-    else
-      Arg = State.get(I.value(), usesFirstLaneOnly(I.value()));
-    Args.push_back(Arg);
-  }
+  for (VPValue *Op : args())
+    Args.push_back(State.get(Op, usesFirstLaneOnly(Op)));
 
   auto *CI = cast_or_null<CallInst>(getUnderlyingValue());
   SmallVector<OperandBundleDef, 1> OpBundles;
@@ -2144,12 +2133,7 @@ CallInst *VPWidenIntrinsicRecipe::createVectorCall(VPTransformState &State) {
   for (const auto &I : enumerate(operands())) {
     // Some intrinsics have a scalar argument - don't replace it with a
     // vector.
-    Value *Arg;
-    if (isVectorIntrinsicWithScalarOpAtArg(VectorIntrinsicID, I.index(),
-                                           State.TTI))
-      Arg = State.get(I.value(), VPLane(0));
-    else
-      Arg = State.get(I.value(), usesFirstLaneOnly(I.value()));
+    Value *Arg = State.get(I.value(), usesFirstLaneOnly(I.value()));
     if (isVectorIntrinsicWithOverloadTypeAtArg(VectorIntrinsicID, I.index(),
                                                State.TTI))
       TysForDecl.push_back(Arg->getType());
