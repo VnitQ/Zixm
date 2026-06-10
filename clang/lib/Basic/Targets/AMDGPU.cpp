@@ -44,6 +44,7 @@ const LangASMap AMDGPUTargetInfo::AMDGPUDefIsGenMap = {
     llvm::AMDGPUAS::GLOBAL_ADDRESS,   // sycl_global_host
     llvm::AMDGPUAS::LOCAL_ADDRESS,    // sycl_local
     llvm::AMDGPUAS::PRIVATE_ADDRESS,  // sycl_private
+    llvm::AMDGPUAS::FLAT_ADDRESS,     // sycl_generic
     llvm::AMDGPUAS::FLAT_ADDRESS,     // ptr32_sptr
     llvm::AMDGPUAS::FLAT_ADDRESS,     // ptr32_uptr
     llvm::AMDGPUAS::FLAT_ADDRESS,     // ptr64
@@ -76,6 +77,7 @@ const LangASMap AMDGPUTargetInfo::AMDGPUDefIsPrivMap = {
     llvm::AMDGPUAS::FLAT_ADDRESS,     // sycl_global_host
     llvm::AMDGPUAS::FLAT_ADDRESS,     // sycl_local
     llvm::AMDGPUAS::FLAT_ADDRESS,     // sycl_private
+    llvm::AMDGPUAS::FLAT_ADDRESS,     // sycl_generic
     llvm::AMDGPUAS::FLAT_ADDRESS,     // ptr32_sptr
     llvm::AMDGPUAS::FLAT_ADDRESS,     // ptr32_uptr
     llvm::AMDGPUAS::FLAT_ADDRESS,     // ptr64

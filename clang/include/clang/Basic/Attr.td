@@ -1813,44 +1813,116 @@ def OpenCLAccess : Attr {
   let Documentation = [OpenCLAccessDocs];
 }
 
-def OpenCLPrivateAddressSpace : TypeAttr {
+def OffloadPrivateAddressSpace : TypeAttr {
   let Spellings = [CustomKeyword<"__private">, CustomKeyword<"private">,
-                   Clang<"opencl_private">];
-  let Documentation = [OpenCLAddressSpacePrivateDocs];
+                   Clang<"opencl_private">, Clang<"sycl_private">];
+  let Documentation = [OffloadAddressSpacePrivateDocs];
+  let AdditionalMembers = [{
+    static inline bool isSYCLSpelling(const AttributeCommonInfo& A) {
+      return A.getAttributeSpellingListIndex() == GNU_sycl_private ||
+             A.getAttributeSpellingListIndex() == CXX11_clang_sycl_private ||
+             A.getAttributeSpellingListIndex() == C23_clang_sycl_private;
+    }
+    static inline LangAS getLangAS(const AttributeCommonInfo& A) {
+      return isSYCLSpelling(A) ? LangAS::sycl_private : LangAS::opencl_private;
+    }
+  }];
 }
 
-def OpenCLGlobalAddressSpace : TypeAttr {
+def OffloadGlobalAddressSpace : TypeAttr {
   let Spellings = [CustomKeyword<"__global">, CustomKeyword<"global">,
-                   Clang<"opencl_global">];
-  let Documentation = [OpenCLAddressSpaceGlobalDocs];
+                   Clang<"opencl_global">, Clang<"sycl_global">];
+  let Documentation = [OffloadAddressSpaceGlobalDocs];
+  let AdditionalMembers = [{
+    static inline bool isSYCLSpelling(const AttributeCommonInfo& A) {
+      return A.getAttributeSpellingListIndex() == GNU_sycl_global ||
+             A.getAttributeSpellingListIndex() == CXX11_clang_sycl_global ||
+             A.getAttributeSpellingListIndex() == C23_clang_sycl_global;
+    }
+    static inline LangAS getLangAS(const AttributeCommonInfo& A) {
+      return isSYCLSpelling(A) ? LangAS::sycl_global : LangAS::opencl_global;
+    }
+  }];
 }
 
-def OpenCLGlobalDeviceAddressSpace : TypeAttr {
-  let Spellings = [Clang<"opencl_global_device">];
-  let Documentation = [OpenCLAddressSpaceGlobalExtDocs];
+// TODO: Remove OffloadGlobalDeviceAddressSpace after deprecation.
+def OffloadGlobalDeviceAddressSpace : TypeAttr {
+  let Spellings = [Clang<"opencl_global_device">, Clang<"sycl_global_device">];
+  let Documentation = [OffloadAddressSpaceGlobalExtDocs];
+  let AdditionalMembers = [{
+    static inline bool isSYCLSpelling(const AttributeCommonInfo& A) {
+      return A.getAttributeSpellingListIndex() == GNU_sycl_global_device ||
+             A.getAttributeSpellingListIndex() == CXX11_clang_sycl_global_device ||
+             A.getAttributeSpellingListIndex() == C23_clang_sycl_global_device;
+    }
+    static inline LangAS getLangAS(const AttributeCommonInfo& A) {
+      return isSYCLSpelling(A) ? LangAS::sycl_global_device : LangAS::opencl_global_device;
+    }
+  }];
 }
 
-def OpenCLGlobalHostAddressSpace : TypeAttr {
-  let Spellings = [Clang<"opencl_global_host">];
-  let Documentation = [OpenCLAddressSpaceGlobalExtDocs];
+// TODO: Remove OffloadGlobalHostAddressSpace after deprecation.
+def OffloadGlobalHostAddressSpace : TypeAttr {
+  let Spellings = [Clang<"opencl_global_host">, Clang<"sycl_global_host">];
+  let Documentation = [OffloadAddressSpaceGlobalExtDocs];
+  let AdditionalMembers = [{
+    static inline bool isSYCLSpelling(const AttributeCommonInfo& A) {
+      return A.getAttributeSpellingListIndex() == GNU_sycl_global_host ||
+             A.getAttributeSpellingListIndex() == CXX11_clang_sycl_global_host ||
+             A.getAttributeSpellingListIndex() == C23_clang_sycl_global_host;
+    }
+    static inline LangAS getLangAS(const AttributeCommonInfo& A) {
+      return isSYCLSpelling(A) ? LangAS::sycl_global_host : LangAS::opencl_global_host;
+    }
+  }];
 }
 
-def OpenCLLocalAddressSpace : TypeAttr {
+def OffloadLocalAddressSpace : TypeAttr {
   let Spellings = [CustomKeyword<"__local">, CustomKeyword<"local">,
-                   Clang<"opencl_local">];
-  let Documentation = [OpenCLAddressSpaceLocalDocs];
+                   Clang<"opencl_local">, Clang<"sycl_local">];
+  let Documentation = [OffloadAddressSpaceLocalDocs];
+  let AdditionalMembers = [{
+    static inline bool isSYCLSpelling(const AttributeCommonInfo& A) {
+      return A.getAttributeSpellingListIndex() == GNU_sycl_local ||
+             A.getAttributeSpellingListIndex() == CXX11_clang_sycl_local ||
+             A.getAttributeSpellingListIndex() == C23_clang_sycl_local;
+    }
+    static inline LangAS getLangAS(const AttributeCommonInfo& A) {
+      return isSYCLSpelling(A) ? LangAS::sycl_local : LangAS::opencl_local;
+    }
+  }];
 }
 
-def OpenCLConstantAddressSpace : TypeAttr {
+def OffloadConstantAddressSpace : TypeAttr {
   let Spellings = [CustomKeyword<"__constant">, CustomKeyword<"constant">,
-                   Clang<"opencl_constant">];
-  let Documentation = [OpenCLAddressSpaceConstantDocs];
+                   Clang<"opencl_constant">, Clang<"sycl_constant">];
+  let Documentation = [OffloadAddressSpaceConstantDocs];
+  let AdditionalMembers = [{
+    static inline bool isSYCLSpelling(const AttributeCommonInfo& A) {
+      return A.getAttributeSpellingListIndex() == GNU_sycl_constant ||
+             A.getAttributeSpellingListIndex() == CXX11_clang_sycl_constant ||
+             A.getAttributeSpellingListIndex() == C23_clang_sycl_constant;
+    }
+    static inline LangAS getLangAS(const AttributeCommonInfo& A) {
+      return isSYCLSpelling(A) ? LangAS::Default : LangAS::opencl_constant;
+    }
+  }];
 }
 
-def OpenCLGenericAddressSpace : TypeAttr {
+def OffloadGenericAddressSpace : TypeAttr {
   let Spellings = [CustomKeyword<"__generic">, CustomKeyword<"generic">,
-                   Clang<"opencl_generic">];
-  let Documentation = [OpenCLAddressSpaceGenericDocs];
+                   Clang<"opencl_generic">, Clang<"sycl_generic">];
+  let Documentation = [OffloadAddressSpaceGenericDocs];
+  let AdditionalMembers = [{
+    static inline bool isSYCLSpelling(const AttributeCommonInfo& A) {
+      return A.getAttributeSpellingListIndex() == GNU_sycl_generic ||
+             A.getAttributeSpellingListIndex() == CXX11_clang_sycl_generic ||
+             A.getAttributeSpellingListIndex() == C23_clang_sycl_generic;
+    }
+    static inline LangAS getLangAS(const AttributeCommonInfo& A) {
+      return isSYCLSpelling(A) ? LangAS::sycl_generic : LangAS::opencl_generic;
+    }
+  }];
 }
 
 def OpenCLNoSVM : Attr {

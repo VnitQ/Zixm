@@ -5419,7 +5419,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           // them later while creating QualType.
           if (FTI.MethodQualifiers)
             for (ParsedAttr &attr : FTI.MethodQualifiers->getAttributes()) {
-              LangAS ASIdxNew = attr.asOpenCLLangAS();
+              LangAS ASIdxNew = attr.asLangAS();
               if (DiagnoseMultipleAddrSpaceAttributes(S, ASIdx, ASIdxNew,
                                                       attr.getLoc()))
                 D.setInvalidType(true);
@@ -6690,14 +6690,16 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
     else
       Attr.setInvalid();
   } else {
-    // The keyword-based type attributes imply which address space to use.
-    ASIdx = S.getLangOpts().SYCLIsDevice ? Attr.asSYCLLangAS()
-                                         : Attr.asOpenCLLangAS();
-    if (S.getLangOpts().HLSL)
-      ASIdx = Attr.asHLSLLangAS();
+    // Type attributes imply which address space to use.
+    ASIdx = Attr.asLangAS();
 
-    if (ASIdx == LangAS::Default)
-      llvm_unreachable("Invalid address space");
+    if (ASIdx == LangAS::Default &&
+        Attr.getKind() == ParsedAttr::AT_OffloadConstantAddressSpace) {
+      if (OffloadConstantAddressSpaceAttr::isSYCLSpelling(Attr))
+        S.Diag(Attr.getLoc(), diag::warn_deprecated_sycl_constant);
+      else
+        llvm_unreachable("Invalid address space");
+    }
 
     if (DiagnoseMultipleAddrSpaceAttributes(S, Type.getAddressSpace(), ASIdx,
                                             Attr.getLoc())) {
@@ -9104,13 +9106,13 @@ static void processTypeAttrs(TypeProcessingState &state, QualType &type,
       // it it breaks large amounts of Linux software.
       attr.setUsedAsTypeAttr();
       break;
-    case ParsedAttr::AT_OpenCLPrivateAddressSpace:
-    case ParsedAttr::AT_OpenCLGlobalAddressSpace:
-    case ParsedAttr::AT_OpenCLGlobalDeviceAddressSpace:
-    case ParsedAttr::AT_OpenCLGlobalHostAddressSpace:
-    case ParsedAttr::AT_OpenCLLocalAddressSpace:
-    case ParsedAttr::AT_OpenCLConstantAddressSpace:
-    case ParsedAttr::AT_OpenCLGenericAddressSpace:
+    case ParsedAttr::AT_OffloadPrivateAddressSpace:
+    case ParsedAttr::AT_OffloadGlobalAddressSpace:
+    case ParsedAttr::AT_OffloadGlobalDeviceAddressSpace:
+    case ParsedAttr::AT_OffloadGlobalHostAddressSpace:
+    case ParsedAttr::AT_OffloadLocalAddressSpace:
+    case ParsedAttr::AT_OffloadConstantAddressSpace:
+    case ParsedAttr::AT_OffloadGenericAddressSpace:
     case ParsedAttr::AT_AddressSpace:
       HandleAddressSpaceTypeAttribute(type, attr, state);
       attr.setUsedAsTypeAttr();

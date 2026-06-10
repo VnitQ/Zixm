@@ -12,6 +12,7 @@
 
 #include "clang/Sema/ParsedAttr.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Attr.h"
 #include "clang/Basic/AttrSubjectMatchRules.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/TargetInfo.h"
@@ -228,13 +229,13 @@ bool ParsedAttr::slidesFromDeclToDeclSpecLegacyBehavior() const {
   // possible, we would like this list to go away entirely.
   switch (getParsedKind()) {
   case AT_AddressSpace:
-  case AT_OpenCLPrivateAddressSpace:
-  case AT_OpenCLGlobalAddressSpace:
-  case AT_OpenCLGlobalDeviceAddressSpace:
-  case AT_OpenCLGlobalHostAddressSpace:
-  case AT_OpenCLLocalAddressSpace:
-  case AT_OpenCLConstantAddressSpace:
-  case AT_OpenCLGenericAddressSpace:
+  case AT_OffloadPrivateAddressSpace:
+  case AT_OffloadGlobalAddressSpace:
+  case AT_OffloadGlobalDeviceAddressSpace:
+  case AT_OffloadGlobalHostAddressSpace:
+  case AT_OffloadLocalAddressSpace:
+  case AT_OffloadConstantAddressSpace:
+  case AT_OffloadGenericAddressSpace:
   case AT_NeonPolyVectorType:
   case AT_NeonVectorType:
   case AT_ArmMveStrictPolymorphism:
@@ -311,4 +312,27 @@ void clang::takeAndConcatenateAttrs(ParsedAttributes &First,
 
   if (Second.Range.getEnd().isValid())
     First.Range.setEnd(Second.Range.getEnd());
+}
+
+LangAS ParsedAttr::asLangAS() const {
+  switch (getParsedKind()) {
+  case ParsedAttr::AT_OffloadGlobalAddressSpace:
+    return OffloadGlobalAddressSpaceAttr::getLangAS(*this);
+  case ParsedAttr::AT_OffloadGlobalDeviceAddressSpace:
+    return OffloadGlobalDeviceAddressSpaceAttr::getLangAS(*this);
+  case ParsedAttr::AT_OffloadGlobalHostAddressSpace:
+    return OffloadGlobalHostAddressSpaceAttr::getLangAS(*this);
+  case ParsedAttr::AT_OffloadLocalAddressSpace:
+    return OffloadLocalAddressSpaceAttr::getLangAS(*this);
+  case ParsedAttr::AT_OffloadPrivateAddressSpace:
+    return OffloadPrivateAddressSpaceAttr::getLangAS(*this);
+  case ParsedAttr::AT_OffloadConstantAddressSpace:
+    return OffloadConstantAddressSpaceAttr::getLangAS(*this);
+  case ParsedAttr::AT_OffloadGenericAddressSpace:
+    return OffloadGenericAddressSpaceAttr::getLangAS(*this);
+  case ParsedAttr::AT_HLSLGroupSharedAddressSpace:
+    return LangAS::hlsl_groupshared;
+  default:
+    return LangAS::Default;
+  }
 }
