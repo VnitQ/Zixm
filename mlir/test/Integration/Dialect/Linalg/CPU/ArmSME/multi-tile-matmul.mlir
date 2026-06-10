@@ -76,6 +76,12 @@ module attributes {transform.with_named_sequence} {
     %tiled_linalg_op, %loop_i, %loop_j, %loop_k = transform.structured.tile_using_for %matmul tile_sizes [[8], [8], 4]
       : (!transform.any_op) -> (!transform.any_op, !transform.op<"scf.for">, !transform.op<"scf.for">, !transform.op<"scf.for">)
 
+    // Step 1a: Hoist read/write ops for the output tensor.
+    %all_loops = transform.structured.match interface{LoopLikeInterface} in %module
+      : (!transform.any_op) -> !transform.any_op
+    transform.apply_licm to %all_loops : !transform.any_op
+    transform.loop.hoist_loop_invariant_subsets %all_loops : !transform.any_op
+
     // Step 2: Vectorize.
     transform.structured.vectorize %tiled_linalg_op vector_sizes [[8], [8], 4]
       : !transform.any_op
