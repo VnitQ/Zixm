@@ -1739,6 +1739,24 @@ mlir::func::FuncOp Fortran::lower::getOrDeclareFunction(
   return SignatureBuilder{proc, converter}.getOrCreateFuncOp();
 }
 
+mlir::func::FuncOp Fortran::lower::getOrDeclareNamedFunction(
+    llvm::StringRef name, Fortran::lower::AbstractConverter &converter,
+    mlir::FunctionType type) {
+  mlir::ModuleOp module = converter.getModuleOp();
+  mlir::SymbolTable *symbolTable = converter.getMLIRSymbolTable();
+  if (mlir::func::FuncOp func =
+          fir::FirOpBuilder::getNamedFunction(module, symbolTable, name))
+    return func;
+
+  // The name is its own external spelling; create it verbatim with an
+  // implicit-interface () -> () signature when no type is given.
+  fir::FirOpBuilder &builder = converter.getFirOpBuilder();
+  if (!type)
+    type = mlir::FunctionType::get(builder.getContext(), {}, {});
+  return fir::FirOpBuilder::createFunction(builder.getUnknownLoc(), module,
+                                           name, type, symbolTable);
+}
+
 // Is it required to pass a dummy procedure with \p characteristics as a tuple
 // containing the function address and the result length ?
 static bool mustPassLengthWithDummyProcedure(
