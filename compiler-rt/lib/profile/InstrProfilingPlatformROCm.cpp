@@ -1219,10 +1219,14 @@ static int loadHsaRuntimePointers(void) {
     return setHsaRuntimeState(-1);
   }
 
-  /* Bring HSA up now (idempotent, refcounted). Done from the library
-   * constructor so HSA registers its own atexit(hsa_shut_down) before the
-   * profile runtime registers its write-at-exit handler; atexit is LIFO, so
-   * the profile write (which drains via this pass) runs while HSA is alive. */
+  /* Bring HSA up (idempotent, refcounted). This runs lazily on the first drain
+   * rather than from the library constructor, so merely loading the
+   * instrumented library does not initialize HSA in the process -- which would
+   * break fork-based callers that deliberately keep HIP/HSA uninitialized in
+   * the parent (see the constructor note at the end of the HSA block). In the
+   * common case the drain runs from the profile write path while HSA is still
+   * alive; if it only runs after HSA's own atexit(hsa_shut_down) has executed,
+   * this simply re-initializes HSA (the process is exiting anyway). */
   prof_hsa_status_t St = pHsaInit();
   if (St != PROF_HSA_STATUS_SUCCESS && St != PROF_HSA_STATUS_INFO_BREAK) {
     if (isVerboseMode())
@@ -1582,13 +1586,14 @@ static int drainDevicesViaHsa(void) {
   return (IterFailures > 0) ? -1 : 0;
 }
 
-/* hsa_init early so HSA's atexit(hsa_shut_down) is registered before the
- * profile runtime's write-at-exit handler (LIFO => drain runs while HSA is
- * alive). Non-fatal on failure: a host-only program without ROCm simply gets
- * no device drain. */
-__attribute__((constructor)) static void profROCmHsaInit(void) {
-  (void)loadHsaRuntimePointers();
-}
+/* NOTE: deliberately no library constructor that calls hsa_init() here.
+ * Bringing HSA up merely because the instrumented library was loaded poisons
+ * fork-based callers: frameworks and tests (e.g. RCCL's unit tests) keep
+ * HIP/HSA uninitialized in the parent and only touch HIP inside forked
+ * children. A parent that has already hsa_init()'d makes those children crash
+ * inside HSA (HSA state is not valid across fork()). HSA is instead brought up
+ * lazily from drainDevicesViaHsa() -> loadHsaRuntimePointers(); see the init
+ * rationale there. */
 
 #endif /* defined(__linux__) && !defined(_WIN32) -- HSA drain */
 
