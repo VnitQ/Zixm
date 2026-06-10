@@ -969,63 +969,65 @@ private:
 
 } // end anonymous namespace
 
-/// Try to compute a constant stride for \p AR. Used by getPtrStride and
-/// isNoWrap.
-static std::optional<int64_t>
-getStrideFromAddRec(const SCEVAddRecExpr *AR, const Loop *Lp, Type *AccessTy,
-                    Value *Ptr, PredicatedScalarEvolution &PSE) {
+/// Try to compute a loop invariant stride for \p AR. Used by getPtrStrideScev
+/// and isNoWrap.
+static const SCEV *getStrideFromAddRec(const SCEVAddRecExpr *AR, const Loop *Lp,
+                                       Type *AccessTy, Value *Ptr,
+                                       PredicatedScalarEvolution &PSE) {
   if (isa<ScalableVectorType>(AccessTy)) {
     LLVM_DEBUG(dbgs() << "LAA: Bad stride - Scalable object: " << *AccessTy
                       << "\n");
-    return std::nullopt;
+    return nullptr;
   }
+
+  auto BadStride = [&](auto Str) {
+    LLVM_DEBUG({
+      dbgs() << "LAA: Bad stride - " << Str << " ";
+      if (Ptr)
+        dbgs() << *Ptr << " ";
+
+      dbgs() << "SCEV: " << *AR << "\n";
+    });
+    return nullptr;
+  };
 
   // The access function must stride over the innermost loop.
-  if (Lp != AR->getLoop()) {
-    LLVM_DEBUG({
-      dbgs() << "LAA: Bad stride - Not striding over innermost loop ";
-      if (Ptr)
-        dbgs() << *Ptr << " ";
+  if (Lp != AR->getLoop())
+    return BadStride("Not striding over innermost loop");
 
-      dbgs() << "SCEV: " << *AR << "\n";
-    });
-    return std::nullopt;
-  }
+  // Check the step is loop invariant.
+  if (!AR->isAffine())
+    return BadStride("Step is varying");
 
-  // Check the step is constant.
   const SCEV *Step = AR->getStepRecurrence(*PSE.getSE());
 
-  // Calculate the pointer stride and check if it is constant.
-  const APInt *APStepVal;
-  if (!match(Step, m_scev_APInt(APStepVal))) {
-    LLVM_DEBUG({
-      dbgs() << "LAA: Bad stride - Not a constant strided ";
-      if (Ptr)
-        dbgs() << *Ptr << " ";
-      dbgs() << "SCEV: " << *AR << "\n";
-    });
-    return std::nullopt;
-  }
+  auto *SE = PSE.getSE();
+  const SCEV *AbsStep = SE->getAbsExpr(Step, false);
 
-  const auto &DL = Lp->getHeader()->getDataLayout();
-  TypeSize AllocSize = DL.getTypeAllocSize(AccessTy);
-  int64_t Size = AllocSize.getFixedValue();
+  const SCEV *TypeSizeScev = SE->getSizeOfExpr(
+      Step->getType(), SE->getDataLayout().getTypeAllocSize(AccessTy));
 
-  // Huge step value - give up.
-  std::optional<int64_t> StepVal = APStepVal->trySExtValue();
-  if (!StepVal)
-    return std::nullopt;
+  if (!SE->getURemExpr(AbsStep, TypeSizeScev)->isZero())
+    return BadStride("Not a multiple of access size");
 
-  // Strided access.
-  return *StepVal % Size ? std::nullopt : std::make_optional(*StepVal / Size);
+  // There is no ScalarEvolution::getSDiv, emulate that via AbsStep/TypeSize
+  // if the Step sign is known statically.
+  if (!(SE->isKnownNonPositive(Step) || SE->isKnownNonNegative(Step)))
+    return BadStride("Unknown sign");
+
+  const SCEV *AbsStepInElements = SE->getUDivExpr(AbsStep, TypeSizeScev);
+  const SCEV *StepInElements = SE->isKnownNonNegative(Step)
+                                   ? AbsStepInElements
+                                   : SE->getNegativeSCEV(AbsStepInElements);
+
+  return StepInElements;
 }
 
 /// Check whether \p AR is a non-wrapping AddRec. If \p Ptr is not nullptr, use
 /// informating from the IR pointer value to determine no-wrap.
 static bool isNoWrap(PredicatedScalarEvolution &PSE, const SCEVAddRecExpr *AR,
                      Value *Ptr, Type *AccessTy, const Loop *L, bool Assume,
-                     const DominatorTree &DT,
-                     std::optional<int64_t> Stride = std::nullopt) {
+                     const DominatorTree &DT, const SCEV *Stride = nullptr) {
   // FIXME: This should probably only return true for NUW.
   if (any(AR->getNoWrapFlags(SCEV::NoWrapMask)))
     return true;
@@ -1062,7 +1064,7 @@ static bool isNoWrap(PredicatedScalarEvolution &PSE, const SCEVAddRecExpr *AR,
     // assumes the object in memory is aligned to the natural alignment.
     unsigned AddrSpace = AR->getType()->getPointerAddressSpace();
     if (!NullPointerIsDefined(L->getHeader()->getParent(), AddrSpace) &&
-        (Stride == 1 || Stride == -1))
+        PSE.getSE()->getAbsExpr(Stride, false)->isOne())
       return true;
   }
 
@@ -1645,15 +1647,16 @@ void AccessAnalysis::buildDependenceSets() {
   }
 }
 
-/// Check whether the access through \p Ptr has a constant stride.
-std::optional<int64_t>
-llvm::getPtrStride(PredicatedScalarEvolution &PSE, Type *AccessTy, Value *Ptr,
-                   const Loop *Lp, const DominatorTree &DT,
-                   const DenseMap<Value *, const SCEV *> &StridesMap,
-                   bool Assume, bool ShouldCheckWrap) {
+/// Check whether the access through \p Ptr has a loop invariant stride of a
+/// statically known sign.
+static const SCEV *
+getPtrStrideScev(PredicatedScalarEvolution &PSE, Type *AccessTy, Value *Ptr,
+                 const Loop *Lp, const DominatorTree &DT,
+                 const DenseMap<Value *, const SCEV *> &StridesMap, bool Assume,
+                 bool ShouldCheckWrap) {
   const SCEV *PtrScev = replaceSymbolicStrideSCEV(PSE, StridesMap, Ptr);
   if (PSE.getSE()->isLoopInvariant(PtrScev, Lp))
-    return 0;
+    return PSE.getSE()->getZero(Type::getInt64Ty(AccessTy->getContext()));
 
   assert(Ptr->getType()->isPointerTy() && "Unexpected non-ptr");
 
@@ -1664,11 +1667,10 @@ llvm::getPtrStride(PredicatedScalarEvolution &PSE, Type *AccessTy, Value *Ptr,
   if (!AR) {
     LLVM_DEBUG(dbgs() << "LAA: Bad stride - Not an AddRecExpr pointer " << *Ptr
                       << " SCEV: " << *PtrScev << "\n");
-    return std::nullopt;
+    return nullptr;
   }
 
-  std::optional<int64_t> Stride =
-      getStrideFromAddRec(AR, Lp, AccessTy, Ptr, PSE);
+  const SCEV *Stride = getStrideFromAddRec(AR, Lp, AccessTy, Ptr, PSE);
   if (!ShouldCheckWrap || !Stride)
     return Stride;
 
@@ -1678,7 +1680,23 @@ llvm::getPtrStride(PredicatedScalarEvolution &PSE, Type *AccessTy, Value *Ptr,
   LLVM_DEBUG(
       dbgs() << "LAA: Bad stride - Pointer may wrap in the address space "
              << *Ptr << " SCEV: " << *AR << "\n");
-  return std::nullopt;
+  return nullptr;
+}
+
+std::optional<int64_t>
+llvm::getPtrStride(PredicatedScalarEvolution &PSE, Type *AccessTy, Value *Ptr,
+                   const Loop *Lp, const DominatorTree &DT,
+                   const DenseMap<Value *, const SCEV *> &StridesMap,
+                   bool Assume, bool ShouldCheckWrap) {
+  const SCEV *StrideScev = getPtrStrideScev(
+      PSE, AccessTy, Ptr, Lp, DT, StridesMap, Assume, ShouldCheckWrap);
+  if (!StrideScev)
+    return std::nullopt;
+  const APInt *APStride = nullptr;
+  if (!match(StrideScev, m_scev_APInt(APStride)))
+    return std::nullopt;
+
+  return APStride->trySExtValue();
 }
 
 std::optional<int64_t> llvm::getPointersDiff(Type *ElemTyA, Value *PtrA,
@@ -2746,14 +2764,27 @@ bool LoopAccessInfo::analyzeLoop(AAResults *AA, const LoopInfo *LI,
     // allows us to vectorize expressions such as A[i] += x; Because the address
     // of A[i] is a read-write pointer. This only works if the index of A[i] is
     // strictly monotonic, which we approximate (conservatively) via
-    // getPtrStride. If the address is unknown (e.g. A[B[i]]) then we may read,
-    // modify, and write overlapping words. Note that "zero stride" is unsafe
-    // and is being handled below.
+    // getPtrStrideScev. If the address is unknown (e.g. A[B[i]]) then we may
+    // read, modify, and write overlapping words. Note that "zero stride" is
+    // unsafe and is being handled below.
     bool IsReadOnlyPtr = false;
     Type *AccessTy = getLoadStoreType(LD);
-    if (Seen.insert({Ptr, AccessTy}).second ||
-        !getPtrStride(*PSE, AccessTy, Ptr, TheLoop, *DT, SymbolicStrides, false,
-                      true)) {
+    auto IsSafeReadWrite = [&] {
+      const SCEV *Stride = getPtrStrideScev(*PSE, AccessTy, Ptr, TheLoop, *DT,
+                                            SymbolicStrides, false, true);
+      if (!Stride)
+        return false;
+
+      // Statically known invariant address, preserve old behavior for the
+      // LoopDistributePass. For LoopVectorizer we will detect a load from the
+      // uniform store pointer and bail out further below.
+      if (Stride->isZero())
+        return true;
+
+      auto *SE = PSE->getSE();
+      return SE->isKnownPositive(SE->getAbsExpr(Stride, false));
+    };
+    if (Seen.insert({Ptr, AccessTy}).second || !IsSafeReadWrite()) {
       ++NumReads;
       IsReadOnlyPtr = true;
     }
