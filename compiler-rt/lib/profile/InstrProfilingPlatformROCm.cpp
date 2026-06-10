@@ -104,7 +104,10 @@ static hipMemcpyTy pHipMemcpy = nullptr;
 static hipModuleGetGlobalTy pHipModuleGetGlobal = nullptr;
 static hipGetDeviceCountTy pHipGetDeviceCount = nullptr;
 static hipGetDeviceTy pHipGetDevice = nullptr;
+/* Only the host-shadow drain (Windows/non-Linux) switches devices. */
+#if !defined(__linux__) || defined(_WIN32)
 static hipSetDeviceTy pHipSetDevice = nullptr;
+#endif
 static hipGetDevicePropertiesTy pHipGetDeviceProperties = nullptr;
 
 static int NumDevices = 0;
@@ -151,8 +154,10 @@ static void doEnsureHipLoaded(void) {
       Handle, "hipGetDeviceCount");
   pHipGetDevice =
       (hipGetDeviceTy)__interception::LookupSymbol(Handle, "hipGetDevice");
+#if !defined(__linux__) || defined(_WIN32)
   pHipSetDevice =
       (hipSetDeviceTy)__interception::LookupSymbol(Handle, "hipSetDevice");
+#endif
   pHipGetDeviceProperties =
       (hipGetDevicePropertiesTy)__interception::LookupSymbol(
           Handle, "hipGetDevicePropertiesR0600");
@@ -238,10 +243,15 @@ static int hipGetDevice(int *DeviceId) {
   return pHipGetDevice ? pHipGetDevice(DeviceId) : -1;
 }
 
+/* Only the host-shadow drain (Windows/non-Linux) switches the active device;
+ * the Linux HSA pass walks agents directly. Gate out to avoid an
+ * unused-function warning on Linux. */
+#if !defined(__linux__) || defined(_WIN32)
 static int hipSetDevice(int DeviceId) {
   ensureHipLoaded();
   return pHipSetDevice ? pHipSetDevice(DeviceId) : -1;
 }
+#endif
 
 static const char *getDeviceArchName(int DeviceId) {
   if (DeviceId < 0 || DeviceId >= NumDevices || !DeviceArchNames[DeviceId][0])
@@ -1020,6 +1030,10 @@ static int processDeviceOffloadPrf(void *DeviceOffloadPrf, const char *Target,
   return ret;
 }
 
+/* Only the host-shadow drain (Windows/non-Linux) calls this; on Linux the HSA
+ * pass is the sole drain, so gate the definition out to avoid an unused-function
+ * warning. */
+#if !defined(__linux__) || defined(_WIN32)
 static int processShadowVariable(int Index, const char *Target) {
   void *ShadowVar = OffloadShadowVariables[Index];
   void *DeviceSections = nullptr;
@@ -1036,14 +1050,19 @@ static int processShadowVariable(int Index, const char *Target) {
     return 0;
   return processDeviceOffloadPrf(DeviceSections, Target, Sections);
 }
+#endif
 
+/* Only the host-shadow drain (Windows/non-Linux) gates on this; gate out on
+ * Linux to avoid an unused-function warning. */
+#if !defined(__linux__) || defined(_WIN32)
 static int isHipAvailable(void) {
   ensureHipLoaded();
   return pHipMemcpy != nullptr && pHipGetSymbolAddress != nullptr;
 }
+#endif
 
 /* ========================================================================== */
-/*  Supplemental HSA-introspection drain (Linux only)                         */
+/*  HSA-introspection drain (Linux only; sole device drain on Linux)          */
 /*                                                                            */
 /*  The host-shadow drain above only sees device code objects registered      */
 /*  host-side (__hipRegisterVar shadows) or loaded through an intercepted      */
@@ -1581,9 +1600,12 @@ extern "C" int __llvm_profile_hip_collect_device_data(void) {
   int Ret = 0;
 
   /* Host-shadow drain: static-linked kernels (host __hipRegisterVar shadows)
-   * and intercepted dynamic modules. Only meaningful when something registered
-   * host-side; skipped entirely for pure device-linked programs (RCCL), which
-   * the supplemental HSA pass below handles. */
+   * and intercepted dynamic modules. On Linux the HSA-introspection pass below
+   * is the sole device drain -- it covers static, multi-GPU and device-linked
+   * (RCCL) kernels and never reads a non-resident device -- so the host-shadow
+   * drain (which loops every device and can fault on a device the kernel never
+   * ran on) is restricted to Windows/non-Linux. */
+#if !defined(__linux__) || defined(_WIN32)
   if ((NumShadowVariables != 0 || NumDynamicModules != 0) && isHipAvailable()) {
     /* Shadow variables (static-linked kernels): drain from every device. */
     if (NumShadowVariables > 0) {
@@ -1635,12 +1657,15 @@ extern "C" int __llvm_profile_hip_collect_device_data(void) {
     }
     unlockDynamicModules();
   }
+#endif /* host-shadow drain: Windows/non-Linux only */
 
 #if defined(__linux__) && !defined(_WIN32)
-  /* Supplemental HSA-introspection drain: catches device code objects with no
-   * host-side shadow (e.g. RCCL device-linked kernels). Runs after the
-   * host-shadow drain so already-drained sections are deduped out, and runs
-   * even when there are no host shadows at all (the common RCCL case). */
+  /* HSA-introspection drain (sole device drain on Linux): walks each GPU agent,
+   * enumerates only the code objects actually loaded there, and drains their
+   * device profile sections. Covers static, multi-GPU and device-linked (RCCL)
+   * kernels; the per-agent walk never touches a non-resident device, so it does
+   * not hit the host-shadow all-devices crash. Internal dedup (SeenBounds)
+   * prevents draining the same code object seen via multiple agents/segments. */
   if (drainDevicesViaHsa() != 0)
     Ret = -1;
 #endif
