@@ -125,6 +125,10 @@ private:
 
   bool isDecorated(StringRef sym);
 
+  InputFile *addObjectFile(COFFLinkerContext &ctx, MemoryBufferRef mb,
+                           StringRef archiveName, uint64_t offsetInArchive,
+                           bool lazy, bool addHybrid = true);
+
   std::string getMapFile(const llvm::opt::InputArgList &args,
                          llvm::opt::OptSpecifier os,
                          llvm::opt::OptSpecifier osFile);
@@ -179,7 +183,7 @@ private:
                  bool lazy);
   void addArchiveBuffer(MemoryBufferRef mbref, StringRef symName,
                         StringRef parentName, uint64_t offsetInArchive,
-                        bool lazy);
+                        bool lazy, bool isThin = false);
   void addThinArchiveBuffer(MemoryBufferRef mbref, StringRef symName,
                             bool lazy);
 

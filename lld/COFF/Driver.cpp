@@ -262,21 +262,38 @@ MemoryBufferRef LinkerDriver::takeBuffer(std::unique_ptr<MemoryBuffer> mb) {
   return mbref;
 }
 
-static InputFile *tryCreateFatLTOFile(COFFLinkerContext &ctx,
-                                      MemoryBufferRef mb, StringRef archiveName,
-                                      uint64_t offsetInArchive, bool lazy) {
-  if (ctx.config.fatLTOObjects) {
-    Expected<MemoryBufferRef> fatLTOData =
-        IRObjectFile::findBitcodeInMemBuffer(mb);
+InputFile *LinkerDriver::addObjectFile(COFFLinkerContext &ctx,
+                                       MemoryBufferRef mb,
+                                       StringRef archiveName,
+                                       uint64_t offsetInArchive, bool lazy,
+                                       bool addHybrid) {
+  COFFObjectFile *coffObj = ObjFile::createCOFFObject(ctx, mb);
+  InputFile *obj = nullptr;
 
-    if (!errorToBool(fatLTOData.takeError())) {
-      return BitcodeFile::create(ctx, *fatLTOData, archiveName, offsetInArchive,
-                                 lazy);
+  if (addHybrid && ctx.symtab.isEC()) {
+    if (std::optional<MemoryBufferRef> hybridView =
+            coffObj->getHybridObjectSection()) {
+      InputFile *hybridObj = addObjectFile(ctx, *hybridView, archiveName,
+                                           offsetInArchive, lazy, false);
+      if (ctx.config.machine != ARM64X)
+        return hybridObj;
     }
   }
 
-  InputFile *obj = ObjFile::create(ctx, mb, lazy);
+  if (ctx.config.fatLTOObjects) {
+    Expected<MemoryBufferRef> fatLTOData =
+        IRObjectFile::findBitcodeInObject(*coffObj);
+
+    if (!errorToBool(fatLTOData.takeError())) {
+      obj = BitcodeFile::create(ctx, *fatLTOData, archiveName, offsetInArchive,
+                                lazy);
+    }
+  }
+
+  if (!obj)
+    obj = ObjFile::create(ctx, coffObj, lazy);
   obj->parentName = archiveName;
+  addFile(obj);
   return obj;
 }
 
@@ -323,7 +340,7 @@ void LinkerDriver::addBuffer(std::unique_ptr<MemoryBuffer> mb,
     addFile(BitcodeFile::create(ctx, mbref, "", 0, lazy));
     break;
   case file_magic::coff_object: {
-    addFile(tryCreateFatLTOFile(ctx, mbref, "", 0, lazy));
+    addObjectFile(ctx, mbref, "", 0, lazy);
     break;
   }
   case file_magic::coff_import_library:
@@ -426,7 +443,8 @@ void LinkerDriver::enqueuePath(StringRef path, bool lazy, InputOpt inputOpt) {
 
 void LinkerDriver::addArchiveBuffer(MemoryBufferRef mb, StringRef symName,
                                     StringRef parentName,
-                                    uint64_t offsetInArchive, bool lazy) {
+                                    uint64_t offsetInArchive, bool lazy,
+                                    bool isThin) {
   file_magic magic = identify_magic(mb.getBuffer());
   if (magic == file_magic::coff_import_library) {
     InputFile *imp = make<ImportFile>(ctx, mb);
@@ -437,9 +455,11 @@ void LinkerDriver::addArchiveBuffer(MemoryBufferRef mb, StringRef symName,
 
   InputFile *obj;
   if (magic == file_magic::coff_object) {
-    obj = tryCreateFatLTOFile(ctx, mb, parentName, offsetInArchive, lazy);
+    obj = addObjectFile(ctx, mb, parentName, offsetInArchive, lazy, isThin);
   } else if (magic == file_magic::bitcode) {
     obj = BitcodeFile::create(ctx, mb, parentName, offsetInArchive, lazy);
+    obj->parentName = parentName;
+    addFile(obj);
   } else if (magic == file_magic::coff_cl_gl_object) {
     Err(ctx) << mb.getBufferIdentifier()
              << ": is not a native COFF file. Recompile without /GL?";
@@ -449,8 +469,6 @@ void LinkerDriver::addArchiveBuffer(MemoryBufferRef mb, StringRef symName,
     return;
   }
 
-  obj->parentName = parentName;
-  addFile(obj);
   Log(ctx) << "Loaded " << obj << " for " << symName;
 }
 
@@ -460,7 +478,8 @@ void LinkerDriver::addThinArchiveBuffer(MemoryBufferRef mb, StringRef symName,
   // the original filename is used as the buffer identifier. This is
   // useful for DTLTO, where having the member identifier be the actual
   // path on disk enables distribution of bitcode files during ThinLTO.
-  addArchiveBuffer(mb, symName, /*parentName=*/"", /*OffsetInArchive=*/0, lazy);
+  addArchiveBuffer(mb, symName, /*parentName=*/"", /*OffsetInArchive=*/0, lazy,
+                   true);
 }
 
 void LinkerDriver::enqueueArchiveMember(const Archive::Child &c,

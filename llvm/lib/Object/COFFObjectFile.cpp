@@ -1560,6 +1560,28 @@ std::unique_ptr<MemoryBuffer> COFFObjectFile::getHybridObjectView() const {
   return HybridView;
 }
 
+std::optional<MemoryBufferRef> COFFObjectFile::getHybridObjectSection() const {
+  if (getDOSHeader() || getMachine() != COFF::IMAGE_FILE_MACHINE_ARM64)
+    return std::nullopt;
+
+  // Search the .llvm.arm64x section, which may be used to embed a full ARM64EC
+  // object file into an ARM64 object file.
+  for (const SectionRef &S : sections()) {
+    Expected<StringRef> Name = S.getName();
+    if (errorToBool(Name.takeError()))
+      return std::nullopt;
+
+    if (*Name == kArm64XSectionName) {
+      Expected<StringRef> ContentsOrErr = S.getContents();
+      if (errorToBool(ContentsOrErr.takeError()))
+        return std::nullopt;
+      return MemoryBufferRef(*ContentsOrErr, getFileName());
+    }
+  }
+
+  return std::nullopt;
+}
+
 bool ImportDirectoryEntryRef::
 operator==(const ImportDirectoryEntryRef &Other) const {
   return ImportTable == Other.ImportTable && Index == Other.Index;
