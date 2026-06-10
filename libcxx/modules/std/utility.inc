@@ -89,6 +89,11 @@ export namespace std {
   using std::in_place_index;
   using std::in_place_index_t;
 
+#if _LIBCPP_STD_VER >= 26
+  using std::constant_wrapper;
+  using std::cw;
+#endif // _LIBCPP_STD_VER >= 23
+
   // [depr.relops]
   namespace rel_ops {
     using rel_ops::operator!=;
