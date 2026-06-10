@@ -1,9 +1,3 @@
----
-myst:
-  enable_extensions:
-    - deflist
----
-
 # Reference
 
 LLVM and API reference documentation.

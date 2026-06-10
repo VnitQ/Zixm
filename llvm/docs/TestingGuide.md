@@ -1,9 +1,3 @@
----
-myst:
-  enable_extensions:
-    - deflist
----
-
 # LLVM Testing Infrastructure Guide
 
 ```{contents}

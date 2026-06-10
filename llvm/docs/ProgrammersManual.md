@@ -498,7 +498,7 @@ Error foo() {
 ```
 For functions that can fail but need to return a value the `Expected<T>`
 utility can be used. Values of this type can be constructed with either a
-`T`, or an `Error`. Expected<T> values are also implicitly convertible to
+`T`, or an `Error`. `Expected<T>` values are also implicitly convertible to
 boolean, but with the opposite convention to `Error`: true for success, false
 for error. If success, the `T` value can be accessed via the dereference
 operator. If failure, the `Error` value can be extracted using the
@@ -1631,7 +1631,7 @@ non-ordered manner.
 
 (dss_vector)=
 
-#### <vector>
+#### `<vector>`
 
 `std::vector<T>` is well loved and respected.  However, `SmallVector<T, 0>`
 is often a better option due to the advantages listed above.  `std::vector` is
@@ -1660,7 +1660,7 @@ loop.
 
 (dss_deque)=
 
-#### <deque>
+#### `<deque>`
 
 `std::deque` is, in some senses, a generalized version of `std::vector`.
 Like `std::vector`, it provides constant-time random access and other similar
@@ -1673,7 +1673,7 @@ something cheaper.
 
 (dss_list)=
 
-#### <list>
+#### `<list>`
 
 `std::list` is an extremely inefficient class that is rarely useful.  It
 performs a heap allocation for every element inserted into it, thus having an
@@ -2087,7 +2087,7 @@ elements.
 
 (dss_set)=
 
-#### <set>
+#### `<set>`
 
 `std::set` is a reasonable all-around set class, which is decent at many
 things but great at nothing.  `std::set` allocates memory for each element
@@ -2308,7 +2308,7 @@ further additions.
 
 (dss_map)=
 
-#### <map>
+#### `<map>`
 
 `std::map` has similar characteristics to {ref}`std::set <dss_set>`: it uses a
 single allocation per pair inserted into the map, it offers log(n) lookup with

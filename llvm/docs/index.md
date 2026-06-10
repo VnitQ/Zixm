@@ -1,9 +1,3 @@
----
-myst:
-  enable_extensions:
-    - deflist
----
-
 # About
 
 ```{warning}

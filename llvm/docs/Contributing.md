@@ -1,9 +1,3 @@
----
-myst:
-  enable_extensions:
-    - deflist
----
-
 # Contributing to LLVM
 
 

@@ -1,9 +1,3 @@
----
-myst:
-  enable_extensions:
-    - deflist
----
-
 # Getting Started/Tutorials
 
 For those new to the LLVM system.
