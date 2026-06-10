@@ -1841,6 +1841,37 @@ void VPlanTransforms::simplifyRecipes(VPlan &Plan) {
 
 void VPlanTransforms::simplifyReverses(VPlan &Plan) {
   VPValue *X;
+
+  // Pull out reverses from any elementwise op.
+  // binop(reverse(x), reverse(y)) -> reverse(binop(x,y))
+  for (VPBasicBlock *VPBB : VPBlockUtils::blocksOnly<VPBasicBlock>(
+           vp_depth_first_deep(Plan.getEntry()))) {
+    for (VPRecipeBase &R : make_early_inc_range(*VPBB)) {
+      auto *Def = dyn_cast<VPSingleDefRecipe>(&R);
+      if (!Def || !vputils::isElementwise(Def))
+        continue;
+
+      // At least one of the ops must be a reverse.
+      if (!any_of(Def->operands(), match_fn<VPValue>(m_Reverse(m_VPValue()))))
+        continue;
+
+      // All operands must be reversed or a live in.
+      if (!all_of(Def->operands(), match_fn<VPValue>(m_CombineOr(
+                                       m_Reverse(m_VPValue()), m_LiveIn()))))
+        continue;
+
+      // Remove the inner reverses.
+      for (unsigned I = 0; I < Def->getNumOperands(); I++)
+        if (match(Def->getOperand(I), m_Reverse(m_VPValue(X))))
+          Def->setOperand(I, X);
+
+      VPInstruction *Res = VPBuilder::getToInsertAfter(Def).createNaryOp(
+          VPInstruction::Reverse, Def);
+      Def->replaceUsesWithIf(
+          Res, [&Res](VPUser &U, unsigned _) { return &U != Res; });
+    }
+  }
+
   for (VPBasicBlock *VPBB : VPBlockUtils::blocksOnly<VPBasicBlock>(
            vp_depth_first_deep(Plan.getEntry())))
     for (VPRecipeBase &R : make_early_inc_range(*VPBB))
@@ -3145,6 +3176,47 @@ void VPlanTransforms::optimizeEVLMasks(VPlan &Plan) {
       Merge->insertBefore(LogicalAnd);
       LogicalAnd->replaceAllUsesWith(Merge);
       OldRecipes.push_back(LogicalAnd);
+    }
+  }
+
+  // Pull out left splices from any elementwise op.
+  // binop(splice.left(poison, x, evl), live-in) -> splice.left(poison, binop(x,live-in), evl)
+  for (VPBasicBlock *VPBB : VPBlockUtils::blocksOnly<VPBasicBlock>(
+           vp_depth_first_deep(Plan.getEntry()))) {
+    for (VPRecipeBase &R : make_early_inc_range(*VPBB)) {
+      auto *Def = dyn_cast<VPSingleDefRecipe>(&R);
+      if (!Def || !vputils::isElementwise(Def))
+        continue;
+
+      auto m_SpliceLeft = [&EVL](auto X) {
+        return m_Intrinsic<Intrinsic::vector_splice_left>(m_Poison(), X,
+                                                          m_Specific(EVL));
+      };
+
+      // At least one of the ops must be a splice.left.
+      if (!any_of(Def->operands(),
+                  match_fn<VPValue>(m_SpliceLeft(m_VPValue()))))
+        continue;
+
+      // All operands must be a splice.left or a live in.
+      if (!all_of(Def->operands(), match_fn<VPValue>(m_CombineOr(
+                                       m_SpliceLeft(m_VPValue()), m_LiveIn()))))
+        continue;
+
+      // Remove the inner splices.
+      VPValue *X;
+      for (unsigned I = 0; I < Def->getNumOperands(); I++)
+        if (match(Def->getOperand(I), m_SpliceLeft(m_VPValue(X))))
+          Def->setOperand(I, X);
+
+      VPValue *Poison =
+          Plan.getOrAddLiveIn(PoisonValue::get(Def->getScalarType()));
+      auto *Res = new VPWidenIntrinsicRecipe(
+          Intrinsic::vector_splice_left, {Poison, Def, EVL},
+          Def->getScalarType(), {}, {}, Def->getDebugLoc());
+      Res->insertAfter(Def);
+      Def->replaceUsesWithIf(
+          Res, [&Res](VPUser &U, unsigned _) { return &U != Res; });
     }
   }
 
