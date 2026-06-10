@@ -2535,7 +2535,12 @@ cannotHoistOrSinkRecipe(VPRecipeBase &R, VPBasicBlock *FirstBB,
       match(&R, m_Intrinsic<Intrinsic::assume>()))
     return vputils::cannotHoistOrSinkRecipe(R, Sinking);
 
-  // Check that the load doesn't alias with stores between FirstBB and LastBB.
+  // If the pointer-operand of a store is not invariant, it cannot be sunk.
+  if (cast<VPReplicateRecipe>(R).getOpcode() == Instruction::Store &&
+      !R.getOperand(1)->isDefinedOutsideLoopRegions())
+    return true;
+
+  // Check that the memory operation doesn't alias between FirstBB and LastBB.
   auto MemLoc = vputils::getMemoryLocation(R);
   return !MemLoc ||
          !canHoistOrSinkWithNoAliasCheck(*MemLoc, FirstBB, LastBB, SinkInfo);

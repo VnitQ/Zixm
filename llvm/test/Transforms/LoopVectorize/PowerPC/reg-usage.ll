@@ -247,10 +247,12 @@ for.end:
 define void @fp16_(ptr nocapture readonly %pIn, ptr nocapture %pOut, i32 %numRows, i32 %numCols, i32 %scale.coerce) #0 {
 ;CHECK-LABEL: fp16_
 ;CHECK: LV(REG): VF = 1
-;CHECK: LV(REG): Found max usage: 1 item
-;CHECK: LV(REG): RegisterClass: PPC::GPRRC, 2 registers
-;CHECK: LV(REG): Found invariant usage: 1 item
+;CHECK: LV(REG): Found max usage: 2 item
+;CHECK: LV(REG): RegisterClass: PPC::GPRRC, 3 registers
+;CHECK: LV(REG): RegisterClass: PPC::VSXRC, 2 registers
+;CHECK: LV(REG): Found invariant usage: 2 item
 ;CHECK: LV(REG): RegisterClass: PPC::GPRRC, 1 registers
+;CHECK: LV(REG): RegisterClass: PPC::VSXRC, 1 registers
 
 entry:
   %tmp.0.extract.trunc = trunc i32 %scale.coerce to i16
