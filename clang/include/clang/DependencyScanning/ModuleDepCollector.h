@@ -115,6 +115,8 @@ private:
   const PrebuiltModulesAttrsMap PrebuiltModulesASTMap;
   /// Directory paths known to be stable through an active development and build
   /// cycle.
+  llvm::BumpPtrAllocator Alloc;
+  llvm::StringSaver StableDirsStrings{Alloc};
   const ArrayRef<StringRef> StableDirs;
   /// Path to the main source file.
   std::string MainFile;
