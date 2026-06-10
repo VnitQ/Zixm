@@ -1,5 +1,6 @@
 // RUN: %dexter_regression_test_cxx_build %s -o %t
-// RUN: %dexter_regression_test_run --source-root-dir %S/Inputs --use-script --binary %t -- %s | FileCheck %s
+// RUN: %dexter_regression_test_run --source-root-dir %S/Inputs \
+// RUN:   --use-script --binary %t -- %s | FileCheck %s
 
 // Check that when --source-root-dir is provided, labels will be checked
 // relative to that directory.
@@ -7,17 +8,17 @@
 #include "Inputs/header.h"
 
 int factorial(int n) {
-    int result = 1;
-    // !dex_label factorial_start
-    for (int i = 1; i <= n; ++i) {
-        result = multiply(result, i);  
-    }
-    return result; // !dex_label factorial_end
+  int result = 1;
+  // !dex_label factorial_start
+  for (int i = 1; i <= n; ++i) {
+    result = multiply(result, i);
+  }
+  return result; // !dex_label factorial_end
 }
 
 int main() {
-    int a = 4;
-    return factorial(a); // !dex_label call
+  int a = 4;
+  return factorial(a); // !dex_label call
 }
 
 // CHECK: total_watched_steps: 20

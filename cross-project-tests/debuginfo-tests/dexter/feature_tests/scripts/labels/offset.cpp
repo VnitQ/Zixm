@@ -1,14 +1,14 @@
 // RUN: %dexter_regression_test_cxx_build %s -o %t
-// RUN: %dexter_regression_test_run --use-script --binary %t -- %s | FileCheck %s
-
+// RUN: %dexter_regression_test_run --use-script --binary %t -- %s \
+// RUN:   | FileCheck %s
 
 int main() {
-    int count = 0;
-    ++count; // !dex_label start
-    ++count;
-    ++count;
-    ++count;
-    return count;
+  int count = 0;
+  ++count; // !dex_label start
+  ++count;
+  ++count;
+  ++count;
+  return count;
 } // !dex_label end
 
 // CHECK: total_watched_steps: 5

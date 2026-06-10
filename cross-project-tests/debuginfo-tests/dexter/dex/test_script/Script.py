@@ -209,22 +209,6 @@ class DexterScript:
     def dump(self) -> str:
         return yaml.dump(self.script_obj)
 
-    def gather_labels(self):
-        """Pre-gather labels for all !where nodes with `lines` entries."""
-        assert self.root_scope.file is not None
-        add_labels = lambda file: self.label_dict.set_labels_from_file(
-            self.context, file, str(self.base_dir)
-        )
-
-        def collect_file(where: Where, scope: Scope):
-            # If we have !where nodes that check lines without an explicit file, we default to the test file.
-            if not where.is_and and where.lines and not where.file:
-                add_labels(self.root_scope.file)
-            elif where.file:
-                add_labels(where.file)
-
-        self.visit_script(visit_where=collect_file)
-
     def get_labels(self, file: str) -> FileLabels:
         if not self.label_dict.has_labels(file):
             self.label_dict.set_labels_from_file(self.context, file, self.base_dir)
