@@ -603,8 +603,13 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
   // We cannot sextinreg(i1).  Expand to shifts.
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
 
-  // Custom handling for PowerPC ucmp instruction
-  if (isPPC64) {
+  if (Subtarget.isISA3_0()) {
+    // Power9 SETB produces -1/0/1 directly from a compare.
+    setOperationAction(ISD::UCMP, MVT::i32, Legal);
+    setOperationAction(ISD::UCMP, MVT::i64, isPPC64 ? Legal : Expand);
+    setOperationAction(ISD::SCMP, MVT::i32, Legal);
+    setOperationAction(ISD::SCMP, MVT::i64, isPPC64 ? Legal : Expand);
+  } else if (isPPC64) {
     // UCMP involves using carries, which only works in 64-bit
     setOperationAction(ISD::UCMP, MVT::i32, Promote);
     setOperationAction(ISD::UCMP, MVT::i64, Custom);
