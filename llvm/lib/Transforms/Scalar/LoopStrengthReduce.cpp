@@ -2228,6 +2228,11 @@ class LSRInstance {
   // instructions to form LCSSA for them later.
   SmallSetVector<Instruction *, 4> InsertedNonLCSSAInsts;
 
+  // Track instructions rewritten by Rewrite() to CSE identical ones that arise
+  // when multiple fixups for the same LSRUse end up with the same operands
+  // (e.g. duplicate icmp instructions in ICmpZero fixups sharing one IV).
+  SmallVector<Instruction *, 8> RewrittenInsts;
+
   void OptimizeShadowIV();
   bool FindIVUserForCond(Instruction *Cond, IVStrideUse *&CondUse);
   Instruction *OptimizeMax(ICmpInst *Cond, IVStrideUse *&CondUse);
@@ -5751,6 +5756,10 @@ Value *LSRInstance::Expand(const LSRUse &LU, const LSRFixup &LF,
 
   // This is the type that the user actually needs.
   Type *OpTy = LF.OperandValToReplace->getType();
+  // For ICmpZero with pointer-typed operands, keep the comparison in the
+  // integer domain to avoid generating inttoptr casts.
+  if (LU.Kind == LSRUse::ICmpZero && OpTy->isPointerTy())
+    OpTy = SE.getEffectiveSCEVType(OpTy);
   // This will be the type that we'll initially expand to.
   Type *Ty = F.getType();
   if (!Ty)
@@ -6059,8 +6068,11 @@ void LSRInstance::Rewrite(const LSRUse &LU, const LSRFixup &LF,
     Value *FullV = Expand(LU, LF, F, LF.UserInst->getIterator(), DeadInsts);
 
     // If this is reuse-by-noop-cast, insert the noop cast.
+    // For ICmpZero with pointer operands, Expand() already set both operands
+    // in integer domain, so no cast is needed here.
     Type *OpTy = LF.OperandValToReplace->getType();
-    if (FullV->getType() != OpTy) {
+    if (FullV->getType() != OpTy &&
+        !(LU.Kind == LSRUse::ICmpZero && OpTy->isPointerTy())) {
       Instruction *Cast =
           CastInst::Create(CastInst::getCastOpcode(FullV, false, OpTy, false),
                            FullV, OpTy, "tmp", LF.UserInst->getIterator());
@@ -6076,6 +6088,28 @@ void LSRInstance::Rewrite(const LSRUse &LU, const LSRFixup &LF,
       LF.UserInst->setOperand(0, FullV);
     else
       LF.UserInst->replaceUsesOfWith(LF.OperandValToReplace, FullV);
+
+    // If this rewritten instruction is identical to one we already
+    // rewrote (same opcode and operands), replace it with the earlier one.
+    bool ReplacedWithPrev = false;
+    for (Instruction *Prev : RewrittenInsts) {
+      if (LU.Kind != LSRUse::ICmpZero && LU.Kind != LSRUse::Basic)
+        continue;
+
+      if (!LF.UserInst->isIdenticalTo(Prev) || !DT.dominates(Prev, LF.UserInst))
+        continue;
+
+      if (IVIncInsertPos == LF.UserInst)
+        IVIncInsertPos = Prev;
+      LLVM_DEBUG(dbgs() << "replaced (" << *LF.UserInst << ") with (" << *Prev
+                        << ")\n");
+      LF.UserInst->replaceAllUsesWith(Prev);
+      DeadInsts.emplace_back(LF.UserInst);
+      ReplacedWithPrev = true;
+      break;
+    }
+    if (!ReplacedWithPrev)
+      RewrittenInsts.push_back(LF.UserInst);
   }
 
   if (auto *OperandIsInstr = dyn_cast<Instruction>(LF.OperandValToReplace))
@@ -6152,9 +6186,6 @@ void LSRInstance::ImplementSolution(
   // instructions.
   Rewriter.clear();
 
-  Changed |= RecursivelyDeleteTriviallyDeadInstructionsPermissive(DeadInsts,
-                                                                  &TLI, MSSAU);
-
   // In our cost analysis above, we assume that each addrec consumes exactly
   // one register, and arrange to have increments inserted just before the
   // latch to maximimize the chance this is true.  However, if we reused
@@ -6197,7 +6228,35 @@ void LSRInstance::ImplementSolution(
     Changed = true;
   }
 
+  // Simplify only the rewritten instructions and their immediate users.
+  // Placed after IV inc hoisting to avoid erasing instructions still
+  // referenced by the hoisting logic.
+  SmallVector<Instruction *> Worklist;
+  llvm::copy_if(RewrittenInsts, std::back_inserter(Worklist),
+                [](Instruction *I) { return I->getParent(); });
 
+  SmallPtrSet<Instruction *, 16> Visited;
+  while (!Worklist.empty()) {
+    auto *I = cast<Instruction>(Worklist.pop_back_val());
+    if (!Visited.insert(I).second)
+      continue;
+
+    // Don't simplify instructions outside the loop.
+    if (!L->contains(I))
+      continue;
+
+    Value *Res = simplifyInstruction(I, {I->getDataLayout(), &TLI, &DT, &AC});
+    if (Res && LI.replacementPreservesLCSSAForm(I, Res)) {
+      for (User *U : I->users())
+        Worklist.push_back(cast<Instruction>(U));
+      I->replaceAllUsesWith(Res);
+      DeadInsts.emplace_back(I);
+      Changed = true;
+    }
+  }
+
+  Changed |= RecursivelyDeleteTriviallyDeadInstructionsPermissive(DeadInsts,
+                                                                  &TLI, MSSAU);
 }
 
 LSRInstance::LSRInstance(Loop *L, IVUsers &IU, ScalarEvolution &SE,

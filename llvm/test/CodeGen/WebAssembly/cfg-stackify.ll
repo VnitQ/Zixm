@@ -906,22 +906,15 @@ bb50:
 ; CHECK:        block
 ; CHECK-NEXT:   block
 ; CHECK:        br_if       0, $pop{{.*}}{{$}}
-; CHECK:        .LBB{{[0-9]+}}_2:
-; CHECK-NEXT:   block   {{$}}
-; CHECK-NEXT:   block   {{$}}
+; CHECK:        .LBB{{[0-9]+}}_1:
 ; CHECK-NEXT:   loop    {{$}}
-; CHECK:        br_if       1, $pop{{.*}}{{$}}
-; CHECK:        br_if       0, ${{.*}}{{$}}
-; CHECK-NEXT:   br          2{{$}}
-; CHECK-NEXT:   .LBB{{[0-9]+}}_4:
+; CHECK:        br_if       0, $pop{{.*}}{{$}}
 ; CHECK-NEXT:   end_loop{{$}}
-; CHECK:        .LBB{{[0-9]+}}_5:
-; CHECK-NEXT:   end_block{{$}}
 ; CHECK:        br_if       1, $pop{{.*}}{{$}}
 ; CHECK:        return{{$}}
-; CHECK:        .LBB{{[0-9]+}}_7:
+; CHECK:        .LBB{{[0-9]+}}_4:
 ; CHECK-NEXT:   end_block{{$}}
-; CHECK:        .LBB{{[0-9]+}}_8:
+; CHECK:        .LBB{{[0-9]+}}_5:
 ; CHECK-NEXT:   end_block{{$}}
 ; CHECK-NEXT:   return{{$}}
 %0 = type { i8, i32 }
