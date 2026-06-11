@@ -23687,7 +23687,7 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E) {
       setInsertPointAfterBundle(E);
 
       LoadInst *LI = cast<LoadInst>(VL0);
-      Value *NewLI;
+      Instruction *NewLI;
       FixedVectorType *StridedLoadTy = nullptr;
       Value *PO = LI->getPointerOperand();
       if (E->State == TreeEntry::Vectorize) {
@@ -23809,7 +23809,7 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E) {
       VecValue = FinalShuffle(VecValue, E);
 
       Value *Ptr = SI->getPointerOperand();
-      Value *ST;
+      Instruction *ST;
       if (E->State == TreeEntry::Vectorize) {
         ST = Builder.CreateAlignedStore(VecValue, Ptr, SI->getAlign());
       } else {
