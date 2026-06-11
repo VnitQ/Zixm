@@ -402,7 +402,7 @@ bool ARMSubtarget::isGVInGOT(const GlobalValue *GV) const {
 }
 
 unsigned ARMSubtarget::getMispredictionPenalty() const {
-  return SchedModel.MispredictPenalty;
+  return SchedModel.getMispredictPenalty();
 }
 
 bool ARMSubtarget::enableMachineScheduler() const {

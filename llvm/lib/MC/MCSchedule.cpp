@@ -27,6 +27,18 @@ cl::OptionCategory llvm::MCScheduleOptions("Machine scheduling model options");
 
 static constexpr float DefaultReservationStationScaleFactor = 1.0f;
 
+static cl::opt<int> SchedMispredictPenalty(
+    "sched-mispredict-penalty", cl::Hidden, cl::init(-1),
+    cl::cat(MCScheduleOptions),
+    cl::desc("Override the mispredict penalty (in cycles) in the scheduler "
+             "model. A non-negative value overrides the target default."));
+
+static cl::opt<int> SchedLoadLatency(
+    "sched-load-latency", cl::Hidden, cl::init(-1),
+    cl::cat(MCScheduleOptions),
+    cl::desc("Override the load latency (in cycles) in the scheduler model. "
+             "A non-negative value overrides the target default."));
+
 static cl::opt<float> ReservationStationScaleFactor(
     "sched-model-reservation-station-scale-factor", cl::Hidden,
     cl::init(DefaultReservationStationScaleFactor), cl::cat(MCScheduleOptions),
@@ -227,6 +239,22 @@ unsigned MCSchedModel::getBypassDelayCycles(const MCSubtargetInfo &STI,
 
   // Unable to find WriteResourceID in MCReadAdvanceEntry Entries
   return 0;
+}
+
+/// Return the mispredict penalty in cycles, respecting any command-line
+/// override via -sched-mispredict-penalty.
+unsigned MCSchedModel::getMispredictPenalty() const {
+  if (SchedMispredictPenalty >= 0)
+    return static_cast<unsigned>(SchedMispredictPenalty);
+  return MispredictPenalty;
+}
+
+/// Return the load latency in cycles, respecting any command-line override
+/// via -sched-load-latency.
+unsigned MCSchedModel::getLoadLatency() const {
+  if (SchedLoadLatency >= 0)
+    return static_cast<unsigned>(SchedLoadLatency);
+  return LoadLatency;
 }
 
 /// Return the buffer size of the resource. If a positive scale factor

@@ -426,6 +426,14 @@ struct MCSchedModel {
   LLVM_ABI static unsigned getBypassDelayCycles(const MCSubtargetInfo &STI,
                                                 const MCSchedClassDesc &SCDesc);
 
+  /// Return the mispredict penalty in cycles, respecting any command-line
+  /// override via -sched-mispredict-penalty.
+  LLVM_ABI unsigned getMispredictPenalty() const;
+
+  /// Return the load latency in cycles, respecting any command-line override
+  /// via -sched-load-latency.
+  LLVM_ABI unsigned getLoadLatency() const;
+
   /// Return the buffer size of the resource. If a positive scale factor
   /// is provided and the original buffer size is > 1, the size is scaled
   /// accordingly.
