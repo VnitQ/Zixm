@@ -410,6 +410,11 @@ Modified Compiler Flags
   normalized in favor of the target system (same as the preprocessor does
   for the file macros) and allows the reproducable IDs on any build system.
 
+- ``-ftrivial-auto-var-init=zero`` and ``-ftrivial-auto-var-init=pattern`` now
+  correctly initialize variables whose declaration is bypassed by ``goto`` or
+  ``switch`` statements. Previously, such variables were silently left
+  uninitialized.
+
 Removed Compiler Flags
 ----------------------
 
