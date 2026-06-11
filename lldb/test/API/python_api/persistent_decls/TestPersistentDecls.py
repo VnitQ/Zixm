@@ -29,20 +29,20 @@ class TestPersistentDecls(TestBase):
         self.build()
         self.main_source_file = lldb.SBFileSpec("main.c")
         self.values_test(False)
-        
+
     def test_persistent_values_unknown(self):
         """Define some values in the expression evaluator and find them."""
         self.build()
         self.main_source_file = lldb.SBFileSpec("main.c")
         self.values_test(True)
-        
+
     def types_test(self, use_unknown):
         (target, _, _, _) = lldbutil.run_to_source_breakpoint(
             self, "Set a breakpoint here", self.main_source_file
         )
 
         # Make some types so we aren't succeeding in gettting the only one.
-        
+
         typename = "$firstStruct"
 
         self.expect(f"expr struct $SomeType {{ int b; int a; int c;}}")
@@ -54,7 +54,7 @@ class TestPersistentDecls(TestBase):
             language = lldb.eLanguageTypeUnknown
         else:
             language = lldb.eLanguageTypeC_plus_plus
-        
+
         type = target.FindExpressionTypeForLanguage(typename, language)
         self.assertTrue(type.IsValid(), "Got a valid type")
 
@@ -84,7 +84,9 @@ class TestPersistentDecls(TestBase):
         value_name = "$my_struct"
         self.expect("expr int $my_int = 100")
         self.expect('expr char *$my_char_ptr = "Some char pointer."')
-        self.expect(f"expr {type_name} {{int a; int b;}}; {type_name} {value_name} = {{10, 20}}")
+        self.expect(
+            f"expr {type_name} {{int a; int b;}}; {type_name} {value_name} = {{10, 20}}"
+        )
 
         # Now try to find one:
         if use_unknown:
@@ -92,11 +94,8 @@ class TestPersistentDecls(TestBase):
         else:
             language = lldb.eLanguageTypeC_plus_plus
 
-        value = target.FindExpressionVariableForLanguage(
-            value_name,
-            language
-        )
-        
+        value = target.FindExpressionVariableForLanguage(value_name, language)
+
         self.assertTrue(value.IsValid(), "Got a valid SBValue")
         self.assertTrue(value.GetError().Success(), "Got a value")
 
@@ -104,8 +103,8 @@ class TestPersistentDecls(TestBase):
             name=value_name,
             type=type_name,
             children=[
-                ValueCheck(name="a", type="int", value='10'),
-                ValueCheck(name="b", type="int", value='20')
-            ]
+                ValueCheck(name="a", type="int", value="10"),
+                ValueCheck(name="b", type="int", value="20"),
+            ],
         )
         value_checker.check_value(self, value, "Found the right value")

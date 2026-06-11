@@ -1879,8 +1879,9 @@ lldb::SBSymbolContextList SBTarget::FindGlobalFunctions(const char *name,
   return sb_sc_list;
 }
 
-lldb::SBType SBTarget::FindExpressionTypeForLanguage(const char *typename_cstr,
-      lldb::LanguageType language) {
+lldb::SBType
+SBTarget::FindExpressionTypeForLanguage(const char *typename_cstr,
+                                        lldb::LanguageType language) {
   TargetSP target_sp = GetSP();
   if (!target_sp)
     return {};
@@ -1899,8 +1900,8 @@ lldb::SBType SBTarget::FindExpressionTypeForLanguage(const char *typename_cstr,
       PersistentExpressionState *persistent =
           target_sp->GetPersistentExpressionStateForLanguage(cur_lang);
       if (persistent) {
-        std::optional<CompilerType> type_op
-          = persistent->GetCompilerTypeFromPersistentDecl(const_typename);
+        std::optional<CompilerType> type_op =
+            persistent->GetCompilerTypeFromPersistentDecl(const_typename);
         if (type_op) {
           return SBType(*type_op);
         }
@@ -1910,8 +1911,8 @@ lldb::SBType SBTarget::FindExpressionTypeForLanguage(const char *typename_cstr,
     PersistentExpressionState *persistent =
         target_sp->GetPersistentExpressionStateForLanguage(language);
     if (persistent) {
-      std::optional<CompilerType> type_op
-        = persistent->GetCompilerTypeFromPersistentDecl(const_typename);
+      std::optional<CompilerType> type_op =
+          persistent->GetCompilerTypeFromPersistentDecl(const_typename);
       if (type_op && (*type_op)) {
         return SBType(*type_op);
       }
@@ -1920,8 +1921,9 @@ lldb::SBType SBTarget::FindExpressionTypeForLanguage(const char *typename_cstr,
   return {};
 }
 
-lldb::SBValue SBTarget::FindExpressionVariableForLanguage(
-    const char *varname_cstr, lldb::LanguageType language) {
+lldb::SBValue
+SBTarget::FindExpressionVariableForLanguage(const char *varname_cstr,
+                                            lldb::LanguageType language) {
   TargetSP target_sp = GetSP();
   if (!target_sp)
     return {};
@@ -1960,8 +1962,6 @@ lldb::SBValue SBTarget::FindExpressionVariableForLanguage(
   }
   return {};
 }
-
-
 
 lldb::SBType SBTarget::FindFirstType(const char *typename_cstr) {
   LLDB_INSTRUMENT_VA(this, typename_cstr);
