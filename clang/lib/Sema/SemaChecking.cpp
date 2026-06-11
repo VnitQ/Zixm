@@ -53,6 +53,7 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/SyncScope.h"
+#include "clang/Basic/TargetBuiltins.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TypeTraits.h"
 #include "clang/Lex/Lexer.h" // TODO: Extract static functions to fix layering.
@@ -2124,6 +2125,28 @@ bool Sema::CheckTSBuiltinFunctionCall(const TargetInfo &TI, unsigned BuiltinID,
     // Some builtins don't require additional checking, so just consider these
     // acceptable.
     return false;
+  case llvm::Triple::avr: {
+    switch (BuiltinID) {
+    default:
+      return false;
+    case AVR::BI__builtin_avr_delay_cycles: {
+      llvm::APSInt Result;
+      if (BuiltinConstantArg(TheCall, 0, Result))
+        return true;
+      if (Result.isNegative())
+        return Diag(TheCall->getArg(0)->getBeginLoc(),
+                    diag::err_argument_invalid_range)
+               << toString(Result, 10) << (unsigned)0 << (unsigned)UINT32_MAX
+               << TheCall->getArg(0)->getSourceRange();
+      return false;
+    }
+    case AVR::BI__builtin_avr_insert_bits:
+    case AVR::BI__builtin_avr_nops: {
+      llvm::APSInt Result;
+      return BuiltinConstantArg(TheCall, 0, Result);
+    }
+    }
+  }
   case llvm::Triple::arm:
   case llvm::Triple::armeb:
   case llvm::Triple::thumb:

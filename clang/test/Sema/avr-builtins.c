@@ -1,0 +1,32 @@
+// RUN: %clang_cc1 -triple avr-unknown-unknown -fsyntax-only -verify %s
+
+void test_delay_cycles_variable(unsigned long n) {
+  __builtin_avr_delay_cycles(n); // expected-error {{argument to '__builtin_avr_delay_cycles' must be a constant integer}}
+}
+
+void test_delay_cycles_ok(void) {
+  __builtin_avr_delay_cycles(100); // ok
+  __builtin_avr_delay_cycles(0);   // ok
+}
+
+void test_nops_variable(unsigned int n) {
+  __builtin_avr_nops(n); // expected-error {{argument to '__builtin_avr_nops' must be a constant integer}}
+}
+
+void test_nops_ok(void) {
+  __builtin_avr_nops(5); // ok
+  __builtin_avr_nops(0); // ok
+}
+
+void test_insert_bits_variable(unsigned long map, unsigned char bits,
+                               unsigned char val) {
+  __builtin_avr_insert_bits(map, bits, val); // expected-error {{argument to '__builtin_avr_insert_bits' must be a constant integer}}
+}
+
+unsigned char test_insert_bits_ok(unsigned char bits, unsigned char val) {
+  unsigned char r;
+  r = __builtin_avr_insert_bits(0x76543210UL, bits, val); // ok
+  r = __builtin_avr_insert_bits(0xFFFFFFFFUL, 0, val);    // ok
+  r = __builtin_avr_insert_bits(0x01234567UL, bits, 0);   // ok
+  return r;
+}
