@@ -14390,6 +14390,9 @@ TEST_F(FormatTest, IncorrectCodeUnbalancedBraces) {
   verifyNoCrash("struct Foo {\n"
                 "  operator foo(bar\n"
                 "};");
+  verifyNoCrash("{ operator } a");
+  verifyNoCrash("{ operator } a }");
+  verifyNoCrash("{ operator } a } b");
   verifyNoCrash("decltype( {\n"
                 "  {");
 }
@@ -22543,6 +22546,8 @@ TEST_F(FormatTest, DoNotCrashOnInvalidInput) {
   verifyNoCrash("        tst     %o5     ! are we doing the gray case?\n"
                 "LY52:                   ! [internal]");
   verifyNoCrash("operator foo *;");
+  verifyNoCrash("{{ < ? } a} b");
+  verifyNoCrash("enum E { { ? } a }");
 }
 
 TEST_F(FormatTest, FormatsTableGenCode) {
