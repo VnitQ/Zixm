@@ -34,8 +34,7 @@ static cl::opt<int> SchedMispredictPenalty(
              "model. A non-negative value overrides the target default."));
 
 static cl::opt<int> SchedLoadLatency(
-    "sched-load-latency", cl::Hidden, cl::init(-1),
-    cl::cat(MCScheduleOptions),
+    "sched-load-latency", cl::Hidden, cl::init(-1), cl::cat(MCScheduleOptions),
     cl::desc("Override the load latency (in cycles) in the scheduler model. "
              "A non-negative value overrides the target default."));
 
