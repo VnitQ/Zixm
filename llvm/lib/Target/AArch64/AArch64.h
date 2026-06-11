@@ -16,12 +16,14 @@
 
 #include "MCTargetDesc/AArch64MCTargetDesc.h"
 #include "Utils/AArch64BaseInfo.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionAnalysisManager.h"
 #include "llvm/Pass.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/Scalar/LoopPassManager.h"
 #include <map>
 #include <memory>
 #include <unordered_map>
@@ -75,7 +77,7 @@ FunctionPass *createSMEPeepholeOptPass();
 FunctionPass *createMachineSMEABIPass(CodeGenOptLevel);
 FunctionPass *createAArch64SRLTDefineSuperRegsPass();
 ModulePass *createSVEIntrinsicOptsPass();
-FunctionPass *createSVEShuffleOptsPass();
+Pass *createSVEShuffleOptsPass();
 InstructionSelector *
 createAArch64InstructionSelector(const AArch64TargetMachine &,
                                  const AArch64Subtarget &,
@@ -189,7 +191,9 @@ class SVEShuffleOptsPass : public PassInfoMixin<SVEShuffleOptsPass> {
 
 public:
   explicit SVEShuffleOptsPass(const AArch64TargetMachine &TM) : TM(TM) {}
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &FAM);
+  LLVM_ABI PreservedAnalyses run(Loop &L, LoopAnalysisManager &AM,
+                                 LoopStandardAnalysisResults &AR,
+                                 LPMUpdater &U);
 };
 
 class AArch64StackTaggingPreRAPass
