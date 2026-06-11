@@ -2222,6 +2222,12 @@ Instruction *InstCombinerImpl::visitFPTrunc(FPTruncInst &FPT) {
     unsigned RHSWidth = RHSMinType->getFPMantissaWidth();
     unsigned SrcWidth = std::max(LHSWidth, RHSWidth);
     unsigned DstWidth = Ty->getFPMantissaWidth();
+
+    // Narrowing recomputes the binop in a smaller type, which can overflow to
+    // inf where the wide op was finite. Therefore we have to drop ninf.
+    FastMathFlags NarrowFMF = BO->getFastMathFlags();
+    NarrowFMF.setNoInfs(false);
+
     switch (BO->getOpcode()) {
       default: break;
       case Instruction::FAdd:
@@ -2248,7 +2254,7 @@ Instruction *InstCombinerImpl::visitFPTrunc(FPTruncInst &FPT) {
           Value *LHS = Builder.CreateFPTrunc(BO->getOperand(0), Ty);
           Value *RHS = Builder.CreateFPTrunc(BO->getOperand(1), Ty);
           Instruction *RI = BinaryOperator::Create(BO->getOpcode(), LHS, RHS);
-          RI->copyFastMathFlags(BO);
+          RI->setFastMathFlags(NarrowFMF);
           return RI;
         }
         break;
@@ -2261,7 +2267,7 @@ Instruction *InstCombinerImpl::visitFPTrunc(FPTruncInst &FPT) {
         if (OpWidth >= LHSWidth + RHSWidth && DstWidth >= SrcWidth) {
           Value *LHS = Builder.CreateFPTrunc(BO->getOperand(0), Ty);
           Value *RHS = Builder.CreateFPTrunc(BO->getOperand(1), Ty);
-          return BinaryOperator::CreateFMulFMF(LHS, RHS, BO);
+          return BinaryOperator::CreateFMulFMF(LHS, RHS, NarrowFMF);
         }
         break;
       case Instruction::FDiv:
@@ -2274,7 +2280,7 @@ Instruction *InstCombinerImpl::visitFPTrunc(FPTruncInst &FPT) {
         if (OpWidth >= 2*DstWidth && DstWidth >= SrcWidth) {
           Value *LHS = Builder.CreateFPTrunc(BO->getOperand(0), Ty);
           Value *RHS = Builder.CreateFPTrunc(BO->getOperand(1), Ty);
-          return BinaryOperator::CreateFDivFMF(LHS, RHS, BO);
+          return BinaryOperator::CreateFDivFMF(LHS, RHS, NarrowFMF);
         }
         break;
       case Instruction::FRem: {
