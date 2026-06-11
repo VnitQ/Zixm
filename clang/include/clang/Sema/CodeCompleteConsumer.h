@@ -958,17 +958,14 @@ public:
   ///
   /// \param Allocator The allocator that will be used to allocate the
   /// string itself.
-  CodeCompletionString *CreateCodeCompletionString(Sema &S,
-                                         const CodeCompletionContext &CCContext,
-                                           CodeCompletionAllocator &Allocator,
-                                           CodeCompletionTUInfo &CCTUInfo,
-                                           bool IncludeBriefComments);
-  CodeCompletionString *CreateCodeCompletionString(ASTContext &Ctx,
-                                                   Preprocessor &PP,
-                                         const CodeCompletionContext &CCContext,
-                                           CodeCompletionAllocator &Allocator,
-                                           CodeCompletionTUInfo &CCTUInfo,
-                                           bool IncludeBriefComments);
+  CodeCompletionString *CreateCodeCompletionString(
+      Sema &S, const CodeCompletionContext &CCContext,
+      CodeCompletionAllocator &Allocator, CodeCompletionTUInfo &CCTUInfo,
+      bool IncludeBriefComments, bool SuppressFuncParamType = false);
+  CodeCompletionString *CreateCodeCompletionString(
+      ASTContext &Ctx, Preprocessor &PP, const CodeCompletionContext &CCContext,
+      CodeCompletionAllocator &Allocator, CodeCompletionTUInfo &CCTUInfo,
+      bool IncludeBriefComments, bool SuppressFuncParamType);
   /// Creates a new code-completion string for the macro result. Similar to the
   /// above overloads, except this only requires preprocessor information.
   /// The result kind must be `RK_Macro`.
@@ -980,7 +977,7 @@ public:
   CodeCompletionString *createCodeCompletionStringForDecl(
       Preprocessor &PP, ASTContext &Ctx, CodeCompletionBuilder &Result,
       bool IncludeBriefComments, const CodeCompletionContext &CCContext,
-      PrintingPolicy &Policy);
+      PrintingPolicy &Policy, bool SuppressFuncParamType);
 
   CodeCompletionString *createCodeCompletionStringForOverride(
       Preprocessor &PP, ASTContext &Ctx, CodeCompletionBuilder &Result,

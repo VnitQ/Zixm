@@ -3132,7 +3132,8 @@ static std::string formatBlockPlaceholder(
 static std::string FormatFunctionParameter(
     const PrintingPolicy &Policy, const DeclaratorDecl *Param,
     bool SuppressName = false, bool SuppressBlock = false,
-    std::optional<ArrayRef<QualType>> ObjCSubsts = std::nullopt) {
+    std::optional<ArrayRef<QualType>> ObjCSubsts = std::nullopt,
+    bool SuppressType = false) {
   // Params are unavailable in FunctionTypeLoc if the FunctionType is invalid.
   // It would be better to pass in the param Type, which is usually available.
   // But this case is rare, so just pretend we fell back to int as elsewhere.
@@ -3160,9 +3161,13 @@ static std::string FormatFunctionParameter(
       Result += Type.getAsString(Policy) + ")";
       if (Param->getIdentifier() && !SuppressName)
         Result += Param->getIdentifier()->deuglifiedName();
-    } else {
-      Type.getAsStringInternal(Result, Policy);
+      return Result;
     }
+
+    if (SuppressType)
+      return Result;
+
+    Type.getAsStringInternal(Result, Policy);
     return Result;
   }
 
@@ -3314,7 +3319,7 @@ static void AddFunctionParameterChunks(
     Preprocessor &PP, const PrintingPolicy &Policy,
     const FunctionDecl *Function, CodeCompletionBuilder &Result,
     unsigned Start = 0, bool InOptional = false, bool FunctionCanBeCall = true,
-    bool IsInDeclarationContext = false) {
+    bool IsInDeclarationContext = false, bool SuppressFuncParamType = false) {
   bool FirstParameter = true;
   bool AsInformativeChunk = !(FunctionCanBeCall || IsInDeclarationContext);
 
@@ -3353,7 +3358,9 @@ static void AddFunctionParameterChunks(
     InOptional = false;
 
     // Format the placeholder string.
-    std::string PlaceholderStr = FormatFunctionParameter(Policy, Param);
+    std::string PlaceholderStr = FormatFunctionParameter(
+        Policy, Param, /*SuppressName=*/false, /*SuppressBlock=*/false,
+        /*ObjCSubsts=*/std::nullopt, SuppressFuncParamType);
     std::string DefaultValue;
     if (Param->hasDefaultArg()) {
       if (IsInDeclarationContext)
@@ -3674,9 +3681,10 @@ static void AddTypedNameChunk(ASTContext &Context, const PrintingPolicy &Policy,
 CodeCompletionString *CodeCompletionResult::CreateCodeCompletionString(
     Sema &S, const CodeCompletionContext &CCContext,
     CodeCompletionAllocator &Allocator, CodeCompletionTUInfo &CCTUInfo,
-    bool IncludeBriefComments) {
+    bool IncludeBriefComments, bool SuppressFuncParamType) {
   return CreateCodeCompletionString(S.Context, S.PP, CCContext, Allocator,
-                                    CCTUInfo, IncludeBriefComments);
+                                    CCTUInfo, IncludeBriefComments,
+                                    SuppressFuncParamType);
 }
 
 CodeCompletionString *CodeCompletionResult::CreateCodeCompletionStringForMacro(
@@ -3734,7 +3742,7 @@ CodeCompletionString *CodeCompletionResult::CreateCodeCompletionStringForMacro(
 CodeCompletionString *CodeCompletionResult::CreateCodeCompletionString(
     ASTContext &Ctx, Preprocessor &PP, const CodeCompletionContext &CCContext,
     CodeCompletionAllocator &Allocator, CodeCompletionTUInfo &CCTUInfo,
-    bool IncludeBriefComments) {
+    bool IncludeBriefComments, bool SuppressFuncParamType) {
   if (Kind == RK_Macro)
     return CreateCodeCompletionStringForMacro(PP, Allocator, CCTUInfo);
 
@@ -3763,8 +3771,9 @@ CodeCompletionString *CodeCompletionResult::CreateCodeCompletionString(
     return Result.TakeString();
   }
   assert(Kind == RK_Declaration && "Missed a result kind?");
-  return createCodeCompletionStringForDecl(
-      PP, Ctx, Result, IncludeBriefComments, CCContext, Policy);
+  return createCodeCompletionStringForDecl(PP, Ctx, Result,
+                                           IncludeBriefComments, CCContext,
+                                           Policy, SuppressFuncParamType);
 }
 
 static void printOverrideString(const CodeCompletionString &CCS,
@@ -3791,9 +3800,10 @@ CodeCompletionResult::createCodeCompletionStringForOverride(
     Preprocessor &PP, ASTContext &Ctx, CodeCompletionBuilder &Result,
     bool IncludeBriefComments, const CodeCompletionContext &CCContext,
     PrintingPolicy &Policy) {
-  auto *CCS = createCodeCompletionStringForDecl(PP, Ctx, Result,
-                                                /*IncludeBriefComments=*/false,
-                                                CCContext, Policy);
+  auto *CCS = createCodeCompletionStringForDecl(
+      PP, Ctx, Result,
+      /*IncludeBriefComments=*/false, CCContext, Policy,
+      /*SuppressFuncParamType=*/false);
   std::string BeforeName;
   std::string NameAndSignature;
   // For overrides all chunks go into the result, none are informative.
@@ -3828,7 +3838,7 @@ static const NamedDecl *extractFunctorCallOperator(const NamedDecl *ND) {
 CodeCompletionString *CodeCompletionResult::createCodeCompletionStringForDecl(
     Preprocessor &PP, ASTContext &Ctx, CodeCompletionBuilder &Result,
     bool IncludeBriefComments, const CodeCompletionContext &CCContext,
-    PrintingPolicy &Policy) {
+    PrintingPolicy &Policy, bool SuppressFuncParamType) {
   const NamedDecl *ND = Declaration;
   Result.addParentContext(ND->getDeclContext());
 
@@ -3862,7 +3872,8 @@ CodeCompletionString *CodeCompletionResult::createCodeCompletionStringForDecl(
     AddFunctionParameterChunks(PP, Policy, Function, Result, /*Start=*/0,
                                /*InOptional=*/false,
                                /*FunctionCanBeCall=*/FunctionCanBeCall,
-                               /*IsInDeclarationContext=*/DeclaringEntity);
+                               /*IsInDeclarationContext=*/DeclaringEntity,
+                               SuppressFuncParamType);
     if (InsertParameters)
       Result.AddChunk(CodeCompletionString::CK_RightParen);
     else

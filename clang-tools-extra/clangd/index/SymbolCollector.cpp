@@ -1107,7 +1107,7 @@ const Symbol *SymbolCollector::addDeclaration(const NamedDecl &ND, SymbolID ID,
   const auto *CCS = SymbolCompletion.CreateCodeCompletionString(
       *ASTCtx, *PP, CodeCompletionContext::CCC_Symbol, *CompletionAllocator,
       *CompletionTUInfo,
-      /*IncludeBriefComments*/ false);
+      /*IncludeBriefComments*/ false, /*SuppressFuncParamType=*/false);
   std::string DocComment;
   std::string Documentation;
   bool AlreadyHasDoc = S.Flags & Symbol::HasDocComment;
@@ -1178,7 +1178,7 @@ void SymbolCollector::addDefinition(const NamedDecl &ND, const Symbol &DeclSym,
     const auto *CCS = SymbolCompletion.CreateCodeCompletionString(
         *ASTCtx, *PP, CodeCompletionContext::CCC_Symbol, *CompletionAllocator,
         *CompletionTUInfo,
-        /*IncludeBriefComments*/ false);
+        /*IncludeBriefComments*/ false, /*SuppressFuncParamType=*/false);
     DocComment = getDocComment(ND.getASTContext(), SymbolCompletion,
                                /*CommentsFromHeaders=*/true);
     if (!S.Documentation.empty())
