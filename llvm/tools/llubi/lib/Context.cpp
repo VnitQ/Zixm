@@ -71,7 +71,7 @@ bool Context::initGlobalValues() {
     if (!GV.hasInitializer())
       continue;
 
-    MemoryObject *Obj = GlobalAddrMap.at(&GV).getMemoryObject();
+    MemoryObject *Obj = GlobalAddrMap.at(&GV).provenance().getMemoryObject();
     assert(Obj && "global pointer should have memory object provenance");
 
     Constant *Init = GV.getInitializer();
@@ -581,7 +581,9 @@ Context::allocate(uint64_t Size, uint64_t Align, StringRef Name, unsigned AS,
   auto MemObj = makeIntrusiveRefCnt<MemoryObject>(
       AlignedAddr, Size, Name, AS, InitKind, AllocKind, IsIRGlobalValue);
   MemoryObjects[AlignedAddr] = MemObj;
-  AllocationBase = AlignedAddr + AllocateSize;
+  // Extra padding to make sure getWildcardProvenance resolves to at most one
+  // memory object.
+  AllocationBase = AlignedAddr + AllocateSize + 1;
   UsedMem += AllocateSize;
   return MemObj;
 }
@@ -600,6 +602,7 @@ bool Context::free(const MemoryObject &Obj) {
   for (const APInt &Tag : MutableObj.AssociatedTags)
     TaggedProvenances.erase(Tag);
   MutableObj.AssociatedTags.clear();
+  ExposedProvenances.erase(Address);
 
   MemoryObjects.erase(It);
   return true;
@@ -610,6 +613,96 @@ Pointer Context::deriveFromMemoryObject(IntrusiveRefCntPtr<MemoryObject> Obj) {
   return Pointer(makeIntrusiveRefCnt<Provenance>(Obj),
                  APInt(DL.getPointerSizeInBits(Obj->getAddressSpace()),
                        Obj->getAddress()));
+}
+
+void Context::exposeProvenance(Provenance &Prov) {
+  if (Prov.Wildcard)
+    return;
+  MemoryObject *Obj = Prov.getMemoryObject();
+  if (!Obj)
+    return;
+  uint64_t Address = Obj->getAddress();
+  ExposedProvenanceSet &Set = ExposedProvenances[Address];
+  if (Set.Set.insert(&Prov).second) {
+    Set.List.emplace_back(&Prov);
+    Set.GenerationList.push_back(++ExposedProvenanceSetGeneration);
+  }
+}
+
+MemoryObject *
+Context::checkProvenance(const Pointer &Ptr,
+                         function_ref<bool(const Provenance &)> Check,
+                         unsigned AS, bool HasSideEffect) {
+  auto &Prov = Ptr.provenance();
+  if (!Check(Prov))
+    return nullptr;
+  // Early return for concrete provenances.
+  if (!Prov.Wildcard)
+    return Prov.Obj.get();
+
+  MemoryObject *MO = nullptr;
+  APInt TempMask;
+  APInt *Mask = HasSideEffect ? &Prov.Wildcard->ActiveMask : &TempMask;
+  SmallVector<IntrusiveRefCntPtr<Provenance>> *List = nullptr;
+  if (Prov.Wildcard->ActiveMask.isZero()) {
+    // The memory object hasn't been determined.
+    uint64_t Addr = Ptr.address().getLimitedValue();
+    auto Iter = ExposedProvenances.upper_bound(Addr);
+    if (Iter == ExposedProvenances.begin())
+      return nullptr;
+    auto &[BaseAddress, Set] = *std::prev(Iter);
+    auto &Obj = MemoryObjects.at(BaseAddress);
+    if (Obj->getAddressSpace() != AS || !Obj->inBounds(Ptr.address()))
+      return nullptr;
+    MO = Obj.get();
+    uint32_t Generation = std::distance(
+        Set.GenerationList.begin(),
+        upper_bound(Set.GenerationList, Prov.Wildcard->Generation));
+    *Mask = APInt::getAllOnes(Generation);
+    List = &Set.List;
+  } else {
+    // We already determined the memory object in a previous memory access。
+    uint64_t BaseAddress = Prov.Wildcard->BaseAddress;
+    auto Iter = ExposedProvenances.find(BaseAddress);
+    // The memory object has been freed.
+    if (Iter == ExposedProvenances.end())
+      return nullptr;
+    MO = MemoryObjects.at(BaseAddress).get();
+    if (MO->getAddressSpace() != AS || !MO->inBounds(Ptr.address()))
+      return nullptr;
+    if (HasSideEffect)
+      TempMask = Prov.Wildcard->ActiveMask;
+    List = &Iter->second.List;
+  }
+  if (Prov.Obj) {
+    // We already determined the memory object via speculatable operations like
+    // gep inbounds.
+    if (Prov.Obj.get() != MO)
+      return nullptr;
+  }
+
+  uint32_t Generation = Mask->getBitWidth();
+  bool Valid = false;
+  for (uint32_t I = 0; I != Generation; ++I) {
+    if (!(*Mask)[I])
+      continue;
+    if (Check(*(*List)[I]))
+      Valid = true;
+    else
+      Mask->clearBit(I);
+  }
+
+  return Valid ? MO : nullptr;
+}
+
+IntrusiveRefCntPtr<Provenance> Context::getWildcardProvenance() {
+  // No exposed provenances.
+  if (ExposedProvenanceSetGeneration == 0)
+    return Provenance::nullary();
+  auto Prov = makeIntrusiveRefCnt<Provenance>(nullptr);
+  Prov->Wildcard =
+      makeIntrusiveRefCnt<WildcardProvenance>(ExposedProvenanceSetGeneration);
+  return Prov;
 }
 
 Function *Context::getTargetFunction(const Pointer &Ptr) {
