@@ -49,6 +49,7 @@
 ; CHECK: VPlan for loop in 'foo' after createAndOptimizeReplicateRegions
 ; CHECK: VPlan for loop in 'foo' after mergeBlocksIntoPredecessors
 ; CHECK: VPlan for loop in 'foo' after licm
+; CHECK: VPlan for loop in 'foo' after cse
 ; CHECK: VPlan for loop in 'foo' after VPlanTransforms::optimize
 ; CHECK: VPlan for loop in 'foo' after VPlanTransforms::narrowInterleaveGroups
 ; CHECK: VPlan for loop in 'foo' after printOptimizedVPlan

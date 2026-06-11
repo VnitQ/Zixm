@@ -130,10 +130,6 @@ for.inc:
 ; CHECK: Cost of 0 for VF 2: induction instruction   %pSrcB.addr.09 = phi ptr [ %incdec.ptr2, %while.body ], [ %pSrcB, %while.body.preheader ]
 ; CHECK: Cost of 0 for VF 2: vp<[[STEPS1:%.+]]> = SCALAR-STEPS vp<[[CAN_IV:%.+]]>, ir<1>
 ; CHECK: Cost of 0 for VF 2: EMIT vp<%next.gep> = ptradd ir<%pSrcA>, vp<[[STEPS1]]>
-; CHECK: Cost of 0 for VF 2: vp<[[STEPS2:%.+]]> = SCALAR-STEPS vp<[[CAN_IV]]>, ir<1>
-; CHECK: Cost of 0 for VF 2: EMIT vp<%next.gep>.1 = ptradd ir<%pDst>, vp<[[STEPS2]]>
-; CHECK: Cost of 0 for VF 2: vp<[[STEPS3:%.+]]> = SCALAR-STEPS vp<[[CAN_IV]]>, ir<1>
-; CHECK: Cost of 0 for VF 2: EMIT vp<%next.gep>.2 = ptradd ir<%pSrcB>, vp<[[STEPS3]]>
 ; CHECK: Cost of 0 for VF 2: vp<[[VEC_PTR:%.+]]> = vector-pointer vp<%next.gep>
 ; CHECK: Cost of 18 for VF 2: WIDEN ir<%0> = load vp<[[VEC_PTR]]>
 ; CHECK: Cost of 4 for VF 2: WIDEN-CAST ir<%conv1> = sext ir<%0> to i32
@@ -160,10 +156,6 @@ for.inc:
 ; CHECK: Cost of 0 for VF 4: induction instruction   %pSrcB.addr.09 = phi ptr [ %incdec.ptr2, %while.body ], [ %pSrcB, %while.body.preheader ]
 ; CHECK: Cost of 0 for VF 4: vp<[[STEPS1:%.+]]> = SCALAR-STEPS vp<[[CAN_IV:%.+]]>, ir<1>
 ; CHECK: Cost of 0 for VF 4: EMIT vp<%next.gep> = ptradd ir<%pSrcA>, vp<[[STEPS1]]>
-; CHECK: Cost of 0 for VF 4: vp<[[STEPS2:%.+]]> = SCALAR-STEPS vp<[[CAN_IV]]>, ir<1>
-; CHECK: Cost of 0 for VF 4: EMIT vp<%next.gep>.1 = ptradd ir<%pDst>, vp<[[STEPS2]]>
-; CHECK: Cost of 0 for VF 4: vp<[[STEPS3:%.+]]> = SCALAR-STEPS vp<[[CAN_IV]]>, ir<1>
-; CHECK: Cost of 0 for VF 4: EMIT vp<%next.gep>.2 = ptradd ir<%pSrcB>, vp<[[STEPS3]]>
 ; CHECK: Cost of 0 for VF 4: vp<[[VEC_PTR1:%.+]]> = vector-pointer vp<%next.gep>
 ; CHECK: Cost of 2 for VF 4: WIDEN ir<%0> = load vp<[[VEC_PTR1]]>
 ; CHECK: Cost of 0 for VF 4: WIDEN-CAST ir<%conv1> = sext ir<%0> to i32
@@ -190,10 +182,6 @@ for.inc:
 ; CHECK: Cost of 0 for VF 8: induction instruction   %pSrcB.addr.09 = phi ptr [ %incdec.ptr2, %while.body ], [ %pSrcB, %while.body.preheader ]
 ; CHECK: Cost of 0 for VF 8: vp<[[STEPS1:%.+]]> = SCALAR-STEPS vp<[[CAN_IV:%.+]]>, ir<1>
 ; CHECK: Cost of 0 for VF 8: EMIT vp<%next.gep> = ptradd ir<%pSrcA>, vp<[[STEPS1]]>
-; CHECK: Cost of 0 for VF 8: vp<[[STEPS2:%.+]]> = SCALAR-STEPS vp<[[CAN_IV]]>, ir<1>
-; CHECK: Cost of 0 for VF 8: EMIT vp<%next.gep>.1 = ptradd ir<%pDst>, vp<[[STEPS2]]>
-; CHECK: Cost of 0 for VF 8: vp<[[STEPS3:%.+]]> = SCALAR-STEPS vp<[[CAN_IV]]>, ir<1>
-; CHECK: Cost of 0 for VF 8: EMIT vp<%next.gep>.2 = ptradd ir<%pSrcB>, vp<[[STEPS3]]>
 ; CHECK: Cost of 0 for VF 8: vp<[[VEC_PTR1:%.+]]> = vector-pointer vp<%next.gep>
 ; CHECK: Cost of 2 for VF 8: WIDEN ir<%0> = load vp<[[VEC_PTR1]]>
 ; CHECK: Cost of 2 for VF 8: WIDEN-CAST ir<%conv1> = sext ir<%0> to i32
@@ -220,10 +208,6 @@ for.inc:
 ; CHECK: Cost of 0 for VF 16: induction instruction   %pSrcB.addr.09 = phi ptr [ %incdec.ptr2, %while.body ], [ %pSrcB, %while.body.preheader ]
 ; CHECK: Cost of 0 for VF 16: vp<[[STEPS1:%.+]]> = SCALAR-STEPS vp<[[CAN_IV:%.+]]>, ir<1>
 ; CHECK: Cost of 0 for VF 16: EMIT vp<%next.gep> = ptradd ir<%pSrcA>, vp<[[STEPS1]]>
-; CHECK: Cost of 0 for VF 16: vp<[[STEPS2:%.+]]> = SCALAR-STEPS vp<[[CAN_IV]]>, ir<1>
-; CHECK: Cost of 0 for VF 16: EMIT vp<%next.gep>.1 = ptradd ir<%pDst>, vp<[[STEPS2]]>
-; CHECK: Cost of 0 for VF 16: vp<[[STEPS3:%.+]]> = SCALAR-STEPS vp<[[CAN_IV]]>, ir<1>
-; CHECK: Cost of 0 for VF 16: EMIT vp<%next.gep>.2 = ptradd ir<%pSrcB>, vp<[[STEPS3]]>
 ; CHECK: Cost of 0 for VF 16: vp<[[VEC_PTR:%.+]]> = vector-pointer vp<%next.gep>
 ; CHECK: Cost of 2 for VF 16: WIDEN ir<%0> = load vp<[[VEC_PTR]]>
 ; CHECK: Cost of 6 for VF 16: WIDEN-CAST ir<%conv1> = sext ir<%0> to i32
