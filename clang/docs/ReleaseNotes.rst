@@ -496,6 +496,10 @@ Attribute Changes in Clang
   about pointer lifetimes. It may be used to power optimizations in the future,
   however there are no concrete plans to do so at the moment.
 
+- The malloc attribute can now be applied to functions returning span-like structures (structs
+  containing a pointer field and a size integer field). Currently, this is primarily used for
+  Allocation Token instrumentation.
+
 Improvements to Clang's diagnostics
 -----------------------------------
 - Fixed bug in ``-Wdocumentation`` so that it correctly handles explicit
