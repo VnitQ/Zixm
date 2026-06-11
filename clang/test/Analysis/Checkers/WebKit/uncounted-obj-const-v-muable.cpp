@@ -21,7 +21,7 @@ private:
 void Caller::someFunction()
 {
     m_obj->constFunc();
-    // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'this->m_obj' for 'this' parameter of 'Object::constFunc' is a raw pointer to ref-countable type 'Object'}}
     m_obj->mutableFunc();
-    // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'this->m_obj' for 'this' parameter of 'Object::mutableFunc' is a raw pointer to ref-countable type 'Object'}}
 }

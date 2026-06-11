@@ -60,5 +60,5 @@ bool someFunction(Component* other) {
 
 bool otherFunction(Component* other) {
     return provide()->isNonTrivialEqual(*other);
-    // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe}}
+    // expected-warning@-1{{Call argument 'provide()' for 'this' parameter of 'Component::isNonTrivialEqual' is a raw pointer to ref-countable type 'Component'}}
 }

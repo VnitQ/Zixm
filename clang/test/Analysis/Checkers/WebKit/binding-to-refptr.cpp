@@ -38,9 +38,9 @@ static void testUnpackedAssignmentWithWeak() {
   auto [a, b] = getStrongWeakPair();
   a->nextSibling();
   b->nextSibling();
-  // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe [alpha.webkit.UncountedCallArgsChecker]}}
+  // expected-warning@-1{{Call argument 'b' for 'this' parameter of 'Node::nextSibling' is a raw pointer to ref-countable type 'Node'}}
   auto [c, d] = getWeakStrongPair();
   c->nextSibling();
-  // expected-warning@-1{{Call argument for 'this' parameter is uncounted and unsafe [alpha.webkit.UncountedCallArgsChecker]}}
+  // expected-warning@-1{{Call argument 'c' for 'this' parameter of 'Node::nextSibling' is a raw pointer to ref-countable type 'Node'}}
   d->nextSibling();
 }
