@@ -204,13 +204,26 @@ public:
     return Thunk;
   }
 
+  llvm::Value *emitWasmRuntimeFunctionPointerBinding(
+      CodeGenFunction &CGF, llvm::Value *FnPtr, QualType SrcType,
+      QualType DstType) const override;
+
 private:
-  // The thunk cache
+  // The thunk cache for compile-time thunks
   mutable llvm::StringMap<llvm::Function *> ThunkCache;
+
+  // Runtime thunk cache: maps (SrcSig, DstSig) -> wrapper function
+  // The wrapper takes a function pointer and returns a thunk for it
+  mutable llvm::DenseMap<std::pair<const FunctionProtoType*, const FunctionProtoType*>,
+                         llvm::Function*> RuntimeWrapperCache;
+
   // Build the thunk name: "%s_{OrigName}_{WasmSig}"
   std::string getThunkName(std::string OrigName,
                            const FunctionProtoType *DstProto,
                            const ASTContext &Ctx) const;
+  std::string getRuntimeWrapperName(const FunctionProtoType *SrcProto,
+                                   const FunctionProtoType *DstProto,
+                                   const ASTContext &Ctx) const;
   char getTypeSig(const QualType &Ty, const ASTContext &Ctx) const;
   std::string sanitizeTypeString(const std::string &typeStr) const;
   std::string getTypeName(const QualType &qt, const ASTContext &Ctx) const;
@@ -291,6 +304,154 @@ RValue WebAssemblyABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
                           getContext().getTypeInfoInChars(Ty),
                           CharUnits::fromQuantity(4),
                           /*AllowHigherAlign=*/true, Slot);
+}
+
+// Generate wrapper name for runtime function pointer binding
+std::string WebAssemblyTargetCodeGenInfo::getRuntimeWrapperName(
+    const FunctionProtoType *SrcProto, const FunctionProtoType *DstProto,
+    const ASTContext &Ctx) const {
+  std::string Name = "__wasm_runtime_wrapper_";
+
+  // Encode source signature
+  QualType SrcRetTy = SrcProto->getReturnType();
+  if (SrcRetTy->isVoidType()) {
+    Name += 'v';
+  } else {
+    Name += getTypeSig(SrcRetTy, Ctx);
+  }
+  for (QualType ParamType : SrcProto->param_types()) {
+    Name += getTypeSig(ParamType, Ctx);
+  }
+
+  Name += "_to_";
+
+  // Encode destination signature
+  QualType DstRetTy = DstProto->getReturnType();
+  if (DstRetTy->isVoidType()) {
+    Name += 'v';
+  } else {
+    Name += getTypeSig(DstRetTy, Ctx);
+  }
+  for (QualType ParamType : DstProto->param_types()) {
+    Name += getTypeSig(ParamType, Ctx);
+  }
+
+  return Name;
+}
+
+// Emit runtime binding for function pointer cast
+// This handles cases like g_list_free_full where a runtime parameter
+// needs to be cast from fewer params to more params
+llvm::Value *WebAssemblyTargetCodeGenInfo::emitWasmRuntimeFunctionPointerBinding(
+    CodeGenFunction &CGF, llvm::Value *FnPtr, QualType SrcType,
+    QualType DstType) const {
+
+  const FunctionProtoType *SrcProto =
+      SrcType->getPointeeType()->getAs<FunctionProtoType>();
+  const FunctionProtoType *DstProto =
+      DstType->getPointeeType()->getAs<FunctionProtoType>();
+
+  if (!SrcProto || !DstProto)
+    return nullptr;
+
+  // Only handle the case where we're adding params (fewer -> more)
+  unsigned SrcParams = SrcProto->getNumParams();
+  unsigned DstParams = DstProto->getNumParams();
+
+  if (SrcParams >= DstParams)
+    return nullptr;
+
+  // Return types must match exactly
+  QualType SrcRetTy = SrcProto->getReturnType();
+  QualType DstRetTy = DstProto->getReturnType();
+  if (!CGF.getContext().hasSameType(SrcRetTy, DstRetTy))
+    return nullptr;
+
+  LLVM_DEBUG(llvm::dbgs() << "emitWasmRuntimeFunctionPointerBinding: "
+                          << "src params=" << SrcParams
+                          << " dst params=" << DstParams << "\n");
+
+  auto Key = std::make_pair(SrcProto, DstProto);
+  auto It = RuntimeWrapperCache.find(Key);
+
+  llvm::Module &M = CGF.CGM.getModule();
+  llvm::LLVMContext &Context = M.getContext();
+  llvm::Type *PtrTy = llvm::PointerType::getUnqual(Context);
+
+  std::string WrapperName = getRuntimeWrapperName(SrcProto, DstProto, CGF.CGM.getContext());
+  std::string GlobalName = WrapperName + "_fptr";
+
+  // Get or create the global variable for storing the function pointer
+  llvm::GlobalVariable *FnPtrGlobal = M.getNamedGlobal(GlobalName);
+  if (!FnPtrGlobal) {
+    FnPtrGlobal = new llvm::GlobalVariable(
+        M, PtrTy, /*isConstant=*/false, llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(PtrTy), GlobalName);
+    // Make it thread-local to support WebAssembly threads
+    FnPtrGlobal->setThreadLocalMode(llvm::GlobalValue::GeneralDynamicTLSModel);
+  }
+
+  llvm::Function *Wrapper;
+  if (It != RuntimeWrapperCache.end()) {
+    Wrapper = It->second;
+  } else {
+    // Create a new wrapper function that takes a function pointer
+    // and returns a thunk with the destination signature
+
+    llvm::FunctionType *SrcFnType = llvm::cast<llvm::FunctionType>(
+        CGF.CGM.getTypes().ConvertType(QualType(SrcProto, 0)));
+    llvm::FunctionType *DstFnType = llvm::cast<llvm::FunctionType>(
+        CGF.CGM.getTypes().ConvertType(QualType(DstProto, 0)));
+
+    // Wrapper signature: takes src function pointer, has dst signature
+    // Use LinkOnceODRLinkage to:
+    // 1. Prevent dead argument elimination (optimizer can't see all callers)
+    // 2. Allow linker to merge duplicates across modules (no symbol collisions)
+    // 3. Preserve exact signature required by WebAssembly type checking
+    Wrapper = llvm::Function::Create(
+        DstFnType, llvm::GlobalValue::LinkOnceODRLinkage, WrapperName, M);
+
+    // Mark as noinline to prevent inlining that would expose unused parameters
+    Wrapper->addFnAttr(llvm::Attribute::NoInline);
+    Wrapper->addFnAttr(llvm::Attribute::NoUnwind);
+
+    // Build wrapper body
+    llvm::BasicBlock *EntryBB = llvm::BasicBlock::Create(Context, "entry", Wrapper);
+    llvm::IRBuilder<> Builder(EntryBB);
+
+    // Load the stored function pointer
+    llvm::Value *StoredFnPtr = Builder.CreateLoad(PtrTy, FnPtrGlobal);
+
+    // Prepare arguments for the call (only pass what the source function expects)
+    llvm::SmallVector<llvm::Value *, 8> CallArgs;
+    auto ArgIt = Wrapper->arg_begin();
+    for (unsigned i = 0; i < SrcParams && i < DstParams; ++i) {
+      CallArgs.push_back(&*ArgIt);
+      ++ArgIt;
+    }
+
+    // Call the source function
+    llvm::CallInst *Call = Builder.CreateCall(SrcFnType, StoredFnPtr, CallArgs);
+
+    // Return the result
+    if (DstFnType->getReturnType()->isVoidTy()) {
+      Builder.CreateRetVoid();
+    } else {
+      Builder.CreateRet(Call);
+    }
+
+    RuntimeWrapperCache[Key] = Wrapper;
+  }
+
+  // Store the function pointer in the global variable
+  CharUnits Alignment = CGF.CGM.getPointerAlign();
+  Address GlobalAddr(FnPtrGlobal, PtrTy, Alignment);
+
+  // Store the function pointer to be used by the wrapper
+  CGF.Builder.CreateStore(FnPtr, GlobalAddr);
+
+  // Return the wrapper function
+  return Wrapper;
 }
 
 std::unique_ptr<TargetCodeGenInfo>
