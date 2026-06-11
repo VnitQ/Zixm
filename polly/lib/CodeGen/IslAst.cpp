@@ -86,6 +86,11 @@ static cl::opt<bool>
                   cl::desc("Print the ISL abstract syntax tree"),
                   cl::cat(PollyCategory));
 
+static cl::opt<unsigned long>
+    AstGenComputeout("polly-astgen-computeout",
+                     cl::desc("Bound the AST generation by a maximal number of "
+                              "ISL operations [0 means un-bounded]"),
+                     cl::Hidden, cl::init(3000000), cl::cat(PollyCategory));
 STATISTIC(ScopsProcessed, "Number of SCoPs processed");
 STATISTIC(ScopsBeneficial, "Number of beneficial SCoPs");
 STATISTIC(BeneficialAffineLoops, "Number of beneficial affine loops");
@@ -545,10 +550,23 @@ void IslAst::init(const Dependences &D) {
   }
 
   RunCondition = buildRunCondition(S, isl::manage_copy(Build));
+  // Apply IslMaxOperationsGuard on the api which starts the process of ASt gen
+  // from schedule tree. This is to avoid the timeout when the schedule tree is
+  // too big and complex.
 
-  Root = isl::manage(
-      isl_ast_build_node_from_schedule(Build, S.getScheduleTree().release()));
-  walkAstForStatistics(Root);
+  {
+    IslMaxOperationsGuard MaxOpGuard(Ctx.get(), AstGenComputeout);
+    Root = isl::manage(
+        isl_ast_build_node_from_schedule(Build, S.getScheduleTree().release()));
+    if (MaxOpGuard.hasQuotaExceeded()) {
+      POLLY_DEBUG(
+          dbgs() << "AST generation for SCoP in function '"
+                 << S.getFunction().getName()
+                 << "' exceeded operation limit (operations). Skipping.\n");
+    }
+  }
+  if (!Root.is_null())
+    walkAstForStatistics(Root);
 
   isl_ast_build_free(Build);
 }
