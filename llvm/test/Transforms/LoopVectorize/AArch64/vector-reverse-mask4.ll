@@ -39,23 +39,15 @@ define void @vector_reverse_mask_v4i1(ptr noalias %a, ptr noalias %cond, i64 %N)
 ; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds double, ptr [[TMP7]], i64 -7
 ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x double>, ptr [[TMP3]], align 8
 ; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x double>, ptr [[TMP4]], align 8
-; CHECK-NEXT:    [[REVERSE:%.*]] = shufflevector <4 x double> [[WIDE_LOAD]], <4 x double> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
-; CHECK-NEXT:    [[REVERSE2:%.*]] = shufflevector <4 x double> [[WIDE_LOAD1]], <4 x double> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
-; CHECK-NEXT:    [[TMP5:%.*]] = fcmp une <4 x double> [[REVERSE]], zeroinitializer
-; CHECK-NEXT:    [[TMP6:%.*]] = fcmp une <4 x double> [[REVERSE2]], zeroinitializer
+; CHECK-NEXT:    [[REVERSE3:%.*]] = fcmp une <4 x double> [[WIDE_LOAD]], zeroinitializer
+; CHECK-NEXT:    [[REVERSE5:%.*]] = fcmp une <4 x double> [[WIDE_LOAD1]], zeroinitializer
 ; CHECK-NEXT:    [[TMP15:%.*]] = getelementptr double, ptr [[A:%.*]], i64 [[TMP2]]
 ; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr double, ptr [[TMP15]], i64 -3
 ; CHECK-NEXT:    [[TMP9:%.*]] = getelementptr double, ptr [[TMP15]], i64 -7
-; CHECK-NEXT:    [[REVERSE3:%.*]] = shufflevector <4 x i1> [[TMP5]], <4 x i1> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
-; CHECK-NEXT:    [[REVERSE5:%.*]] = shufflevector <4 x i1> [[TMP6]], <4 x i1> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
 ; CHECK-NEXT:    [[WIDE_MASKED_LOAD:%.*]] = call <4 x double> @llvm.masked.load.v4f64.p0(ptr align 8 [[TMP8]], <4 x i1> [[REVERSE3]], <4 x double> poison)
 ; CHECK-NEXT:    [[WIDE_MASKED_LOAD6:%.*]] = call <4 x double> @llvm.masked.load.v4f64.p0(ptr align 8 [[TMP9]], <4 x i1> [[REVERSE5]], <4 x double> poison)
-; CHECK-NEXT:    [[REVERSE6:%.*]] = shufflevector <4 x double> [[WIDE_MASKED_LOAD]], <4 x double> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
-; CHECK-NEXT:    [[REVERSE7:%.*]] = shufflevector <4 x double> [[WIDE_MASKED_LOAD6]], <4 x double> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
-; CHECK-NEXT:    [[TMP16:%.*]] = fadd <4 x double> [[REVERSE6]], splat (double 1.000000e+00)
-; CHECK-NEXT:    [[TMP17:%.*]] = fadd <4 x double> [[REVERSE7]], splat (double 1.000000e+00)
-; CHECK-NEXT:    [[TMP10:%.*]] = shufflevector <4 x double> [[TMP16]], <4 x double> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
-; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <4 x double> [[TMP17]], <4 x double> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+; CHECK-NEXT:    [[TMP10:%.*]] = fadd <4 x double> [[WIDE_MASKED_LOAD]], splat (double 1.000000e+00)
+; CHECK-NEXT:    [[TMP11:%.*]] = fadd <4 x double> [[WIDE_MASKED_LOAD6]], splat (double 1.000000e+00)
 ; CHECK-NEXT:    call void @llvm.masked.store.v4f64.p0(<4 x double> [[TMP10]], ptr align 8 [[TMP8]], <4 x i1> [[REVERSE3]])
 ; CHECK-NEXT:    call void @llvm.masked.store.v4f64.p0(<4 x double> [[TMP11]], ptr align 8 [[TMP9]], <4 x i1> [[REVERSE5]])
 ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 8

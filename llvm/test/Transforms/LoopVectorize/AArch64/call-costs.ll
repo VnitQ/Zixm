@@ -119,15 +119,17 @@ define void @call_scalarized(ptr noalias %src, ptr noalias %dst) {
 ; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <2 x double>, ptr [[TMP4]], align 8
 ; CHECK-NEXT:    [[REVERSE:%.*]] = shufflevector <2 x double> [[WIDE_LOAD]], <2 x double> poison, <2 x i32> <i32 1, i32 0>
 ; CHECK-NEXT:    [[REVERSE2:%.*]] = shufflevector <2 x double> [[WIDE_LOAD1]], <2 x double> poison, <2 x i32> <i32 1, i32 0>
-; CHECK-NEXT:    [[TMP5:%.*]] = fcmp une <2 x double> [[REVERSE]], splat (double 4.000000e+00)
-; CHECK-NEXT:    [[TMP6:%.*]] = fcmp une <2 x double> [[REVERSE2]], splat (double 4.000000e+00)
-; CHECK-NEXT:    [[TMP7:%.*]] = fcmp ugt <2 x double> [[REVERSE]], zeroinitializer
-; CHECK-NEXT:    [[TMP8:%.*]] = fcmp ugt <2 x double> [[REVERSE2]], zeroinitializer
+; CHECK-NEXT:    [[TMP5:%.*]] = fcmp une <2 x double> [[WIDE_LOAD]], splat (double 4.000000e+00)
+; CHECK-NEXT:    [[TMP6:%.*]] = fcmp une <2 x double> [[WIDE_LOAD1]], splat (double 4.000000e+00)
+; CHECK-NEXT:    [[TMP7:%.*]] = fcmp ugt <2 x double> [[WIDE_LOAD]], zeroinitializer
+; CHECK-NEXT:    [[TMP8:%.*]] = fcmp ugt <2 x double> [[WIDE_LOAD1]], zeroinitializer
 ; CHECK-NEXT:    [[TMP9:%.*]] = or <2 x i1> [[TMP5]], [[TMP7]]
 ; CHECK-NEXT:    [[TMP10:%.*]] = or <2 x i1> [[TMP6]], [[TMP8]]
 ; CHECK-NEXT:    [[TMP11:%.*]] = xor <2 x i1> [[TMP9]], splat (i1 true)
 ; CHECK-NEXT:    [[TMP12:%.*]] = xor <2 x i1> [[TMP10]], splat (i1 true)
-; CHECK-NEXT:    [[TMP13:%.*]] = extractelement <2 x i1> [[TMP11]], i64 0
+; CHECK-NEXT:    [[REVERSE3:%.*]] = shufflevector <2 x i1> [[TMP11]], <2 x i1> poison, <2 x i32> <i32 1, i32 0>
+; CHECK-NEXT:    [[REVERSE4:%.*]] = shufflevector <2 x i1> [[TMP12]], <2 x i1> poison, <2 x i32> <i32 1, i32 0>
+; CHECK-NEXT:    [[TMP13:%.*]] = extractelement <2 x i1> [[REVERSE3]], i64 0
 ; CHECK-NEXT:    br i1 [[TMP13]], label %[[PRED_STORE_IF:.*]], label %[[PRED_STORE_CONTINUE:.*]]
 ; CHECK:       [[PRED_STORE_IF]]:
 ; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr double, ptr [[DST]], i64 [[TMP1]]
@@ -136,7 +138,7 @@ define void @call_scalarized(ptr noalias %src, ptr noalias %dst) {
 ; CHECK-NEXT:    store double [[TMP16]], ptr [[TMP14]], align 8
 ; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE]]
 ; CHECK:       [[PRED_STORE_CONTINUE]]:
-; CHECK-NEXT:    [[TMP17:%.*]] = extractelement <2 x i1> [[TMP11]], i64 1
+; CHECK-NEXT:    [[TMP17:%.*]] = extractelement <2 x i1> [[REVERSE3]], i64 1
 ; CHECK-NEXT:    br i1 [[TMP17]], label %[[PRED_STORE_IF3:.*]], label %[[PRED_STORE_CONTINUE4:.*]]
 ; CHECK:       [[PRED_STORE_IF3]]:
 ; CHECK-NEXT:    [[TMP18:%.*]] = add i64 [[TMP0]], -1
@@ -147,7 +149,7 @@ define void @call_scalarized(ptr noalias %src, ptr noalias %dst) {
 ; CHECK-NEXT:    store double [[TMP22]], ptr [[TMP20]], align 8
 ; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE4]]
 ; CHECK:       [[PRED_STORE_CONTINUE4]]:
-; CHECK-NEXT:    [[TMP23:%.*]] = extractelement <2 x i1> [[TMP12]], i64 0
+; CHECK-NEXT:    [[TMP23:%.*]] = extractelement <2 x i1> [[REVERSE4]], i64 0
 ; CHECK-NEXT:    br i1 [[TMP23]], label %[[PRED_STORE_IF5:.*]], label %[[PRED_STORE_CONTINUE6:.*]]
 ; CHECK:       [[PRED_STORE_IF5]]:
 ; CHECK-NEXT:    [[TMP24:%.*]] = add i64 [[TMP0]], -2
@@ -158,7 +160,7 @@ define void @call_scalarized(ptr noalias %src, ptr noalias %dst) {
 ; CHECK-NEXT:    store double [[TMP28]], ptr [[TMP26]], align 8
 ; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE6]]
 ; CHECK:       [[PRED_STORE_CONTINUE6]]:
-; CHECK-NEXT:    [[TMP29:%.*]] = extractelement <2 x i1> [[TMP12]], i64 1
+; CHECK-NEXT:    [[TMP29:%.*]] = extractelement <2 x i1> [[REVERSE4]], i64 1
 ; CHECK-NEXT:    br i1 [[TMP29]], label %[[PRED_STORE_IF7:.*]], label %[[PRED_STORE_CONTINUE8]]
 ; CHECK:       [[PRED_STORE_IF7]]:
 ; CHECK-NEXT:    [[TMP30:%.*]] = add i64 [[TMP0]], -3
@@ -277,7 +279,7 @@ define void @widen_intrinsics_with_mixed_return_types(ptr noalias %src, ptr noal
 ; CHECK-NEXT:    store <4 x i32> [[TMP2]], ptr [[TMP4]], align 4
 ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 8
 ; CHECK-NEXT:    [[TMP5:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
-; CHECK-NEXT:    br i1 [[TMP5]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP6:![0-9]+]]
+; CHECK-NEXT:    br i1 [[TMP5]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP5:![0-9]+]]
 ; CHECK:       [[MIDDLE_BLOCK]]:
 ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N]], [[N_VEC]]
 ; CHECK-NEXT:    br i1 [[CMP_N]], label %[[EXIT:.*]], label %[[SCALAR_PH]]
@@ -296,7 +298,7 @@ define void @widen_intrinsics_with_mixed_return_types(ptr noalias %src, ptr noal
 ; CHECK-NEXT:    store i32 [[COND]], ptr [[DST_GEP]], align 4
 ; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV]], 1
 ; CHECK-NEXT:    [[DONE:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
-; CHECK-NEXT:    br i1 [[DONE]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP7:![0-9]+]]
+; CHECK-NEXT:    br i1 [[DONE]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP6:![0-9]+]]
 ; CHECK:       [[EXIT]]:
 ; CHECK-NEXT:    ret void
 ;

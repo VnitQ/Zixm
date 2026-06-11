@@ -1836,6 +1836,46 @@ void VPlanTransforms::simplifyRecipes(VPlan &Plan) {
   }
 }
 
+void VPlanTransforms::simplifyReverses(VPlan &Plan) {
+  VPValue *X;
+
+  // Pull out reverses from any elementwise op.
+  // binop(reverse(x), reverse(y)) -> reverse(binop(x,y))
+  for (VPBasicBlock *VPBB : VPBlockUtils::blocksOnly<VPBasicBlock>(
+           vp_depth_first_deep(Plan.getEntry()))) {
+    for (VPRecipeBase &R : make_early_inc_range(*VPBB)) {
+      auto *Def = dyn_cast<VPSingleDefRecipe>(&R);
+      if (!Def || !vputils::isElementwise(Def))
+        continue;
+
+      // At least one of the ops must be a reverse.
+      if (!any_of(Def->operands(), match_fn<VPValue>(m_Reverse(m_VPValue()))))
+        continue;
+
+      // All operands must be reversed or a live in.
+      if (!all_of(Def->operands(), match_fn<VPValue>(m_CombineOr(
+                                       m_Reverse(m_VPValue()), m_LiveIn()))))
+        continue;
+
+      // Remove the inner reverses.
+      for (unsigned I = 0; I < Def->getNumOperands(); I++)
+        if (match(Def->getOperand(I), m_Reverse(m_VPValue(X))))
+          Def->setOperand(I, X);
+
+      VPInstruction *Res = VPBuilder::getToInsertAfter(Def).createNaryOp(
+          VPInstruction::Reverse, Def);
+      Def->replaceUsesWithIf(
+          Res, [&Res](VPUser &U, unsigned _) { return &U != Res; });
+    }
+  }
+
+  for (VPBasicBlock *VPBB : VPBlockUtils::blocksOnly<VPBasicBlock>(
+           vp_depth_first_deep(Plan.getEntry())))
+    for (VPRecipeBase &R : make_early_inc_range(*VPBB))
+      if (match(&R, m_Reverse(m_Reverse(m_VPValue(X)))))
+        R.getVPSingleValue()->replaceAllUsesWith(X);
+}
+
 /// Reassociate (headermask && x) && y -> headermask && (x && y) to allow the
 /// header mask to be simplified further when tail folding, e.g. in
 /// optimizeEVLMasks.
@@ -2801,6 +2841,7 @@ void VPlanTransforms::optimize(VPlan &Plan) {
   RUN_VPLAN_PASS(reassociateHeaderMask, Plan);
   RUN_VPLAN_PASS(simplifyRecipes, Plan);
   RUN_VPLAN_PASS(removeBranchOnConst, Plan, /*OnlyLatches=*/false);
+  RUN_VPLAN_PASS(simplifyReverses, Plan);
   RUN_VPLAN_PASS(removeDeadRecipes, Plan);
 
   RUN_VPLAN_PASS(createAndOptimizeReplicateRegions, Plan);
@@ -3136,11 +3177,63 @@ void VPlanTransforms::optimizeEVLMasks(VPlan &Plan) {
     }
   }
 
-  // Fold the following splice patterns into vp.reverse for reverse accesses:
+  // Pull out left splices from any elementwise op.
+  // binop(splice.left(poison, x, evl), live-in) -> splice.left(poison, binop(x,live-in), evl)
+  for (VPBasicBlock *VPBB : VPBlockUtils::blocksOnly<VPBasicBlock>(
+           vp_depth_first_deep(Plan.getEntry()))) {
+    for (VPRecipeBase &R : make_early_inc_range(*VPBB)) {
+      auto *Def = dyn_cast<VPSingleDefRecipe>(&R);
+      if (!Def || !vputils::isElementwise(Def))
+        continue;
+
+      auto m_SpliceLeft = [&EVL](auto X) {
+        return m_Intrinsic<Intrinsic::vector_splice_left>(m_Poison(), X,
+                                                          m_Specific(EVL));
+      };
+
+      // At least one of the ops must be a splice.left.
+      if (!any_of(Def->operands(),
+                  match_fn<VPValue>(m_SpliceLeft(m_VPValue()))))
+        continue;
+
+      // All operands must be a splice.left or a live in.
+      if (!all_of(Def->operands(), match_fn<VPValue>(m_CombineOr(
+                                       m_SpliceLeft(m_VPValue()), m_LiveIn()))))
+        continue;
+
+      // Remove the inner splices.
+      VPValue *X;
+      for (unsigned I = 0; I < Def->getNumOperands(); I++)
+        if (match(Def->getOperand(I), m_SpliceLeft(m_VPValue(X))))
+          Def->setOperand(I, X);
+
+      VPValue *Poison =
+          Plan.getOrAddLiveIn(PoisonValue::get(Def->getScalarType()));
+      auto *Res = new VPWidenIntrinsicRecipe(
+          Intrinsic::vector_splice_left, {Poison, Def, EVL},
+          Def->getScalarType(), {}, {}, Def->getDebugLoc());
+      Res->insertAfter(Def);
+      Def->replaceUsesWithIf(
+          Res, [&Res](VPUser &U, unsigned _) { return &U != Res; });
+    }
+  }
+
+  // Fold the following splice patterns:
+  //   splice.right(splice.left(poison, x, evl), poison, evl) -> x
   //   vector.reverse(splice.left(poison, x, evl))  -> vp.reverse(x, true, evl)
   //   splice.right(vector.reverse(x), poison, evl) -> vp.reverse(x, true, evl)
   for (VPUser *U : collectUsersRecursively(EVL)) {
+    auto *Def = cast<VPRecipeBase>(U);
     VPValue *X;
+    if (match(U, m_Intrinsic<Intrinsic::vector_splice_right>(
+                     m_Intrinsic<Intrinsic::vector_splice_left>(
+                         m_Poison(), m_VPValue(X), m_Specific(EVL)),
+                     m_Poison(), m_Specific(EVL)))) {
+      Def->getVPSingleValue()->replaceAllUsesWith(X);
+      OldRecipes.push_back(Def);
+      continue;
+    }
+
     if (!match(U,
                m_CombineOr(
                    m_Reverse(m_Intrinsic<Intrinsic::vector_splice_left>(
@@ -3149,12 +3242,11 @@ void VPlanTransforms::optimizeEVLMasks(VPlan &Plan) {
                        m_Reverse(m_VPValue(X)), m_Poison(), m_Specific(EVL)))))
       continue;
 
-    auto *Def = cast<VPSingleDefRecipe>(U);
     auto *VPReverse = new VPWidenIntrinsicRecipe(
         Intrinsic::experimental_vp_reverse, {X, Plan.getTrue(), EVL},
         X->getScalarType(), {}, {}, Def->getDebugLoc());
     VPReverse->insertBefore(Def);
-    Def->replaceAllUsesWith(VPReverse);
+    Def->getVPSingleValue()->replaceAllUsesWith(VPReverse);
     OldRecipes.push_back(Def);
   }
 

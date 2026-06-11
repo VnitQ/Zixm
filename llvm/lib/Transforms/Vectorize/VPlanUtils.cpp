@@ -402,6 +402,31 @@ static bool preservesUniformity(unsigned Opcode) {
   }
 }
 
+bool vputils::isElementwise(const VPValue *V) {
+  unsigned Opcode;
+  if (auto *R = dyn_cast<VPWidenRecipe>(V))
+    Opcode = R->getOpcode();
+  else if (auto *R = dyn_cast<VPInstruction>(V))
+    Opcode = R->getOpcode();
+  else
+    return false;
+  if (Instruction::isUnaryOp(Opcode) || Instruction::isBinaryOp(Opcode) ||
+      Instruction::isCast(Opcode))
+    return true;
+  switch (Opcode) {
+  case Instruction::Freeze:
+  case Instruction::ICmp:
+  case Instruction::FCmp:
+  case Instruction::Select:
+  case VPInstruction::Not:
+  case VPInstruction::LogicalAnd:
+  case VPInstruction::LogicalOr:
+    return true;
+  default:
+    return false;
+  }
+}
+
 bool vputils::isSingleScalar(const VPValue *VPV) {
   // Live-in, symbolic and region-values represent single-scalar values.
   if (isa<VPIRValue, VPSymbolicValue, VPRegionValue>(VPV))
