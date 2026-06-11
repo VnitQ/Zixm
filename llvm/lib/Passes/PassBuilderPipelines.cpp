@@ -2290,12 +2290,10 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   LPM.addPass(LoopDeletionPass());
   // FIXME: Add loop interchange.
 
-  // Unroll small loops and perform peeling.
-  LPM.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
-                                 /* OnlyWhenForced= */ !PTO.LoopUnrolling,
-                                 PTO.ForgetAllSCEVInLoopUnroll));
   // The loop passes in LPM (LoopFullUnrollPass) do not preserve MemorySSA.
   // *All* loop passes must preserve it, in order to be able to use it.
+  // TODO: Explore enabling MemorySSA for loop passes after we remove the
+  // LoopFullUnrollPass.
   MainFPM.addPass(
       createFunctionToLoopPassAdaptor(std::move(LPM), /*UseMemorySSA=*/false));
 
