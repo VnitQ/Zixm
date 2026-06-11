@@ -2676,6 +2676,30 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     return EmitX86MaskedCompareResult(*this, Shufbit, NumElts, MaskIn);
   }
 
+  case X86::BI__builtin_ia32_bmacor16x16x16_v16hi:
+  case X86::BI__builtin_ia32_bmacor16x16x16_v32hi:
+  case X86::BI__builtin_ia32_bmacxor16x16x16_v16hi:
+  case X86::BI__builtin_ia32_bmacxor16x16x16_v32hi: {
+    Intrinsic::ID ID;
+    switch (BuiltinID) {
+    case X86::BI__builtin_ia32_bmacor16x16x16_v16hi:
+      ID = Intrinsic::x86_avx512_vbmacor_v16hi;
+      break;
+    case X86::BI__builtin_ia32_bmacor16x16x16_v32hi:
+      ID = Intrinsic::x86_avx512_vbmacor_v32hi;
+      break;
+    case X86::BI__builtin_ia32_bmacxor16x16x16_v16hi:
+      ID = Intrinsic::x86_avx512_vbmacxor_v16hi;
+      break;
+    case X86::BI__builtin_ia32_bmacxor16x16x16_v32hi:
+      ID = Intrinsic::x86_avx512_vbmacxor_v32hi;
+      break;
+    default:
+      llvm_unreachable("Unsupported intrinsic!");
+    }
+
+    return Builder.CreateCall(CGM.getIntrinsic(ID), Ops);
+  }
   // packed comparison intrinsics
   case X86::BI__builtin_ia32_cmpeqps:
   case X86::BI__builtin_ia32_cmpeqpd:
