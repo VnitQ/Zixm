@@ -58,7 +58,7 @@ public:
     default:
       return false;
     case TargetOpcode::G_MEMCPY_INLINE:
-      return Helper.tryEmitMemcpyInline(MI);
+      return Helper.tryCombineMemCpyFamily(MI);
     case TargetOpcode::G_LOAD:
     case TargetOpcode::G_SEXTLOAD:
     case TargetOpcode::G_ZEXTLOAD: {
