@@ -72,6 +72,9 @@ struct Config {
     /// Whether to use clangd's own builtin headers, or ones from the system
     /// include extractor, if available.
     BuiltinHeaderPolicy BuiltinHeaders = BuiltinHeaderPolicy::Clangd;
+
+    /// To detect resource-dir.
+    std::optional<std::string> Compiler;
   } CompileFlags;
 
   enum class BackgroundPolicy { Build, Skip };
