@@ -12868,6 +12868,61 @@ static bool IsKnownPredicateViaAddRecStart(ScalarEvolution &SE,
   return SE.isKnownPredicate(Pred, LStart, RStart);
 }
 
+/// Try to prove LHS `Pred` RHS by replacing `umin` in the LHS
+/// with each of its operands and rechecking via `isKnownPredicate`.
+/// This is valid by monotonicity: since `umin(a, b) ule a` and
+/// `umin(a, b) ule b`, any predicate that holds for either operand
+/// also holds for the original `umin`.
+static bool IsKnownPredicateViaUMinBounds(ScalarEvolution &SE,
+                                          ICmpInst::Predicate Pred,
+                                          const SCEV *LHS, const SCEV *RHS) {
+  struct UMinBoundRewriter : public SCEVRewriteVisitor<UMinBoundRewriter> {
+    UMinBoundRewriter(ScalarEvolution &SE, const SCEV *UMin, const SCEV *Bound)
+        : SCEVRewriteVisitor(SE) {
+      RewriteResults[UMin] = Bound;
+    }
+  };
+
+  SmallPtrSet<const SCEV *, 8> Visited;
+  SmallVector<const SCEV *> WorkList = {LHS};
+  while (!WorkList.empty()) {
+    const SCEV *S = WorkList.pop_back_val();
+    if (!Visited.insert(S).second)
+      continue;
+
+    if (const auto *UMin = dyn_cast<SCEVUMinExpr>(S))
+      for (const SCEV *Bound : UMin->operands()) {
+        UMinBoundRewriter Rewriter(SE, UMin, Bound);
+        const SCEV *UpperLHS = Rewriter.visit(LHS);
+        LLVM_DEBUG(dbgs() << "UMinBoundRewriter: " << *LHS << " -> "
+                          << *UpperLHS << " (bound: " << *Bound << ")\n");
+        if (UpperLHS != LHS && SE.isKnownPredicate(Pred, UpperLHS, RHS))
+          return true;
+      }
+
+    if (!isa<SCEVAddExpr, SCEVMulExpr>(S))
+      continue;
+    const auto *NAry = cast<SCEVNAryExpr>(S);
+    auto IsMonotone = [&]() {
+      if (isa<SCEVAddExpr>(S))
+        // AddExpr is monotone if it cannot decrease as an operand grows.
+        // This requires NUW or a non-negative expression.
+        return NAry->hasNoUnsignedWrap() || SE.isKnownNonNegative(NAry);
+      // MulExpr is monotone only with NUW and non-negative operands.
+      // A signed-negative operand may reverse ordering.
+      return NAry->hasNoUnsignedWrap() &&
+             all_of(NAry->operands(),
+                    [&](const SCEV *Op) { return SE.isKnownNonNegative(Op); });
+    };
+    // Only descend through monotone nodes: substituting a larger value must
+    // not flip the predicate.
+    if (IsMonotone())
+      for (const SCEV *Op : NAry->operands())
+        WorkList.push_back(Op);
+  }
+  return false;
+}
+
 /// Is LHS `Pred` RHS true on the virtue of LHS or RHS being a Min or Max
 /// expression?
 static bool IsKnownPredicateViaMinOrMax(ScalarEvolution &SE, CmpPredicate Pred,
@@ -12890,12 +12945,18 @@ static bool IsKnownPredicateViaMinOrMax(ScalarEvolution &SE, CmpPredicate Pred,
     std::swap(LHS, RHS);
     [[fallthrough]];
   case ICmpInst::ICMP_ULE:
-    return
-        // min(A, ...) <= A
-        // FIXME: what about umin_seq?
-        IsMinMaxConsistingOf<SCEVUMinExpr>(LHS, RHS) ||
-        // A <= max(A, ...)
-        IsMinMaxConsistingOf<SCEVUMaxExpr>(RHS, LHS);
+    // Structural: umin(A,...) ule A, A ule umax(A,...)
+    // FIXME: what about umin_seq?
+    if (IsMinMaxConsistingOf<SCEVUMinExpr>(LHS, RHS) ||
+        IsMinMaxConsistingOf<SCEVUMaxExpr>(RHS, LHS))
+      return true;
+    return IsKnownPredicateViaUMinBounds(SE, ICmpInst::ICMP_ULE, LHS, RHS);
+
+  case ICmpInst::ICMP_UGT:
+    std::swap(LHS, RHS);
+    [[fallthrough]];
+  case ICmpInst::ICMP_ULT:
+    return IsKnownPredicateViaUMinBounds(SE, ICmpInst::ICMP_ULT, LHS, RHS);
   }
 
   llvm_unreachable("covered switch fell through?!");

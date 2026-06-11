@@ -224,7 +224,7 @@ define void @umax(i32 %tmp3) {
 ; CHECK-NEXT:    %tmp46 = select i1 %tmp45, i32 %tmp43, i32 256
 ; CHECK-NEXT:    --> (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>) U: [0,257) S: [0,257) Exits: <<Unknown>> LoopDispositions: { %bb4: Computable, %bb53: Invariant }
 ; CHECK-NEXT:    %tmp48 = select i1 %tmp47, i32 %tmp44, i32 %tmp46
-; CHECK-NEXT:    --> ((7 + (256 umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umax (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin (1 + (256 umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> umin {%tmp3,+,-256}<%bb4>)) U: [7,264) S: [7,264) Exits: <<Unknown>> LoopDispositions: { %bb4: Computable, %bb53: Invariant }
+; CHECK-NEXT:    --> (7 + (256 umin {%tmp3,+,-256}<%bb4>))<nuw><nsw> U: [7,264) S: [7,264) Exits: <<Unknown>> LoopDispositions: { %bb4: Computable, %bb53: Invariant }
 ; CHECK-NEXT:    %tmp49 = ashr i32 %tmp48, 3
 ; CHECK-NEXT:    --> %tmp49 U: [-268435456,268435456) S: [-268435456,268435456) Exits: <<Unknown>> LoopDispositions: { %bb4: Variant, %bb53: Invariant }
 ; CHECK-NEXT:    %tmp51 = select i1 %tmp50, i32 %tmp49, i32 0
