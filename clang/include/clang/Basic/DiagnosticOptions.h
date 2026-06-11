@@ -23,7 +23,8 @@ class ArgList;
 namespace clang {
 class DiagnosticsEngine;
 
-/// Controls whether to show colors in output.
+/// Controls whether to show colors in output. Using Auto will defer to whether
+/// or not the stream supports colors. The others force colors on or off.
 enum class ShowColorsKind : unsigned {
   Auto,
   On,

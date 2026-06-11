@@ -27,7 +27,6 @@
 #include "clang/Basic/DiagnosticIDs.h"
 #include "clang/Basic/DiagnosticOptions.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Process.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include <cstring>
 using namespace clang;
@@ -54,8 +53,7 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
 
   Diags.setElideType(Opts.ElideType);
   Diags.setPrintTemplateTree(Opts.ShowTemplateTree);
-  Diags.setShowColors(
-      Opts.showColors(llvm::sys::Process::StandardErrHasColors()));
+  Diags.setShowColors(Opts.showColors(/*StreamHasColors=*/true));
 
   // Handle -ferror-limit
   if (Opts.ErrorLimit)
