@@ -2939,6 +2939,165 @@ TEST(FindReferences, TemplatedConstructorForwarding) {
                           rangeIs(Main.range("ForwardedCaller2"))));
 }
 
+TEST(LocateSymbol, ConstructorForwarding) {
+  // Cursor on the opening paren navigates to the called constructor, mirroring
+  // the behaviour of a direct constructor call (`Abc^()` -> ctor).
+  Annotations Code(R"cpp(
+    namespace std {
+    template <class T> T &&forward(T &t);
+    template <class T, class... Args>
+    T *make_unique(Args &&...args) {
+      return new T(std::forward<Args>(args)...);
+    }
+    }
+
+    struct Test {
+      $Ctor[[Test]]() {}
+    };
+
+    int main() {
+      auto a = std::make_unique<Test>^();
+    }
+  )cpp");
+  TestTU TU = TestTU::withCode(Code.code());
+  auto AST = TU.build();
+  EXPECT_THAT(locateSymbolAt(AST, Code.point()),
+              ElementsAre(sym("Test", Code.range("Ctor"), Code.range("Ctor"))));
+}
+
+TEST(LocateSymbol, ConstructorForwardingCursorOnIdentifier) {
+  // Cursor on the wrapper's identifier still navigates to the wrapper itself,
+  // mirroring `A^bc()` -> type. The constructor target only appears when the
+  // cursor is on the call's parens (see ConstructorForwarding above).
+  Annotations Code(R"cpp(
+    namespace std {
+    template <class T> T &&forward(T &t);
+    template <class T, class... Args>
+    T *$MakeUnique[[make_unique]](Args &&...args) {
+      return new T(std::forward<Args>(args)...);
+    }
+    }
+
+    struct Test {
+      Test() {}
+    };
+
+    int main() {
+      auto a = std::ma^ke_unique<Test>();
+    }
+  )cpp");
+  TestTU TU = TestTU::withCode(Code.code());
+  auto AST = TU.build();
+  EXPECT_THAT(locateSymbolAt(AST, Code.point()),
+              ElementsAre(sym("make_unique", Code.range("MakeUnique"),
+                              Code.range("MakeUnique"))));
+}
+
+TEST(LocateSymbol, ConstructorForwardingMakeShared) {
+  Annotations Code(R"cpp(
+    namespace std {
+    template <class T> T &&forward(T &t);
+    template <class T> struct shared_ptr {
+      shared_ptr(T *) {}
+    };
+    template <class T, class... Args>
+    shared_ptr<T> make_shared(Args &&...args) {
+      return shared_ptr<T>(new T(std::forward<Args>(args)...));
+    }
+    }
+
+    struct Test {
+      $Ctor[[Test]](int) {}
+    };
+
+    int main() {
+      auto a = std::make_shared<Test>^(1);
+    }
+  )cpp");
+  TestTU TU = TestTU::withCode(Code.code());
+  auto AST = TU.build();
+  EXPECT_THAT(locateSymbolAt(AST, Code.point()),
+              ElementsAre(sym("Test", Code.range("Ctor"), Code.range("Ctor"))));
+}
+
+TEST(LocateSymbol, ConstructorForwardingChained) {
+  Annotations Code(R"cpp(
+    namespace std {
+    template <class T> T &&forward(T &t);
+    template <class T, class... Args> T *make_unique(Args &&...args) {
+      return new T(forward<Args>(args)...);
+    }
+    template <class T, class... Args> T *make_unique2(Args &&...args) {
+      return make_unique<T>(forward<Args>(args)...);
+    }
+    template <class T, class... Args>
+    T *make_unique3(Args &&...args) {
+      return make_unique2<T>(forward<Args>(args)...);
+    }
+    }
+
+    struct Test {
+      $Ctor[[Test]]() {}
+    };
+
+    int main() {
+      auto a = std::make_unique3<Test>^();
+    }
+  )cpp");
+  TestTU TU = TestTU::withCode(Code.code());
+  auto AST = TU.build();
+  EXPECT_THAT(locateSymbolAt(AST, Code.point()),
+              ElementsAre(sym("Test", Code.range("Ctor"), Code.range("Ctor"))));
+}
+
+TEST(LocateSymbol, ConstructorForwardingPicksCalledOverload) {
+  // Overload resolution inside the instantiated body decides which
+  // constructor make_unique<Test>(...) actually invokes.
+  Annotations Code(R"cpp(
+    namespace std {
+    template <class T> T &&forward(T &t);
+    template <class T, class... Args>
+    T *make_unique(Args &&...args) {
+      return new T(std::forward<Args>(args)...);
+    }
+    }
+
+    struct Test {
+      $IntCtor[[Test]](int) {}
+      Test(const char *) {}
+    };
+
+    int main() {
+      auto a = std::make_unique<Test>^(42);
+    }
+  )cpp");
+  TestTU TU = TestTU::withCode(Code.code());
+  auto AST = TU.build();
+  EXPECT_THAT(
+      locateSymbolAt(AST, Code.point()),
+      ElementsAre(sym("Test", Code.range("IntCtor"), Code.range("IntCtor"))));
+}
+
+TEST(LocateSymbol, ConstructorForwardingNotTriggeredOnUnrelatedCall) {
+  // Even with the cursor on the parens, a non-forwarding call falls through
+  // to the regular target: just the called function, no constructor.
+  Annotations Code(R"cpp(
+    template <class T> T *$Make[[make]]() { return nullptr; }
+
+    struct Test {
+      Test() {}
+    };
+
+    int main() {
+      auto a = make<Test>^();
+    }
+  )cpp");
+  TestTU TU = TestTU::withCode(Code.code());
+  auto AST = TU.build();
+  EXPECT_THAT(locateSymbolAt(AST, Code.point()),
+              ElementsAre(sym("make", Code.range("Make"), Code.range("Make"))));
+}
+
 TEST(GetNonLocalDeclRefs, All) {
   struct Case {
     llvm::StringRef AnnotatedCode;
