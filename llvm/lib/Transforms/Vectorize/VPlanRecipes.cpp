@@ -680,6 +680,16 @@ Value *VPInstruction::generate(VPTransformState &State) {
       applyFlags(*I);
     return Res;
   }
+  if (Instruction::isCast(getOpcode())) {
+    Value *Op = State.get(getOperand(0), VPLane(0));
+    Value *Res = State.Builder.CreateCast(Instruction::CastOps(getOpcode()), Op,
+                                          getScalarType());
+    if (auto *CastOp = dyn_cast<Instruction>(Res)) {
+      applyFlags(*CastOp);
+      applyMetadata(*CastOp);
+    }
+    return Res;
+  }
 
   switch (getOpcode()) {
   case VPInstruction::Not: {
@@ -1045,6 +1055,11 @@ Value *VPInstruction::generate(VPTransformState &State) {
 
     return Result;
   }
+  case VPInstruction::StepVector:
+    return State.Builder.CreateStepVector(
+        VectorType::get(getScalarType(), State.VF));
+  case VPInstruction::VScale:
+    return State.Builder.CreateVScale(getScalarType());
   default:
     llvm_unreachable("Unsupported opcode for instruction");
   }
@@ -1259,7 +1274,8 @@ InstructionCost VPRecipeWithIRFlags::getCostForRecipeWithOpcode(
 
 InstructionCost VPInstruction::computeCost(ElementCount VF,
                                            VPCostContext &Ctx) const {
-  if (Instruction::isBinaryOp(getOpcode())) {
+  if (Instruction::isBinaryOp(getOpcode()) ||
+      Instruction::isCast(getOpcode())) {
     if (!getUnderlyingValue() && getOpcode() != Instruction::FMul) {
       // TODO: Compute cost for VPInstructions without underlying values once
       // the legacy cost model has been retired.
@@ -1781,87 +1797,26 @@ void VPInstruction::printRecipe(raw_ostream &O, const Twine &Indent,
   case VPInstruction::NumActiveLanes:
     O << "num-active-lanes";
     break;
+  case VPInstruction::WideIVStep:
+    O << "wide-iv-step";
+    break;
+  case VPInstruction::StepVector:
+    O << "step-vector " << *getScalarType();
+    break;
+  case VPInstruction::VScale:
+    O << "vscale " << *getScalarType();
+    break;
+  case Instruction::Load:
+    O << "load";
+    break;
   default:
     O << Instruction::getOpcodeName(getOpcode());
   }
 
   printFlags(O);
   printOperands(O, SlotTracker);
-}
-#endif
-
-void VPInstructionWithType::execute(VPTransformState &State) {
-  Type *ResultTy = getResultType();
-  if (Instruction::isCast(getOpcode())) {
-    Value *Op = State.get(getOperand(0), VPLane(0));
-    Value *Cast = State.Builder.CreateCast(Instruction::CastOps(getOpcode()),
-                                           Op, ResultTy);
-    if (auto *CastOp = dyn_cast<Instruction>(Cast)) {
-      applyFlags(*CastOp);
-      applyMetadata(*CastOp);
-    }
-    State.set(this, Cast, VPLane(0));
-    return;
-  }
-  switch (getOpcode()) {
-  case VPInstruction::StepVector: {
-    Value *StepVector =
-        State.Builder.CreateStepVector(VectorType::get(ResultTy, State.VF));
-    State.set(this, StepVector);
-    break;
-  }
-  case VPInstruction::VScale: {
-    Value *VScale = State.Builder.CreateVScale(ResultTy);
-    State.set(this, VScale, true);
-    break;
-  }
-
-  default:
-    llvm_unreachable("opcode not implemented yet");
-  }
-}
-
-InstructionCost VPInstructionWithType::computeCost(ElementCount VF,
-                                                   VPCostContext &Ctx) const {
-  // TODO: Compute cost for VPInstructions without underlying values.
-  if (!getUnderlyingValue())
-    return 0;
-  assert(Instruction::isCast(getOpcode()) &&
-         "only casts have underlying values currently");
-  return getCostForRecipeWithOpcode(getOpcode(), ElementCount::getFixed(1),
-                                    Ctx);
-}
-
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-void VPInstructionWithType::printRecipe(raw_ostream &O, const Twine &Indent,
-                                        VPSlotTracker &SlotTracker) const {
-  O << Indent << "EMIT" << (isSingleScalar() ? "-SCALAR" : "") << " ";
-  printAsOperand(O, SlotTracker);
-  O << " = ";
-
-  Type *ResultTy = getResultType();
-  switch (getOpcode()) {
-  case VPInstruction::WideIVStep:
-    O << "wide-iv-step ";
-    printOperands(O, SlotTracker);
-    break;
-  case VPInstruction::StepVector:
-    O << "step-vector " << *ResultTy;
-    break;
-  case VPInstruction::VScale:
-    O << "vscale " << *ResultTy;
-    break;
-  case Instruction::Load:
-    O << "load ";
-    printOperands(O, SlotTracker);
-    break;
-  default:
-    assert(Instruction::isCast(getOpcode()) && "unhandled opcode");
-    O << Instruction::getOpcodeName(getOpcode());
-    printFlags(O);
-    printOperands(O, SlotTracker);
-    O << " to " << *ResultTy;
-  }
+  if (Instruction::isCast(getOpcode()))
+    O << " to " << *getScalarType();
 }
 #endif
 
