@@ -546,7 +546,8 @@ bool X86CmovConversionImpl::checkForProfitableCmovCandidates(
   //   To be conservative, the gain of such CMOV transformation should cover at
   //   at least 25% of branch-misprediction-penalty.
   //===--------------------------------------------------------------------===//
-  unsigned MispredictPenalty = TSchedModel.getMCSchedModel()->MispredictPenalty;
+  unsigned MispredictPenalty =
+      TSchedModel.getMCSchedModel()->getMispredictPenalty();
   CmovGroups TempGroups;
   std::swap(TempGroups, CmovInstGroups);
   for (auto &Group : TempGroups) {

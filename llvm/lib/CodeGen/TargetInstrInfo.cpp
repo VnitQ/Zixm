@@ -1818,7 +1818,7 @@ unsigned TargetInstrInfo::defaultDefLatency(const MCSchedModel &SchedModel,
   if (DefMI.isTransient())
     return 0;
   if (DefMI.mayLoad())
-    return SchedModel.LoadLatency;
+    return SchedModel.getLoadLatency();
   if (isHighLatencyDef(DefMI.getOpcode()))
     return SchedModel.HighLatency;
   return 1;

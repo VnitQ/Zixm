@@ -193,7 +193,7 @@ unsigned RISCVSubtarget::getMaxBuildIntsCost() const {
   // building integers (addi, slli, etc.) can be done in one cycle, so here we
   // set the default cost to (LoadLatency + 1) if no threshold is provided.
   return RISCVMaxBuildIntsCost == 0
-             ? getSchedModel().LoadLatency + 1
+             ? getSchedModel().getLoadLatency() + 1
              : std::max<unsigned>(2, RISCVMaxBuildIntsCost);
 }
 

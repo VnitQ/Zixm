@@ -1099,8 +1099,8 @@ bool EarlyIfConverter::shouldConvertIf() {
   if (EnableDataDependentBranchAnalysis)
     DataDependent = isConditionDataDependent();
 
-  unsigned CritLimit = DataDependent ? SchedModel.MispredictPenalty
-                                     : SchedModel.MispredictPenalty / 2;
+  unsigned CritLimit = DataDependent ? SchedModel.getMispredictPenalty()
+                                     : SchedModel.getMispredictPenalty() / 2;
 
   MachineBasicBlock &MBB = *IfConv.Head;
   MachineOptimizationRemarkEmitter MORE(*MBB.getParent(), nullptr);

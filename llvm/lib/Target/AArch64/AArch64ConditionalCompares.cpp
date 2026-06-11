@@ -902,7 +902,7 @@ bool AArch64ConditionalComparesImpl::shouldConvert() {
   // the cost of a misprediction.
   //
   // Set a limit on the delay we will accept.
-  unsigned DelayLimit = SchedModel.MispredictPenalty * 3 / 4;
+  unsigned DelayLimit = SchedModel.getMispredictPenalty() * 3 / 4;
 
   // Instruction depths can be computed for all trace instructions above CmpBB.
   unsigned HeadDepth =
