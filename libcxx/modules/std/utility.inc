@@ -96,4 +96,8 @@ export namespace std {
     using rel_ops::operator<=;
     using rel_ops::operator>=;
   } // namespace rel_ops
+
+  // [const.wrap.class]
+  using std::constant_wrapper;
+  using std::cw;
 } // namespace std
