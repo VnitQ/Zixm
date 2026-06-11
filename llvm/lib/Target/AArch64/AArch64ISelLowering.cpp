@@ -31159,10 +31159,10 @@ AArch64TargetLowering::shouldExpandAtomicStoreInIR(StoreInst *SI) const {
   if (isOpSuitableForRCPC3(SI))
     return AtomicExpansionKind::None;
   if (isOpSuitableForLSE128(SI))
-    return AtomicExpansionKind::Expand;
+    return AtomicExpansionKind::Xchg;
   if (isOpSuitableForLDPSTP(SI))
     return AtomicExpansionKind::None;
-  return AtomicExpansionKind::Expand;
+  return AtomicExpansionKind::Xchg;
 }
 
 // Loads and stores less than 128-bits are already atomic; ones above that
