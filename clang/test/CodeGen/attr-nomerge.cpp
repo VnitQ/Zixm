@@ -42,7 +42,8 @@ void foo(int i, A *ap, B *bp) {
 
   A *newA = new B();
   delete newA;
-  [[clang::nomerge]] __builtin_trap();
+  //  [[clang::nomerge]] __builtin_trap();
+  [[clang::nomerge]] __debugbreak();
   [[clang::nomerge]] __debugbreak();
   [[clang::nomerge]] __builtin_verbose_trap("check null", "Argument must not be null.");
 }
@@ -100,7 +101,7 @@ void something_else_again() {
 // CHECK: load ptr, ptr
 // CHECK: %[[AG:.*]] = load ptr, ptr
 // CHECK-NEXT: call void %[[AG]](ptr {{.*}}) #[[ATTR1]]
-// CHECK: call void @llvm.trap() #[[ATTR0]]
+// CHECK: call void @llvm.debugtrap() #[[ATTR0]]
 // CHECK: call void @llvm.debugtrap() #[[ATTR0]]
 // CHECK: call void @llvm.trap() #[[ATTR0]]
 // CHECK: call void  @_ZN1AD1Ev(ptr {{.*}}) #[[ATTR1]]
