@@ -40,7 +40,7 @@ cl::opt<int>
     DelicmMaxOps("polly-delicm-max-ops",
                  cl::desc("Maximum number of isl operations to invest for "
                           "lifetime analysis; 0=no limit"),
-                 cl::init(1000000), cl::cat(PollyCategory));
+                 cl::init(1500000), cl::cat(PollyCategory));
 
 cl::opt<bool> DelicmOverapproximateWrites(
     "polly-delicm-overapproximate-writes",
@@ -545,6 +545,13 @@ private:
   /// The number of PHIs mapped to some array element.
   int NumberOfMappedPHIScalars = 0;
 
+  /// Shared ISL operations budget guarding the expensive zone analysis
+  /// (computeZone) and the scalar-to-store collapsing (greedyCollapse). It is
+  /// constructed dormant (AutoEnter=false) and armed narrowly around each
+  /// dangerous region via IslQuotaScope, so the same budget covers both
+  /// regions without ever nesting two armed scopes.
+  IslMaxOperationsGuard MaxOpGuard;
+
   /// Determine whether two knowledges are conflicting with each other.
   ///
   /// @see Knowledge::isConflicting
@@ -1024,9 +1031,27 @@ private:
     auto TargetAccRel = getAccessRelationFor(TargetStoreMA);
 
     // { Zone[] -> DomTarget[] }
-    // For each point in time, find the next target store instance.
-    auto Target =
-        computeScalarReachingOverwrite(Schedule, TargetDom, false, true);
+    // For each point in time, find the next target store instance. This can be
+    // expensive for SCoPs with many modular/quasi-affine constraints, so bound
+    // it with the shared ISL operations budget.
+    isl::map Target;
+    {
+      IslQuotaScope MaxOpScope = MaxOpGuard.enter();
+      Target = computeScalarReachingOverwrite(Schedule, TargetDom, false, true);
+
+      if (Target.is_null() || MaxOpScope.hasQuotaExceeded()) {
+        DeLICMOutOfQuota++;
+        POLLY_DEBUG(dbgs() << "DeLICM analysis exceeded max_operations during "
+                              "scalar collapsing\n");
+        DebugLoc Begin, End;
+        getDebugLocations(getBBPairForRegion(&S->getRegion()), Begin, End);
+        OptimizationRemarkAnalysis R(DEBUG_TYPE, "OutOfQuota", Begin,
+                                     S->getEntry());
+        R << "maximal number of operations exceeded during scalar collapsing";
+        S->getFunction().getContext().diagnose(R);
+        return false;
+      }
+    }
 
     // { Zone[] -> Element[] }
     // Use the target store's write location as a suggestion to map scalars to.
@@ -1187,7 +1212,9 @@ private:
   }
 
 public:
-  DeLICMImpl(Scop *S, LoopInfo *LI) : ZoneAlgorithm("polly-delicm", S, LI) {}
+  DeLICMImpl(Scop *S, LoopInfo *LI)
+      : ZoneAlgorithm("polly-delicm", S, LI),
+        MaxOpGuard(IslCtx.get(), DelicmMaxOps, /*AutoEnter=*/false) {}
 
   /// Calculate the lifetime (definition to last use) of every array element.
   ///
@@ -1200,14 +1227,14 @@ public:
     isl::union_map EltKnown, EltWritten;
 
     {
-      IslMaxOperationsGuard MaxOpGuard(IslCtx.get(), DelicmMaxOps);
-
+      IslQuotaScope MaxOpScope = MaxOpGuard.enter();
       computeCommon();
 
       EltUnused = computeLifetime();
       EltKnown = computeKnown(true, false);
       EltWritten = computeWritten();
     }
+
     DeLICMAnalyzed++;
 
     if (EltUnused.is_null() || EltKnown.is_null() || EltWritten.is_null()) {
