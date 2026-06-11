@@ -111,6 +111,9 @@ ValueObjectSP ABI::GetReturnValueObject(Thread &thread, CompilerType &ast_type,
 
     const Value &result_value = live_valobj_sp->GetValue();
 
+    if (result_value.IsImplicitPointer())
+      return {};
+
     switch (result_value.GetValueType()) {
     case Value::ValueType::Invalid:
       return {};

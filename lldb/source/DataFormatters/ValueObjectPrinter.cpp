@@ -399,6 +399,8 @@ void ValueObjectPrinter::GetValueSummaryError(std::string &value,
   const char *err_cstr = valobj.GetError().AsCString();
   if (err_cstr)
     error.assign(err_cstr);
+  else if (valobj.GetValue().IsImplicitPointer())
+    error.assign("invalid value");
 
   if (!ShouldPrintValueObject())
     return;
