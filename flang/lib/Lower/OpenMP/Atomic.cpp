@@ -560,16 +560,45 @@ void Fortran::lower::omp::lowerAtomic(
   int action1 = analysis.op1.what & analysis.Action;
   memOrder = makeValidForAction(memOrder, action0, action1, version);
 
+  // --- Shared capture scaffolding ---
+  mlir::Operation *captureOp = nullptr;
+  fir::FirOpBuilder::InsertPoint preAt = builder.saveInsertionPoint();
+  fir::FirOpBuilder::InsertPoint atomicAt, postAt;
+
+  if (construct.IsCapture()) {
+    assert(action0 != analysis.None && action1 != analysis.None &&
+           "Expecting two actions");
+    (void)action0;
+    (void)action1;
+    captureOp = mlir::omp::AtomicCaptureOp::create(
+        builder, loc, hint, makeMemOrderAttr(converter, memOrder));
+    // Set the non-atomic insertion point to before the atomic.capture.
+    preAt = getInsertionPointBefore(captureOp);
+
+    mlir::Block *block = builder.createBlock(&captureOp->getRegion(0));
+    builder.setInsertionPointToEnd(block);
+    // Set the atomic insertion point to before the terminator inside
+    // atomic.capture.
+    mlir::Operation *term = mlir::omp::TerminatorOp::create(builder, loc);
+    atomicAt = getInsertionPointBefore(term);
+    postAt = getInsertionPointAfter(captureOp);
+    hint = nullptr;
+    memOrder = std::nullopt;
+  }
+
   if (auto *cond = get(analysis.cond)) {
     // atomic compare: if (x == e) x = d
     // e : expecteVal
     // d : desiredVal
 
-    // Check for compound clauses (fail, capture) that are not yet
+    // Restore insertion point so pre-processing code (e.g. computing
+    // expectedVal) is emitted before the capture op, not after the terminator.
+    builder.restoreInsertionPoint(preAt);
+
+    // Check for compound clause (fail) that is not yet
     // supported with atomic compare.
     if (llvm::any_of(clauses, [](const omp::Clause &clause) {
-          return clause.id == llvm::omp::Clause::OMPC_fail ||
-                 clause.id == llvm::omp::Clause::OMPC_capture;
+          return clause.id == llvm::omp::Clause::OMPC_fail;
         })) {
       TODO(loc, "Compound clauses of OpenMP ATOMIC COMPARE");
     }
@@ -615,6 +644,17 @@ void Fortran::lower::omp::lowerAtomic(
         converter.genExprValue(*expectedExprStorage, stmtCtx, &loc));
     if (expectedVal.getType() != elemTypeOfX) {
       expectedVal = builder.createConvert(loc, elemTypeOfX, expectedVal);
+    }
+
+    // If this is a compare+capture, generate the read op first.
+    if (construct.IsCapture()) {
+      assert(get(analysis.op0.assign) && (analysis.op0.what & analysis.Read) &&
+             "Expected a read operation for compare capture");
+      mlir::Operation *readOp = genAtomicRead(
+          converter, semaCtx, loc, stmtCtx, atomAddr, atom,
+          *get(analysis.op0.assign), hint, memOrder, preAt, atomicAt, postAt);
+      assert(readOp && "Should have created an atomic read operation");
+      builder.setInsertionPointAfter(readOp);
     }
 
     mlir::UnitAttr weakAttr = nullptr;
@@ -685,37 +725,12 @@ void Fortran::lower::omp::lowerAtomic(
     // Generate omp.yield
     mlir::omp::YieldOp::create(builder, loc, newVal);
     builder.setInsertionPointAfter(atomicOp);
-
     // END omp atomic compare
   } else {
-    mlir::Operation *captureOp = nullptr;
-    fir::FirOpBuilder::InsertPoint preAt = builder.saveInsertionPoint();
-    fir::FirOpBuilder::InsertPoint atomicAt, postAt;
-
-    if (construct.IsCapture()) {
-      // Capturing operation.
-      assert(action0 != analysis.None && action1 != analysis.None &&
-             "Expexcing two actions");
-      (void)action0;
-      (void)action1;
-      captureOp = mlir::omp::AtomicCaptureOp::create(
-          builder, loc, hint, makeMemOrderAttr(converter, memOrder));
-      // Set the non-atomic insertion point to before the atomic.capture.
-      preAt = getInsertionPointBefore(captureOp);
-
-      mlir::Block *block = builder.createBlock(&captureOp->getRegion(0));
-      builder.setInsertionPointToEnd(block);
-      // Set the atomic insertion point to before the terminator inside
-      // atomic.capture.
-      mlir::Operation *term = mlir::omp::TerminatorOp::create(builder, loc);
-      atomicAt = getInsertionPointBefore(term);
-      postAt = getInsertionPointAfter(captureOp);
-      hint = nullptr;
-      memOrder = std::nullopt;
-    } else {
+    if (!construct.IsCapture()) {
       // Non-capturing operation.
       assert(action0 != analysis.None && action1 == analysis.None &&
-             "Expexcing single action");
+             "Expecting single action");
       assert(!(analysis.op0.what & analysis.Condition));
       postAt = atomicAt = preAt;
     }
@@ -735,16 +750,13 @@ void Fortran::lower::omp::lowerAtomic(
           *get(analysis.op1.assign), hint, memOrder, preAt, atomicAt, postAt);
     }
 
-    if (construct.IsCapture()) {
-      // If this is a capture operation, the first/second ops will be inside
-      // of it. Set the insertion point to past the capture op itself.
-      builder.restoreInsertionPoint(postAt);
-    } else {
-      if (secondOp) {
-        builder.setInsertionPointAfter(secondOp);
-      } else {
-        builder.setInsertionPointAfter(firstOp);
-      }
+    if (!construct.IsCapture()) {
+      builder.setInsertionPointAfter(secondOp ? secondOp : firstOp);
     }
+  }
+
+  // Shared capture cleanup.
+  if (construct.IsCapture()) {
+    builder.restoreInsertionPoint(postAt);
   }
 }
