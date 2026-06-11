@@ -22,6 +22,7 @@
 #include <__cxx03/__type_traits/is_constant_evaluated.h>
 #include <__cxx03/__type_traits/is_equality_comparable.h>
 #include <__cxx03/__type_traits/is_integral.h>
+#include <__cxx03/__type_traits/remove_cv.h>
 #include <__cxx03/__utility/move.h>
 #include <__cxx03/__utility/pair.h>
 #include <__cxx03/__utility/unreachable.h>
@@ -62,7 +63,7 @@ __mismatch_vectorized(_Iter __first1, _Iter __last1, _Iter __first2) {
   using __value_type              = __iter_value_type<_Iter>;
   constexpr size_t __unroll_count = 4;
   constexpr size_t __vec_size     = __native_vector_size<__value_type>;
-  using __vec                     = __simd_vector<__value_type, __vec_size>;
+  using __vec                     = __simd_vector<typename remove_cv<__value_type>::type, __vec_size>;
 
   if (!__libcpp_is_constant_evaluated()) {
     auto __orig_first1 = __first1;
