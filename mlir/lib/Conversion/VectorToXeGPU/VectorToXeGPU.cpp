@@ -196,7 +196,8 @@ template <
         std::decay_t<OpType>, vector::TransferReadOp, vector::TransferWriteOp,
         vector::GatherOp, vector::ScatterOp>::value>>
 static std::pair<SmallVector<Value>, Value>
-computeMemrefMeta(OpType xferOp, PatternRewriter &rewriter) {
+computeMemrefMeta(OpType xferOp, PatternRewriter &rewriter,
+                  SmallVector<Value> *originalStrides = nullptr) {
   SmallVector<Value> strides;
   Value baseMemref = xferOp.getBase();
   MemRefType memrefType = dyn_cast<MemRefType>(baseMemref.getType());
@@ -249,6 +250,9 @@ computeMemrefMeta(OpType xferOp, PatternRewriter &rewriter) {
       offsetVal = meta.getOffset();
   }
 
+  if (originalStrides)
+    *originalStrides = strides;
+
   if constexpr (llvm::is_one_of<std::decay_t<OpType>, vector::TransferReadOp,
                                 vector::TransferWriteOp>::value) {
     AffineMap permMap = xferOp.getPermutationMap();
@@ -289,7 +293,7 @@ computeMemrefMeta(OpType xferOp, PatternRewriter &rewriter) {
 //   %offsets =  memref_offset + orig_offset + local_offsets
 static Value computeOffsets(VectorTransferOpInterface xferOp,
                             PatternRewriter &rewriter, ArrayRef<Value> strides,
-                            Value baseOffset) {
+                            ArrayRef<Value> originalStrides, Value baseOffset) {
   Location loc = xferOp.getLoc();
   VectorType vectorType = xferOp.getVectorType();
   SmallVector<Value> indices(xferOp.getIndices().begin(),
@@ -348,7 +352,7 @@ static Value computeOffsets(VectorTransferOpInterface xferOp,
 
   // Compute base offset from transfer read indices
   for (size_t i = 0; i < indices.size(); ++i) {
-    Value strideVal = strides[i];
+    Value strideVal = originalStrides[i];
     Value offsetContrib =
         arith::MulIOp::create(rewriter, loc, indices[i], strideVal);
     baseOffset =
@@ -481,12 +485,13 @@ static LogicalResult lowerToScatteredLoadOp(vector::TransferReadOp readOp,
   if (!memrefType)
     return rewriter.notifyMatchFailure(readOp, "Expected memref source");
 
-  auto meta = computeMemrefMeta(readOp, rewriter);
+  SmallVector<Value> origStrides;
+  auto meta = computeMemrefMeta(readOp, rewriter, &origStrides);
   if (meta.first.empty())
     return rewriter.notifyMatchFailure(readOp, "Failed to compute strides");
 
   Value localOffsets =
-      computeOffsets(readOp, rewriter, meta.first, meta.second);
+      computeOffsets(readOp, rewriter, meta.first, origStrides, meta.second);
 
   Value flatMemref = memrefToIndexPtr(readOp, rewriter);
 
@@ -516,12 +521,13 @@ static LogicalResult lowerToScatteredStoreOp(vector::TransferWriteOp writeOp,
   if (!memrefType)
     return rewriter.notifyMatchFailure(writeOp, "Expected memref source");
 
-  auto meta = computeMemrefMeta(writeOp, rewriter);
+  SmallVector<Value> origStrides;
+  auto meta = computeMemrefMeta(writeOp, rewriter, &origStrides);
   if (meta.first.empty())
     return rewriter.notifyMatchFailure(writeOp, "Failed to compute strides");
 
   Value localOffsets =
-      computeOffsets(writeOp, rewriter, meta.first, meta.second);
+      computeOffsets(writeOp, rewriter, meta.first, origStrides, meta.second);
 
   Value flatMemref = memrefToIndexPtr(writeOp, rewriter);
 
