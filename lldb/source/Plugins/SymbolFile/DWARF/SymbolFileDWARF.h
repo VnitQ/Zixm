@@ -136,6 +136,12 @@ public:
 
   size_t ParseVariablesForContext(const SymbolContext &sc) override;
 
+  lldb::ValueObjectSP
+  ResolveImplicitPointer(const Value::ImplicitPointerInfo &implicit_info,
+                         CompilerType pointee_type,
+                         ExecutionContextScope *exe_scope,
+                         Variable *context_var) override;
+
   std::optional<ArrayInfo>
   GetDynamicArrayInfoForUID(lldb::user_id_t type_uid,
                             const ExecutionContext *exe_ctx) override;

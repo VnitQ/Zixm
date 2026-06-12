@@ -13,6 +13,7 @@
 #include "lldb/Core/ModuleList.h"
 #include "lldb/Core/PluginInterface.h"
 #include "lldb/Core/SourceLocationSpec.h"
+#include "lldb/Core/Value.h"
 #include "lldb/Symbol/CompilerDecl.h"
 #include "lldb/Symbol/CompilerDeclContext.h"
 #include "lldb/Symbol/CompilerType.h"
@@ -208,6 +209,14 @@ public:
   virtual size_t ParseBlocksRecursive(Function &func) = 0;
   virtual size_t ParseVariablesForContext(const SymbolContext &sc) = 0;
   virtual Type *ResolveTypeUID(lldb::user_id_t type_uid) = 0;
+
+  virtual lldb::ValueObjectSP
+  ResolveImplicitPointer(const Value::ImplicitPointerInfo &implicit_info,
+                         CompilerType pointee_type,
+                         ExecutionContextScope *exe_scope,
+                         Variable *context_var) {
+    return nullptr;
+  }
 
   /// The characteristics of an array type.
   struct ArrayInfo {

@@ -55,7 +55,9 @@ Value::Value(const void *bytes, int len)
 Value::Value(const Value &v)
     : m_value(v.m_value), m_compiler_type(v.m_compiler_type),
       m_context(v.m_context), m_value_type(v.m_value_type),
-      m_context_type(v.m_context_type), m_data_buffer() {
+      m_context_type(v.m_context_type), m_data_buffer(),
+      m_implicit_pointer_info(v.m_implicit_pointer_info),
+      m_is_implicit_pointer(v.m_is_implicit_pointer) {
   const uintptr_t rhs_value =
       (uintptr_t)v.m_value.ULongLong(LLDB_INVALID_ADDRESS);
   if ((rhs_value != 0) &&
@@ -74,6 +76,8 @@ Value &Value::operator=(const Value &rhs) {
     m_context = rhs.m_context;
     m_value_type = rhs.m_value_type;
     m_context_type = rhs.m_context_type;
+    m_implicit_pointer_info = rhs.m_implicit_pointer_info;
+    m_is_implicit_pointer = rhs.m_is_implicit_pointer;
     const uintptr_t rhs_value =
         (uintptr_t)rhs.m_value.ULongLong(LLDB_INVALID_ADDRESS);
     if ((rhs_value != 0) &&
@@ -89,12 +93,16 @@ Value &Value::operator=(const Value &rhs) {
 
 void Value::SetBytes(const void *bytes, int len) {
   m_value_type = ValueType::HostAddress;
+  m_implicit_pointer_info = {};
+  m_is_implicit_pointer = false;
   m_data_buffer.CopyData(bytes, len);
   m_value = (uintptr_t)m_data_buffer.GetBytes();
 }
 
 void Value::AppendBytes(const void *bytes, int len) {
   m_value_type = ValueType::HostAddress;
+  m_implicit_pointer_info = {};
+  m_is_implicit_pointer = false;
   m_data_buffer.AppendData(bytes, len);
   m_value = (uintptr_t)m_data_buffer.GetBytes();
 }
@@ -639,6 +647,8 @@ void Value::Clear() {
   m_value_type = ValueType::Scalar;
   m_context = nullptr;
   m_context_type = ContextType::Invalid;
+  m_implicit_pointer_info = {};
+  m_is_implicit_pointer = false;
   m_data_buffer.Clear();
 }
 
