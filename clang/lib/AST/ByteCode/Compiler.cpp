@@ -3997,6 +3997,8 @@ bool Compiler<Emitter>::VisitCXXNewExpr(const CXXNewExpr *E) {
     if (PlacementDest) {
       if (!this->visit(PlacementDest))
         return false;
+      if (!this->emitExpandPtr(E))
+        return false;
       if (!this->emitGetLocal(SizeT, ArrayLen, E))
         return false;
       if (!this->emitCheckNewTypeMismatchArray(SizeT, E, E))
