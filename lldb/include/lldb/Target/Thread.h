@@ -1026,7 +1026,7 @@ public:
   ///
   /// \return
   ///     A pointer to the next executed plan.
-  ThreadPlan *GetCurrentPlan() const;
+  lldb::ThreadPlanSP GetCurrentPlan() const;
 
   /// Returns true if this thread has a ThreadPlanCallFunction on its
   /// plan stack, indicating it is running a debugger-injected expression.
@@ -1384,7 +1384,7 @@ protected:
 
   void DiscardPlan();
 
-  ThreadPlan *GetPreviousPlan(ThreadPlan *plan) const;
+  lldb::ThreadPlanSP GetPreviousPlan(ThreadPlan *plan) const;
 
   virtual Unwind &GetUnwinder();
 
