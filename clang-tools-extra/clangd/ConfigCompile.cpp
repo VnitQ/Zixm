@@ -255,15 +255,17 @@ struct FragmentCompiler {
   }
 
   void compile(Fragment::CompileFlagsBlock &&F) {
-    if (F.Compiler)
+    if (F.Compiler){
       Out.Apply.push_back(
           [Compiler(std::move(**F.Compiler))](const Params &, Config &C) {
+            C.CompileFlags.Compiler = Compiler;
             C.CompileFlags.Edits.push_back(
                 [Compiler](std::vector<std::string> &Args) {
                   if (!Args.empty())
                     Args.front() = Compiler;
                 });
           });
+    }
 
     if (!F.Remove.empty()) {
       auto Remove = std::make_shared<ArgStripper>();

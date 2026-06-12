@@ -135,6 +135,23 @@ std::string detectStandardResourceDir() {
   return GetResourcesPath("clangd", (void *)&StaticForMainAddr);
 }
 
+std::string detectStandardResourceDir(std::optional<std::string> ClangPath) {
+  if (Config::current().CompileFlags.Compiler.has_value()){
+    return GetResourcesPath(*(Config::current().CompileFlags.Compiler));
+  } else if (ClangPath.has_value()){
+    return GetResourcesPath(*ClangPath);
+  } else {
+    return detectStandardResourceDir();
+  }
+}
+
+std::string detectCompilerResourceDir(std::string defaultResourceDir){
+  if (Config::current().CompileFlags.Compiler.has_value()){
+    return GetResourcesPath(*(Config::current().CompileFlags.Compiler));
+  }
+  return defaultResourceDir;
+}
+
 // The path passed to argv[0] is important:
 //  - its parent directory is Driver::Dir, used for library discovery
 //  - its basename affects CLI parsing (clang-cl) and other settings
@@ -188,7 +205,7 @@ static std::string resolveDriver(llvm::StringRef Driver, bool FollowSymlink,
 CommandMangler CommandMangler::detect() {
   CommandMangler Result;
   Result.ClangPath = detectClangPath();
-  Result.ResourceDir = detectStandardResourceDir();
+  Result.ResourceDir = detectStandardResourceDir(Result.ClangPath);
   Result.Sysroot = detectSysroot();
   return Result;
 }
@@ -341,8 +358,9 @@ void CommandMangler::operator()(tooling::CompileCommand &Command,
   });
 
   std::vector<std::string> ToAppend;
-  if (ResourceDir && !HasExact("-resource-dir") && !HasPrefix("-resource-dir="))
-    ToAppend.push_back(("-resource-dir=" + *ResourceDir));
+  if (ResourceDir && !HasExact("-resource-dir") && !HasPrefix("-resource-dir=")){
+    ToAppend.push_back(("-resource-dir=" + detectCompilerResourceDir(*ResourceDir)));
+  }
 
   // Don't set `-isysroot` if it is already set or if `--sysroot` is set.
   // `--sysroot` is a superset of the `-isysroot` argument.
