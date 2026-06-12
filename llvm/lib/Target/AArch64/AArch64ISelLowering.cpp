@@ -16136,7 +16136,7 @@ static SDValue ConstantBuildVector(SDValue Op, SelectionDAG &DAG,
   APInt UndefBits(VT.getSizeInBits(), 0);
   BuildVectorSDNode *BVN = cast<BuildVectorSDNode>(Op.getNode());
   if (resolveBuildVector(BVN, DefBits, UndefBits)) {
-    auto TryMOVIWithBits = [&](APInt DefBits) {
+    auto TryMOVIWithBits = [&](const APInt &DefBits) {
       SDValue NewOp;
       if ((NewOp =
                tryAdvSIMDModImm64(AArch64ISD::MOVIedit, Op, DAG, DefBits)) ||
@@ -16170,7 +16170,7 @@ static SDValue ConstantBuildVector(SDValue Op, SelectionDAG &DAG,
       return R;
 
     // See if a fneg of the constant can be materialized with a MOVI, etc
-    auto TryWithFNeg = [&](APInt DefBits, MVT FVT) {
+    auto TryWithFNeg = [&](const APInt &DefBits, MVT FVT) {
       // FNegate each sub-element of the constant
       assert(VT.getSizeInBits() % FVT.getScalarSizeInBits() == 0);
       APInt Neg = APInt::getHighBitsSet(FVT.getSizeInBits(), 1)
@@ -20766,7 +20766,7 @@ static SDValue performMulCombine(SDNode *N, SelectionDAG &DAG,
   // Can the const C be decomposed into (1+2^M1)*(1+2^N1), eg:
   // C = 45 is equal to (1+4)*(1+8), we don't decompose it into (1+2)*(16-1) as
   // the (2^N - 1) can't be execused via a single instruction.
-  auto isPowPlusPlusConst = [](APInt C, APInt &M, APInt &N) {
+  auto isPowPlusPlusConst = [](const APInt &C, APInt &M, APInt &N) {
     unsigned BitWidth = C.getBitWidth();
     for (unsigned i = 1; i < BitWidth / 2; i++) {
       APInt Rem;
@@ -20784,7 +20784,7 @@ static SDValue performMulCombine(SDNode *N, SelectionDAG &DAG,
   // Can the const C be decomposed into (2^M + 1) * 2^N + 1), eg:
   // C = 11 is equal to (1+4)*2+1, we don't decompose it into (1+2)*4-1 as
   // the (2^N - 1) can't be execused via a single instruction.
-  auto isPowPlusPlusOneConst = [](APInt C, APInt &M, APInt &N) {
+  auto isPowPlusPlusOneConst = [](const APInt &C, APInt &M, APInt &N) {
     APInt CVMinus1 = C - 1;
     if (CVMinus1.isNegative())
       return false;
@@ -20801,7 +20801,7 @@ static SDValue performMulCombine(SDNode *N, SelectionDAG &DAG,
 
   // Can the const C be decomposed into (1 - (1 - 2^M) * 2^N), eg:
   // C = 29 is equal to 1 - (1 - 2^3) * 2^2.
-  auto isPowMinusMinusOneConst = [](APInt C, APInt &M, APInt &N) {
+  auto isPowMinusMinusOneConst = [](const APInt &C, APInt &M, APInt &N) {
     APInt CVMinus1 = C - 1;
     if (CVMinus1.isNegative())
       return false;
@@ -27617,7 +27617,7 @@ static SDValue reassociateCSELOperandsForCSE(SDNode *N, SelectionDAG &DAG) {
   // in signed/unsigned wrap for signed/unsigned comparisons, respectively.
   // Since such comparisons are trivially true/false, we should not encounter
   // them here but check for them nevertheless to be on the safe side.
-  auto CheckedFold = [&](bool Check, APInt NewCmpConst,
+  auto CheckedFold = [&](bool Check, const APInt &NewCmpConst,
                          AArch64CC::CondCode NewCC) {
     auto ExpectedOp = DAG.getConstant(-NewCmpConst, SDLoc(CmpOpConst),
                                       CmpOpConst->getValueType(0));
