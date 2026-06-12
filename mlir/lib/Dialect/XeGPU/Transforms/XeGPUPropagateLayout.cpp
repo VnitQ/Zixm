@@ -599,49 +599,31 @@ void LayoutInfoPropagation::visitPrefetchNdOp(
   if (hasParamsOfLayoutKind(anchorLayout)) {
     prefetchLayout = LayoutInfo(anchorLayout);
   } else {
-    // Here we assign the default layout to the tensor descriptor operand of
-    // prefetch.
     auto tdescTy = prefetch.getTensorDescType();
-
     const uArch *uArch = getUArch(getChipStr(prefetch).value_or(""));
     if (!uArch)
       return;
-    const auto *uArchInstruction =
-        dyn_cast<xegpu::uArch::Subgroup2DBlockPrefetchInstruction>(
-            uArch->getInstruction(
-                xegpu::uArch::InstructionKind::Subgroup2DBlockPrefetch));
 
-    auto blockWHC =
-        uArchInstruction->getBlockWidthHeightCount(tdescTy.getElementType());
-    if (!blockWHC)
-      prefetch.emitWarning("No known block params found for the element type.");
-    auto [bWidth, bHeight, bCount] = blockWHC.value();
-    SmallVector<int> instData;
-    int instWidth = xegpu::getLargestDivisor(
-        static_cast<int>(tdescTy.getDimSize(tdescTy.getRank() - 1)), bWidth);
-    if (instWidth == -1)
-      prefetch.emitWarning(
-          "No suitable instruction multiple found for the given shape.");
-    if (tdescTy.getRank() == 1)
-      instData = {instWidth};
-    else {
-      int instHeight = xegpu::getLargestDivisor(
-          static_cast<int>(tdescTy.getDimSize(tdescTy.getRank() - 2)), bHeight);
-      if (instHeight == -1)
+    int numSg = 0;
+    if (layoutKind == xegpu::LayoutKind::Subgroup) {
+      auto numSgOrErr = getNumSg(prefetch, uArch->getSubgroupSize());
+      if (failed(numSgOrErr)) {
         prefetch.emitWarning(
-            "No suitable instruction multiple found for the given shape.");
-      instData = {instHeight, instWidth};
+            "Unable to determine the number of subgroups for the operation.");
+        return;
+      }
+      numSg = numSgOrErr.value();
     }
 
-    if (layoutKind == xegpu::LayoutKind::InstData)
-      prefetchLayout =
-          LayoutInfo(xegpu::LayoutAttr::get(tdescTy.getContext(), instData));
-    else
-      prefetchLayout = getSIMTLayoutInfoBlockIO(
-          tdescTy, uArch, uArchInstruction->getPackedFormatBitSize());
-
-    prefetch.setLayoutAttr(
-        dyn_cast<xegpu::DistributeLayoutAttr>(prefetchLayout.get()));
+    auto layoutAttr =
+        xegpu::setupPrefetchNdAnchorLayout(layoutKind, tdescTy, numSg, uArch);
+    if (!layoutAttr) {
+      prefetch.emitWarning(
+          "Failed to determine required layout for prefetch_nd.");
+      return;
+    }
+    prefetchLayout = LayoutInfo(layoutAttr);
+    prefetch.setLayoutAttr(layoutAttr);
   }
   // Propagate the layout to the source tensor descriptor.
   propagateIfChanged(operands[0], operands[0]->meet(prefetchLayout));
@@ -970,71 +952,26 @@ void LayoutInfoPropagation::visitStoreNdOp(
     const uArch *uArch = getUArch(getChipStr(store).value_or(""));
     if (!uArch)
       return;
-    const auto *uArchInstruction =
-        dyn_cast<xegpu::uArch::Subgroup2DBlockStoreInstruction>(
-            uArch->getInstruction(
-                xegpu::uArch::InstructionKind::Subgroup2DBlockStore));
-    VectorType dataTy = store.getValueType();
-    auto blockWHC = uArchInstruction->getBlockWidthHeightCount(
-        store.getValueType().getElementType());
-    if (!blockWHC)
-      store.emitWarning("No known block params found for the element type.");
-    auto [bWidth, bHeight, bCount] = blockWHC.value();
-    // Default to 1 for any leading batch dims; rank-1 and rank>=2 cases
-    // overwrite the trailing entries below.
-    SmallVector<int> instData(dataTy.getRank(), 1);
-    int instWidth = xegpu::getLargestDivisor(
-        static_cast<int>(dataTy.getDimSize(dataTy.getRank() - 1)), bWidth);
-    if (instWidth == -1)
-      store.emitWarning(
-          "No suitable instruction multiple found for the given shape.");
-    if (dataTy.getRank() == 1) {
-      instData = {instWidth};
-    } else {
-      int instHeight = xegpu::getLargestDivisor(
-          static_cast<int>(dataTy.getDimSize(dataTy.getRank() - 2)), bHeight);
-      if (instHeight == -1)
-        store.emitWarning(
-            "No suitable instruction multiple found for the given shape.");
-      instData[dataTy.getRank() - 2] = instHeight;
-      instData[dataTy.getRank() - 1] = instWidth;
-    }
 
-    if (layoutKind == xegpu::LayoutKind::InstData)
-      storeLayout =
-          LayoutInfo(xegpu::LayoutAttr::get(dataTy.getContext(), instData));
-    else if (layoutKind == xegpu::LayoutKind::Lane)
-      storeLayout =
-          getSIMTLayoutInfoBlockIO(store.getValueType(), uArch,
-                                   uArchInstruction->getPackedFormatBitSize());
-    else { // xegpu::LayoutKind::Subgroup
-      auto sgSize = uArch->getSubgroupSize();
-      auto numSgOrErr = getNumSg(store, sgSize);
+    int numSg = 0;
+    if (layoutKind == xegpu::LayoutKind::Subgroup) {
+      auto numSgOrErr = getNumSg(store, uArch->getSubgroupSize());
       if (failed(numSgOrErr)) {
         store.emitWarning(
             "Unable to determine the number of subgroups for the operation.");
         return;
       }
-      auto sgLayouts = getValidLayouts(store.getValueType().getShape(),
-                                       instData, numSgOrErr.value());
-      if (sgLayouts.empty()) {
-        store.emitWarning(
-            "Unable to determine suitable subgroup layout for store value.");
-        return;
-      }
-      SmallVector<int> sgLayout = {sgLayouts[0].first, sgLayouts[0].second};
-      SmallVector<int> sgData = {
-          static_cast<int>(dataTy.getShape()[0]) / sgLayout[0],
-          static_cast<int>(dataTy.getShape()[1]) / sgLayout[1]};
-      storeLayout = LayoutInfo(xegpu::LayoutAttr::get(
-          dataTy.getContext(),
-          DenseI32ArrayAttr::get(dataTy.getContext(), sgLayout),
-          DenseI32ArrayAttr::get(dataTy.getContext(), sgData),
-          /*inst_data =*/nullptr, /*lane_layout =*/nullptr,
-          /*lane_data =*/nullptr, /*order =*/nullptr));
+      numSg = numSgOrErr.value();
     }
-    store.setLayoutAttr(
-        dyn_cast<xegpu::DistributeLayoutAttr>(storeLayout.get()));
+
+    auto layoutAttr = xegpu::setupStoreNdAnchorLayout(
+        layoutKind, store.getValueType(), numSg, uArch);
+    if (!layoutAttr) {
+      store.emitWarning("Failed to determine required layout for store_nd.");
+      return;
+    }
+    storeLayout = LayoutInfo(layoutAttr);
+    store.setLayoutAttr(layoutAttr);
   }
   // Propagate the layout to the value operand.
   // Both operands should have the same layout
@@ -1052,21 +989,52 @@ void LayoutInfoPropagation::visitLoadNdOp(
   if (hasParamsOfLayoutKind(anchorLayout)) {
     loadLayout = LayoutInfo(anchorLayout);
   } else {
-
     LayoutInfo valueLayout = results[0]->getValue();
-    // Need the layout of the value to propagate to the tensor descriptor.
     if (!valueLayout.isAssigned())
       return;
-    loadLayout = valueLayout;
-    // LoadNdOp has the transpose effect. However, at the stage of this analysis
-    // this effect is not expected and should be abstracted away. Emit a
-    // warning.
+
+    // LoadNdOp has a transpose effect. At this stage of analysis it is not
+    // expected and should be abstracted away; emit a warning and pre-transpose
+    // the consumer hint so it lines up with the load's source.
+    auto consumerLayoutAttr =
+        dyn_cast<xegpu::DistributeLayoutAttr>(valueLayout.get());
     if (auto transpose = load.getTranspose()) {
       load.emitWarning("Transpose effect is not expected for LoadNdOp at "
                        "LayoutInfoPropagation stage.");
-      loadLayout = valueLayout.transpose(transpose.value());
+      LayoutInfo transposed = valueLayout.transpose(transpose.value());
+      consumerLayoutAttr =
+          dyn_cast<xegpu::DistributeLayoutAttr>(transposed.get());
     }
-    load.setLayoutAttr(dyn_cast<xegpu::DistributeLayoutAttr>(loadLayout.get()));
+
+    const uArch *uArch = getUArch(getChipStr(load).value_or(""));
+    if (!uArch)
+      return;
+
+    int numSg = 0;
+    // numSg is only needed when the helper has to derive a fresh sg_layout
+    // for Subgroup kind. If the consumer already provides a complete
+    // sg_layout, the helper will reuse it without consulting numSg.
+    bool consumerHasSgLayout =
+        consumerLayoutAttr &&
+        !consumerLayoutAttr.getEffectiveSgLayoutAsInt().empty();
+    if (layoutKind == xegpu::LayoutKind::Subgroup && !consumerHasSgLayout) {
+      auto numSgOrErr = getNumSg(load, uArch->getSubgroupSize());
+      if (failed(numSgOrErr)) {
+        load.emitWarning(
+            "Unable to determine the number of subgroups for the operation.");
+        return;
+      }
+      numSg = numSgOrErr.value();
+    }
+
+    auto layoutAttr = xegpu::setupLoadNdAnchorLayout(
+        layoutKind, load.getType(), consumerLayoutAttr, numSg, uArch);
+    if (!layoutAttr) {
+      load.emitWarning("Failed to determine required layout for load_nd.");
+      return;
+    }
+    loadLayout = LayoutInfo(layoutAttr);
+    load.setLayoutAttr(layoutAttr);
   }
   // Propagate the new layout to the tensor descriptor operand.
   propagateIfChanged(operands[0], operands[0]->meet(loadLayout));
@@ -1243,7 +1211,12 @@ void LayoutInfoPropagation::visitLoadGatherOp(
       dyn_cast<xegpu::DistributeLayoutAttr>(resLayoutInfo.get());
 
   if (hasParamsOfLayoutKind(anchorLayoutAttr)) {
-    requiredAnchorLayoutAttr = anchorLayoutAttr;
+    // The user-provided anchor may carry only inst_data; complete it with
+    // a lane factorization derived from the load-side Lane setup so
+    // downstream paths see a fully-populated layout.
+    requiredAnchorLayoutAttr = xegpu::completeLoadGatherLayoutFromInstData(
+        anchorLayoutAttr, resVecTy.getElementType(), uArch);
+    load.setLayoutAttr(requiredAnchorLayoutAttr);
   } else {
     if (!resVecTy) {
       load.emitWarning("Not propagating, non-vector payload supplied.");
@@ -1283,7 +1256,12 @@ void LayoutInfoPropagation::visitStoreScatterOp(
   int chunkSize = storeScatter.getChunkSize().value_or(1);
 
   if (hasParamsOfLayoutKind(anchorLayoutAttr)) {
-    requiredAnchorLayoutAttr = anchorLayoutAttr;
+    // The user-provided anchor may carry only inst_data; complete it with
+    // a lane factorization derived from the store-side Lane setup so
+    // downstream paths see a fully-populated layout.
+    requiredAnchorLayoutAttr = xegpu::completeStoreScatterLayoutFromInstData(
+        anchorLayoutAttr, srcVecTy.getElementType(), uArch);
+    storeScatter.setLayoutAttr(requiredAnchorLayoutAttr);
   } else {
     if (!srcVecTy) {
       storeScatter.emitWarning("Not propagating, non-vector payload supplied.");
@@ -1331,8 +1309,10 @@ void LayoutInfoPropagation::visitLoadMatrixOp(
     const uArch *uArch = getUArch(getChipStr(loadMatrixOp).value_or(""));
     if (!uArch)
       return;
+    int chunkSize =
+        1; // placeHolder for future use when LoadMatrix supports coalescing
     auto requiredAnchorLayoutAttr = xegpu::setupLoadMatrixAnchorLayout(
-        layoutKind, resVecTy, consumerLayoutAttr, uArch);
+        layoutKind, resVecTy, chunkSize, consumerLayoutAttr, uArch);
     loadMatrixOp.setLayoutAttr(requiredAnchorLayoutAttr);
   }
 }
@@ -1342,16 +1322,23 @@ void LayoutInfoPropagation::visitStoreMatrixOp(
     ArrayRef<const LayoutInfoLattice *> results) {
   xegpu::DistributeLayoutAttr anchorLayout = storeMatrix.getLayoutAttr();
   LayoutInfo layout;
+  VectorType srcVecTy =
+      llvm::cast<VectorType>(storeMatrix.getData().getType());
+  const uArch *uArch = getUArch(getChipStr(storeMatrix).value_or(""));
+  if (!uArch)
+    return;
   if (hasParamsOfLayoutKind(anchorLayout)) {
-    layout = LayoutInfo(anchorLayout);
+    // The user-provided anchor may carry only inst_data; complete it with
+    // a lane factorization derived from the store-side Lane setup.
+    auto completed = xegpu::completeStoreScatterLayoutFromInstData(
+        anchorLayout, srcVecTy.getElementType(), uArch);
+    storeMatrix.setLayoutAttr(completed);
+    layout = LayoutInfo(completed);
   } else {
-    VectorType srcVecTy =
-        llvm::cast<VectorType>(storeMatrix.getData().getType());
-    const uArch *uArch = getUArch(getChipStr(storeMatrix).value_or(""));
-    if (!uArch)
-      return;
-    auto requiredAnchorLayoutAttr =
-        xegpu::setupStoreMatrixAnchorLayout(layoutKind, srcVecTy, uArch);
+    int chunkSize =
+        1; // placeHolder for future use when StoreMatrix supports coalescing
+    auto requiredAnchorLayoutAttr = xegpu::setupStoreMatrixAnchorLayout(
+        layoutKind, srcVecTy, chunkSize, uArch);
     storeMatrix.setLayoutAttr(requiredAnchorLayoutAttr);
     layout = LayoutInfo(requiredAnchorLayoutAttr);
   }
