@@ -11,6 +11,15 @@
 configure_file(omp_lib.F90.var "${CMAKE_CURRENT_BINARY_DIR}/omp_lib.F90" @ONLY)
 configure_file(omp_lib.h.var "${RUNTIMES_OUTPUT_RESOURCE_MOD_DIR}/omp_lib.h" @ONLY)
 
+if ("flang-rt" IN_LIST LLVM_ENABLE_RUNTIMES)
+  set(flang_rt_module_stamp
+    "${CMAKE_BINARY_DIR}/flang-rt/lib/runtime/flang_rt.mod.stamp"
+  )
+  set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/omp_lib.F90"
+    APPEND PROPERTY OBJECT_DEPENDS "${flang_rt_module_stamp}"
+  )
+endif ()
+
 # One compilation step creates both, omp_lib.mod and omp_lib_kinds.mod. Only
 # these files are used, the object file itself can be discarded.
 # TODO: Adding it to libomp ($<TARGET_OBJECTS:libomp-mod>) would allow implementing Fortran API in Fortran

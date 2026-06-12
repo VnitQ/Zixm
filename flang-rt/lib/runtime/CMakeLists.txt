@@ -298,6 +298,18 @@ if (FLANG_RT_FORTRAN_MODULES)
   flang_module_target(flang_rt.mod.intrinsics PUBLIC)
   add_module_barrier(flang_rt.mod.intrinsics.barrier flang_rt.mod.intrinsics)
 
+  set(intrinsic_module_stamp
+    "${CMAKE_CURRENT_BINARY_DIR}/flang_rt.mod.intrinsics.stamp"
+  )
+  add_custom_command(OUTPUT "${intrinsic_module_stamp}"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${intrinsic_module_stamp}"
+    DEPENDS "$<TARGET_OBJECTS:flang_rt.mod.intrinsics>"
+    VERBATIM
+  )
+  set_property(SOURCE ${module_sources}
+    APPEND PROPERTY OBJECT_DEPENDS "${intrinsic_module_stamp}"
+  )
+
   # The modules themselves
   add_flangrt_library(flang_rt.mod OBJECT
     ${module_sources}
@@ -305,6 +317,19 @@ if (FLANG_RT_FORTRAN_MODULES)
   add_dependencies(flang_rt.mod flang_rt.mod.intrinsics.barrier)
   flang_module_target(flang_rt.mod PUBLIC)
   add_module_barrier(flang-rt-mod flang_rt.mod)
+
+  set(flang_rt_module_stamp
+    "${CMAKE_CURRENT_BINARY_DIR}/flang_rt.mod.stamp"
+  )
+  add_custom_command(OUTPUT "${flang_rt_module_stamp}"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${flang_rt_module_stamp}"
+    DEPENDS "$<TARGET_OBJECTS:flang_rt.mod>"
+    VERBATIM
+  )
+  add_custom_target(flang-rt-mod-stamp
+    DEPENDS "${flang_rt_module_stamp}"
+  )
+  add_dependencies(flang-rt-mod flang-rt-mod-stamp)
 
   if (RUNTIMES_FORTRAN_MODULES)
     set(_mod_install_dest "${RUNTIMES_INSTALL_RESOURCE_MOD_PATH}/..")
