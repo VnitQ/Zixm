@@ -808,7 +808,11 @@ public:
     // because break and continue never branch out of the loop.
     auto collectExitsInLoop = [&](mlir::Operation *loopOp) {
       loopOp->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *nestedOp) {
-        if (isa<cir::ReturnOp>(nestedOp)) {
+        // A cir.co_return inside cir.coro.body exits that coroutine body, not
+        // the cleanup scope currently being analyzed.
+        if (isa<cir::CoroBodyOp>(nestedOp))
+          return mlir::WalkResult::skip();
+        if (isa<cir::ReturnOp, cir::CoReturnOp>(nestedOp)) {
           exits.emplace_back(nestedOp, nextId++);
         } else if (isGotoThatExitsCleanup(nestedOp)) {
           exits.emplace_back(nestedOp, nextId++);
@@ -835,7 +839,10 @@ public:
         } else if (isa<cir::LoopOpInterface>(nestedOp)) {
           collectExitsInLoop(nestedOp);
           return mlir::WalkResult::skip();
-        } else if (isa<cir::ReturnOp, cir::ContinueOp>(nestedOp)) {
+        } else if (isa<cir::CoroBodyOp>(nestedOp)) {
+          return mlir::WalkResult::skip();
+        } else if (isa<cir::ReturnOp, cir::CoReturnOp, cir::ContinueOp>(
+                       nestedOp)) {
           exits.emplace_back(nestedOp, nextId++);
         } else if (isGotoThatExitsCleanup(nestedOp)) {
           exits.emplace_back(nestedOp, nextId++);
@@ -857,7 +864,7 @@ public:
         // the nested cleanup.
         if (!ignoreBreak && isa<cir::BreakOp>(op)) {
           exits.emplace_back(op, nextId++);
-        } else if (isa<cir::ContinueOp, cir::ReturnOp>(op)) {
+        } else if (isa<cir::ContinueOp, cir::ReturnOp, cir::CoReturnOp>(op)) {
           exits.emplace_back(op, nextId++);
         } else if (isGotoThatExitsCleanup(op)) {
           exits.emplace_back(op, nextId++);
@@ -865,6 +872,8 @@ public:
           // Recurse into nested cleanup's body region.
           collectExitsInCleanup(cast<cir::CleanupScopeOp>(op).getBodyRegion(),
                                 /*ignoreBreak=*/ignoreBreak);
+          return mlir::WalkResult::skip();
+        } else if (isa<cir::CoroBodyOp>(op)) {
           return mlir::WalkResult::skip();
         } else if (isa<cir::LoopOpInterface>(op)) {
           // This kicks off a separate walk rather than continuing to dig deeper
@@ -1023,6 +1032,12 @@ public:
           }
           return mlir::success();
         })
+        .Case<cir::CoReturnOp>([&](auto) {
+          // A cir.co_return exits the cleanup scope and resumes at the
+          // coroutine's final suspend point after cleanup has run.
+          cir::CoReturnOp::create(rewriter, loc);
+          return mlir::success();
+        })
         .Case<cir::GotoOp>([&](auto gotoOp) {
           // Gotos that target a label within the cleanup body region are
           // filtered out by collectExits and never reach this code, so any
@@ -1052,9 +1067,9 @@ public:
               // assume that it doesn't happen simplifies the implementation.
               // If we ever need to handle this case, the code will need to
               // be updated to handle it.
-              .Case<cir::YieldOp, cir::ReturnOp, cir::ResumeFlatOp,
-                    cir::ContinueOp, cir::BreakOp, cir::GotoOp>(
-                  [](auto) { return false; })
+              .Case<cir::YieldOp, cir::ReturnOp, cir::CoReturnOp,
+                    cir::ResumeFlatOp, cir::ContinueOp, cir::BreakOp,
+                    cir::GotoOp>([](auto) { return false; })
               // We expect that call operations have not yet been rewritten
               // as try_call operations. A call can unwind out of the cleanup
               // scope, but we will be handling that during flattening. The
