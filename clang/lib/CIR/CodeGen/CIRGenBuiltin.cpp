@@ -2175,7 +2175,11 @@ RValue CIRGenFunction::emitBuiltinExpr(const GlobalDecl &gd, unsigned builtinID,
 
     auto encompassingCIRTy = cir::IntType::get(
         &getMLIRContext(), encompassingInfo.width, encompassingInfo.isSigned);
-    auto resultCIRTy = mlir::cast<cir::IntType>(cgm.convertType(resultQTy));
+    auto resultCIRType = cgm.convertType(resultQTy);
+    bool resultIsBool = mlir::isa<cir::BoolType>(resultCIRType);
+    auto resultCIRTy = resultIsBool ? cir::IntType::get(&getMLIRContext(), 1,
+                                                        /*isSigned=*/false)
+                                    : mlir::cast<cir::IntType>(resultCIRType);
 
     mlir::Value x = emitScalarExpr(leftArg);
     mlir::Value y = emitScalarExpr(rightArg);
@@ -2228,7 +2232,11 @@ RValue CIRGenFunction::emitBuiltinExpr(const GlobalDecl &gd, unsigned builtinID,
     // Finally, store the result using the pointer.
     bool isVolatile =
         resultArg->getType()->getPointeeType().isVolatileQualified();
-    builder.createStore(loc, result, resultPtr, isVolatile);
+    mlir::Value storeVal = result;
+    if (resultIsBool)
+      storeVal = builder.createCast(loc, cir::CastKind::int_to_bool, storeVal,
+                                    cir::BoolType::get(&getMLIRContext()));
+    builder.createStore(loc, storeVal, resultPtr, isVolatile);
 
     return RValue::get(overflow);
   }
