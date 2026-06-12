@@ -2057,8 +2057,13 @@ void TwoAddressInstructionImpl::eliminateRegSequence(
 
   // If there are no live intervals information, we scan the use list once
   // in order to find which subregisters are used.
+  // Only do this when the target tracks subregister liveness. Otherwise
+  // liveness is tracked per whole register, so a used undef lane is already
+  // covered by the register's liveness and does not need its own def. Keeping
+  // a COPY for it would be pointless: the register coalescer erases such an
+  // undef COPY, recreating a use-without-def and crashing (issue #202263).
   LaneBitmask UsedLanes = LaneBitmask::getNone();
-  if (!LIS) {
+  if (!LIS && MRI->shouldTrackSubRegLiveness(DstReg)) {
     for (MachineOperand &Use : MRI->use_nodbg_operands(DstReg)) {
       if (unsigned SubReg = Use.getSubReg())
         UsedLanes |= TRI->getSubRegIndexLaneMask(SubReg);

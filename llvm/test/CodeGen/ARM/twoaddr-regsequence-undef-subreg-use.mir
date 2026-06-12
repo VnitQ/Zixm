@@ -1,0 +1,24 @@
+# RUN: llc -mtriple=armv8a-unknown-linux-gnueabi -run-pass=twoaddressinstruction -o - %s | FileCheck %s
+
+# On a target that does not track subregister liveness, lowering a REG_SEQUENCE
+# with an undef operand must skip the COPY for that operand even when the
+# subregister is used later: liveness is tracked per whole register, so the
+# undef lane is already covered by the register's liveness and needs no def of
+# its own. Emitting a COPY of the undef value would later be erased by the
+# register coalescer, recreating a use-without-def and crashing (issue #202263).
+
+---
+name:            undef_regsequence_subreg_use
+tracksRegLiveness: true
+body:             |
+  bb.0:
+    ; CHECK-LABEL: name: undef_regsequence_subreg_use
+    ; CHECK: [[VMOV:%[0-9]+]]:dpr = VMOVv2i32
+    ; CHECK-NEXT: undef [[REG:%[0-9]+]].dsub_1:qpr = COPY [[VMOV]]
+    ; CHECK-NEXT: %{{[0-9]+}}:dpr = COPY [[REG]].dsub_0
+    ; CHECK-NOT: COPY undef
+    %0:dpr = VMOVv2i32 0, 14 /* CC::al */, $noreg
+    %1:qpr = REG_SEQUENCE undef %2:dpr, %subreg.dsub_0, %0:dpr, %subreg.dsub_1
+    %3:dpr = COPY %1.dsub_0
+    VST1d64 $noreg, 0, %3:dpr, 14 /* CC::al */, $noreg
+...
