@@ -950,6 +950,8 @@ void InstrInfoEmitter::run(raw_ostream &OS) {
       ImplicitListSize += ImplicitOps.size();
     }
   }
+  if (!isUInt<10>(ImplicitListSize))
+    PrintFatalError("implicit operand table does not fit in 10-bit offsets");
 
   {
     IfGuardEmitter IfGuard(
@@ -1002,7 +1004,10 @@ void InstrInfoEmitter::run(raw_ostream &OS) {
        << "InstrTable::Padding) % sizeof(MCOperandInfo) == 0);\n";
     OS << "static constexpr unsigned " << TargetName << "OpInfoBase = (sizeof "
        << TargetName << "InstrTable::ImplicitOps + sizeof " << TargetName
-       << "InstrTable::Padding) / sizeof(MCOperandInfo);\n\n";
+       << "InstrTable::Padding) / sizeof(MCOperandInfo);\n";
+    OS << "static_assert(" << TargetName << "OpInfoBase + " << OperandInfoSize
+       << " <= (1U << 15), "
+          "\"operand info table does not fit in 15-bit offsets\");\n\n";
 
     OS << "extern const " << TargetName << "InstrTable " << TargetName
        << "Descs = {\n  {\n";
@@ -1295,10 +1300,30 @@ void InstrInfoEmitter::emitRecord(
     DefOperands = Opnd.MIOperandNo + Opnd.MINumOperands;
   }
 
+  int64_t Size = Inst.TheDef->getValueAsInt("Size");
+  unsigned SchedClass = SchedModels.getSchedClassIdx(Inst);
+  if (!isUInt<16>(Num))
+    PrintFatalError(Inst.TheDef, "instruction opcode does not fit in 16 bits");
+  if (MinOperands > 125 && MinOperands != 129 && MinOperands != 130)
+    PrintFatalError(Inst.TheDef,
+                    "instruction operand count cannot be encoded in 7 bits");
+  if (DefOperands > 126 && DefOperands != 128)
+    PrintFatalError(Inst.TheDef,
+                    "instruction definition count cannot be encoded in 7 bits");
+  if (Size != 3 && (Size < 0 || Size > 252 || Size % 2 != 0))
+    PrintFatalError(Inst.TheDef,
+                    "instruction size cannot be encoded in 7 bits");
+  if (!isUInt<13>(SchedClass))
+    PrintFatalError(Inst.TheDef,
+                    "instruction scheduling class does not fit in 13 bits");
+  if (!isUInt<6>(Inst.ImplicitUses.size()) ||
+      !isUInt<6>(Inst.ImplicitDefs.size()))
+    PrintFatalError(Inst.TheDef,
+                    "implicit register count does not fit in 6 bits");
+
   OS << "    { ";
-  OS << Num << ",\t" << MinOperands << ",\t" << DefOperands << ",\t"
-     << Inst.TheDef->getValueAsInt("Size") << ",\t"
-     << SchedModels.getSchedClassIdx(Inst) << ",\t";
+  OS << Num << ",\t" << MinOperands << ",\t" << DefOperands << ",\t" << Size
+     << ",\t" << SchedClass << ",\t";
 
   const CodeGenTarget &Target = CDP.getTargetInfo();
 
