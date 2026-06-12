@@ -160,6 +160,12 @@ private:
   bool shrinkType(Instruction &I);
   bool shrinkLoadForShuffles(Instruction &I);
   bool shrinkPhiOfShuffles(Instruction &I);
+  Value *createBinaryOp(Instruction::BinaryOps Opcode, Value *Op0, Value *Op1,
+                        BinaryOperator *OldI);
+  Value *createUnaryOp(Instruction::UnaryOps Opcode, Value *Operand,
+                       UnaryOperator *OldI);
+  Value *createCmp(CmpInst::Predicate Pred, Value *LHS, Value *RHS,
+                   CmpInst *OldI);
 
   void replaceValue(Instruction &Old, Value &New, bool Erase = true) {
     LLVM_DEBUG(dbgs() << "VC: Replacing: " << Old << '\n');
@@ -1293,6 +1299,89 @@ bool VectorCombine::scalarizeVPIntrinsic(Instruction &I) {
   return true;
 }
 
+Value *VectorCombine::createUnaryOp(Instruction::UnaryOps Opcode,
+                                    Value *Operand, UnaryOperator *OldI) {
+  switch (Opcode) {
+  case Instruction::FNeg:
+    return Builder.CreateFNegFMF(Operand, OldI,
+                                 OldI->getName() + ".scalar.fneg");
+  case Instruction::UnaryOpsEnd:
+    llvm_unreachable("Invalid unary opcode");
+  }
+  llvm_unreachable("Invalid unary opcode");
+}
+
+Value *VectorCombine::createBinaryOp(Instruction::BinaryOps Opcode, Value *LHS,
+                                     Value *RHS, BinaryOperator *OldI) {
+  switch (Opcode) {
+  case Instruction::Add:
+    return Builder.CreateAdd(LHS, RHS, OldI->getName() + ".scalar.add",
+                             OldI->hasNoUnsignedWrap(),
+                             OldI->hasNoSignedWrap());
+  case Instruction::Sub:
+    return Builder.CreateSub(LHS, RHS, OldI->getName() + ".scalar.sub",
+                             OldI->hasNoUnsignedWrap(),
+                             OldI->hasNoSignedWrap());
+  case Instruction::Mul:
+    return Builder.CreateMul(LHS, RHS, OldI->getName() + ".scalar.mul",
+                             OldI->hasNoUnsignedWrap(),
+                             OldI->hasNoSignedWrap());
+  case Instruction::UDiv:
+    return Builder.CreateUDiv(LHS, RHS, OldI->getName() + ".scalar.udiv",
+                              OldI->isExact());
+  case Instruction::SDiv:
+    return Builder.CreateSDiv(LHS, RHS, OldI->getName() + ".scalar.sdiv",
+                              OldI->isExact());
+  case Instruction::URem:
+    return Builder.CreateURem(LHS, RHS, OldI->getName() + ".scalar.urem");
+  case Instruction::SRem:
+    return Builder.CreateSRem(LHS, RHS, OldI->getName() + ".scalar.srem");
+  case Instruction::Shl:
+    return Builder.CreateShl(LHS, RHS, OldI->getName() + ".scalar.shl",
+                             OldI->hasNoUnsignedWrap(),
+                             OldI->hasNoSignedWrap());
+  case Instruction::LShr:
+    return Builder.CreateLShr(LHS, RHS, OldI->getName() + ".scalar.lshr",
+                              OldI->isExact());
+  case Instruction::AShr:
+    return Builder.CreateAShr(LHS, RHS, OldI->getName() + ".scalar.ashr",
+                              OldI->isExact());
+  case Instruction::And:
+    return Builder.CreateAnd(LHS, RHS, OldI->getName() + ".scalar.and");
+  case Instruction::Or:
+    return Builder.CreateOr(LHS, RHS, OldI->getName() + ".scalar.or",
+                            cast<PossiblyDisjointInst>(OldI)->isDisjoint());
+  case Instruction::Xor:
+    return Builder.CreateXor(LHS, RHS, OldI->getName() + ".scalar.xor");
+  case Instruction::FAdd:
+    return Builder.CreateFAddFMF(LHS, RHS, OldI,
+                                 OldI->getName() + ".scalar.fadd");
+  case Instruction::FSub:
+    return Builder.CreateFSubFMF(LHS, RHS, OldI,
+                                 OldI->getName() + ".scalar.fsub");
+  case Instruction::FMul:
+    return Builder.CreateFMulFMF(LHS, RHS, OldI,
+                                 OldI->getName() + ".scalar.fmul");
+  case Instruction::FDiv:
+    return Builder.CreateFDivFMF(LHS, RHS, OldI,
+                                 OldI->getName() + ".scalar.fdiv");
+  case Instruction::FRem:
+    return Builder.CreateFRemFMF(LHS, RHS, OldI,
+                                 OldI->getName() + ".scalar.frem");
+  case Instruction::BinaryOpsEnd:
+    llvm_unreachable("Invalid binary opcode");
+  }
+  llvm_unreachable("Invalid binary opcode");
+}
+
+Value *VectorCombine::createCmp(CmpInst::Predicate Pred, Value *LHS, Value *RHS,
+                                CmpInst *OldI) {
+  if (FCmpInst *FC = dyn_cast<FCmpInst>(OldI))
+    return Builder.CreateFCmpFMF(Pred, LHS, RHS, FC);
+
+  return Builder.CreateCmp(Pred, LHS, RHS);
+}
+
 /// Match a vector op/compare/intrinsic with at least one
 /// inserted scalar operand and convert to scalar op/cmp/intrinsic followed
 /// by insertelement.
@@ -1446,18 +1535,13 @@ bool VectorCombine::scalarizeOpOrCmp(Instruction &I) {
 
   Value *Scalar;
   if (CI)
-    Scalar = Builder.CreateCmp(CI->getPredicate(), ScalarOps[0], ScalarOps[1]);
-  else if (UO || BO)
-    Scalar = Builder.CreateNAryOp(Opcode, ScalarOps);
+    Scalar = createCmp(CI->getPredicate(), ScalarOps[0], ScalarOps[1], CI);
+  else if (UO)
+    Scalar = createUnaryOp(UO->getOpcode(), ScalarOps[0], UO);
+  else if (BO)
+    Scalar = createBinaryOp(BO->getOpcode(), ScalarOps[0], ScalarOps[1], BO);
   else
     Scalar = Builder.CreateIntrinsic(ScalarTy, II->getIntrinsicID(), ScalarOps);
-
-  Scalar->setName(I.getName() + ".scalar");
-
-  // All IR flags are safe to back-propagate. There is no potential for extra
-  // poison to be created by the scalar instruction.
-  if (auto *ScalarInst = dyn_cast<Instruction>(Scalar))
-    ScalarInst->copyIRFlags(&I);
 
   Value *Insert = Builder.CreateInsertElement(NewVecC, Scalar, *Index);
   replaceValue(I, *Insert);
