@@ -2999,8 +2999,7 @@ void clang::sema::AnalysisBasedWarnings::IssueWarnings(
     }
   }
 
-  if (S.getLangOpts().CPlusPlus &&
-      S.getLangOpts().EnableLifetimeSafetyTUAnalysis)
+  if (lifetimes::IsLifetimeSafetyEnabled(S, TU))
     LifetimeSafetyTUAnalysis(S, TU, LSStats);
 }
 
@@ -3164,7 +3163,7 @@ void clang::sema::AnalysisBasedWarnings::IssueWarnings(
 
   // TODO: Enable lifetime safety analysis for other languages once it is
   // stable.
-  if (EnableLifetimeSafetyAnalysis && S.getLangOpts().CPlusPlus) {
+  if (EnableLifetimeSafetyAnalysis) {
     if (AC.getCFG()) {
       lifetimes::LifetimeSafetySemaHelperImpl LifetimeSafetySemaHelper(S);
       lifetimes::runLifetimeSafetyAnalysis(AC, &LifetimeSafetySemaHelper,

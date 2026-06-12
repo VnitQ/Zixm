@@ -27,6 +27,11 @@ namespace clang::lifetimes {
 inline bool IsLifetimeSafetyEnabled(Sema &S, const Decl *D) {
   if (S.getLangOpts().DebugRunLifetimeSafety)
     return true;
+  // TODO: Enable ObjectiveC later when we know it's stable enough.
+  if (S.getLangOpts().ObjC)
+    return false;
+  if (isa<TranslationUnitDecl>(D))
+    return S.getLangOpts().EnableLifetimeSafetyTUAnalysis;
   DiagnosticsEngine &Diags = S.getDiagnostics();
   constexpr unsigned DiagIDs[] = {
       diag::warn_lifetime_safety_use_after_scope,
