@@ -307,7 +307,7 @@ void AddDebugInfoPass::handleLocalVariable(Op declOp, llvm::StringRef name,
   if (dummyScope && declOp.getDummyScope() == dummyScope) {
     if (auto argNoOpt = declOp.getDummyArgNo()) {
       argNo = *argNoOpt;
-      if (emitFakeUseForArguments) {
+      if (emitFakeUseForDebugVars) {
         if constexpr (std::is_same_v<Op, fir::cg::XDeclareOp>) {
           if (auto funcOp =
                   declOp->template getParentOfType<mlir::func::FuncOp>()) {
@@ -330,6 +330,60 @@ void AddDebugInfoPass::handleLocalVariable(Op declOp, llvm::StringRef name,
 
   auto tyAttr =
       typeGen.convertType(typeToConvert, fileAttr, scopeAttr, typeGenDeclOp);
+
+  // Check if tyAttr represents a dynamic Fortran array. If so, create
+  // FakeUseOps to preserve the automatic variables that represent the lower
+  // bound, count, and stride.
+  if (emitFakeUseForDebugVars) {
+    if (auto arrayTy =
+            mlir::dyn_cast<mlir::LLVM::DICompositeTypeAttr>(tyAttr)) {
+      if (arrayTy.getTag() == llvm::dwarf::DW_TAG_array_type) {
+        bool isDynamic = llvm::any_of(
+            arrayTy.getElements(), [](mlir::Attribute element) {
+              auto subrange =
+                  mlir::dyn_cast<mlir::LLVM::DISubrangeAttr>(element);
+              if (!subrange)
+                return false;
+              return static_cast<bool>(
+                  mlir::dyn_cast_if_present<
+                      mlir::LLVM::DILocalVariableAttr>(subrange.getCount()) ||
+                  mlir::dyn_cast_if_present<
+                      mlir::LLVM::DILocalVariableAttr>(
+                      subrange.getLowerBound()) ||
+                  mlir::dyn_cast_if_present<
+                      mlir::LLVM::DILocalVariableAttr>(
+                      subrange.getStride()));
+            });
+        if (isDynamic) {
+          if constexpr (std::is_same_v<Op, fir::cg::XDeclareOp>) {
+            if (auto funcOp =
+                    declOp->template getParentOfType<mlir::func::FuncOp>()) {
+              if (declOp->getBlock() == &funcOp.getBody().front()) {
+                for (mlir::Block &block : funcOp.getBody()) {
+                  if (auto returnOp = mlir::dyn_cast<mlir::func::ReturnOp>(
+                          block.getTerminator())) {
+                    mlir::OpBuilder::InsertionGuard guard(builder);
+                    builder.setInsertionPoint(returnOp);
+                    // Preserve count if it is a variable and not a constant.
+                    // Count is represented by shape in the declOp.
+                    for (auto val : declOp.getShape())
+                      if (!fir::getIntIfConstant(val))
+                        fir::FakeUseOp::create(builder, declOp.getLoc(), val);
+                    // Preserve lower bound if it is a variable and not a
+                    // constant.
+                    // Lower bound is represented by shift in the declOp.
+                    for (auto val : declOp.getShift())
+                      if (!fir::getIntIfConstant(val))
+                        fir::FakeUseOp::create(builder, declOp.getLoc(), val);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 
   auto localVarAttr = mlir::LLVM::DILocalVariableAttr::get(
       context, scopeAttr, mlir::StringAttr::get(context, name), fileAttr,
