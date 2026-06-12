@@ -22829,8 +22829,8 @@ static SDValue foldADCToCINC(SDNode *N, SelectionDAG &DAG) {
 static SDValue performAddSubCarryCombine(SDNode *N, SelectionDAG &DAG) {
   SDValue RHS = N->getOperand(1);
   if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(RHS)) {
-    int64_t imm = C->getSExtValue();
-    if (imm < 0) {
+    int64_t Imm = C->getSExtValue();
+    if (Imm < 0) {
       unsigned Opcode;
       switch (N->getOpcode()) {
       case AArch64ISD::ADC:
@@ -22853,7 +22853,7 @@ static SDValue performAddSubCarryCombine(SDNode *N, SelectionDAG &DAG) {
       // Effectively, the inverse interpretation of the carry flag already
       // accounts for part of the negation.
       SDLoc DL(N);
-      RHS = DAG.getConstant(~imm, DL, RHS.getValueType());
+      RHS = DAG.getConstant(~Imm, DL, RHS.getValueType());
       return DAG.getNode(Opcode, DL, N->getVTList(), N->getOperand(0), RHS,
                          N->getOperand(2));
     }
