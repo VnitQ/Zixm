@@ -2277,6 +2277,23 @@ let Predicates = [HasPAuth] in {
     let Uses = [X16];
   }
 
+  // AUT (using x15=PC, x16=addr disc, x17=pointer) and re-PAC a value using
+  // different keys/data. This directly manipulates x15/x16/x17, which are the
+  // only registers certain OSs guarantee are safe to use for sensitive ops.
+  def AUTx15x16x17PAC
+      : Pseudo<(outs),
+               (ins i32imm:$AUTKey,
+                    i32imm:$PACKey, i64imm:$PACDisc, GPR64noip:$PACAddrDisc),
+               []>, Sched<[WriteI, ReadI]> {
+    let isCodeGenOnly = 1;
+    let hasSideEffects = 1;
+    let mayStore = 0;
+    let mayLoad = 0;
+    let Size = 48;
+    let Defs = [X17,X15,X16,NZCV];
+    let Uses = [X15,X16,X17];
+  }
+
   // Similiar to AUTPAC, except a 32bit value is loaded at Addend offset from
   // pointer and this value is added to the pointer before signing. This
   // directly manipulates x16/x17, which are the only registers the OS
