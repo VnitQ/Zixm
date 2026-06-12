@@ -364,6 +364,66 @@ void SampleProfileMatcher::runStaleProfileMatching(
       longestCommonSequence(FilteredIRAnchorsList, FilteredProfileAnchorList,
                             RunCGMatching /* Match unused functions */);
 
+  // Scan through the matched anchors to make sure functions and profiles are
+  // 1:1 mapped. If the profile has already been mapped to another function
+  // during previous fuzzy matching, create a new profile with the same sample
+  // counts and assumed to be pre-inlined.
+  for (const auto &IR : IRAnchors) {
+    bool ProfileConflicted = false;
+    const auto &Loc = IR.first;
+    Function *Callee = M.getFunction(IR.second.stringRef());
+    if (!Callee)
+      continue;
+    FunctionId ProfAnchor;
+    auto AnchorLoc = MatchedAnchors.find(Loc);
+    if (AnchorLoc == MatchedAnchors.end()) {
+      // Search within the module and find if we have conflicts in pre-matched
+      // profiles for this anchor
+      auto PreMatched = FuncToProfileNameMap.find(Callee);
+      if (PreMatched == FuncToProfileNameMap.end())
+        continue;
+      ProfAnchor = PreMatched->second;
+    } else {
+      const auto &Prof = ProfileAnchors.find(AnchorLoc->second);
+      if (Prof == ProfileAnchors.end())
+        continue;
+      ProfAnchor = Prof->second;
+    }
+
+    // Conflicting profile previously matched
+    uint64_t IRHash = IR.second.getHashCode();
+    uint64_t ProfHash = ProfAnchor.getHashCode();
+    auto Cached = MatchedAnchorCache.find(ProfHash);
+    if (Cached == MatchedAnchorCache.end())
+      MatchedAnchorCache[ProfHash] = IRHash;
+    else if (Cached->second != IRHash)
+      ProfileConflicted = true;
+
+    if (ProfileConflicted) {
+      // Create a flattened profile using the IR function name to avoid profile
+      // name conflicts
+      const auto *FSForMatching = getFlattenedSamplesFor(ProfAnchor);
+      if (!FSForMatching)
+        FSForMatching = Reader.getSamplesFor(ProfAnchor.stringRef());
+      if (!FSForMatching)
+        continue;
+
+      FunctionId NewAnchor(
+          FunctionSamples::getCanonicalFnName(IR.second.stringRef()));
+      FunctionSamples &NewFS = FlattenedProfiles.create(NewAnchor);
+      NewFS.merge(*FSForMatching);
+      FuncToProfileNameMap[Callee] = NewAnchor;
+      IRToProfileLocationMap = getIRToProfileLocationMap(NewFS);
+
+      // Update profile in the sample profile reader
+      SampleProfileMap &Profiles = Reader.getProfiles();
+      SampleContext FContext(NewAnchor);
+      auto Res = Profiles.try_emplace(FContext.getHashCode(), FContext, NewFS);
+      FunctionSamples &FProfile = Res.first->second;
+      FProfile.setContext(FContext);
+    }
+  }
+
   // CFG level matching:
   // Apply the callsite matchings to infer matching for the basic
   // block(non-callsite) locations and write the result to
