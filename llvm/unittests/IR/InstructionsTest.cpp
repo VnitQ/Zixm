@@ -2011,4 +2011,49 @@ TEST(InstructionsTest, StripAndAccumulateConstantOffset) {
   EXPECT_TRUE(Offset.isZero());
 }
 
+TEST(InstructionsTest, StripAndAccumulateConstantOffsets_ThroughPtrBitCast) {
+  LLVMContext C;
+  DataLayout DL("e-p:64:64:64-i64:64");
+  std::unique_ptr<Module> M = parseIR(C, R"(
+  define void @foo(ptr %p) {
+    %bc = bitcast ptr %p to ptr
+    %gep = getelementptr inbounds i8, ptr %bc, i64 2
+    ret void
+  })");
+  ASSERT_TRUE(M);
+  BasicBlock &BB = M->getFunction("foo")->getEntryBlock();
+  auto It = BB.begin();
+  Value *BC = &*It++;
+  (void)BC;
+  Value *GEP = &*It++;
+  ASSERT_TRUE(isa<GetElementPtrInst>(GEP));
+  APInt Offset(DL.getIndexTypeSizeInBits(GEP->getType()), 0);
+  Value *Stripped = GEP->stripAndAccumulateConstantOffsets(
+      DL, Offset, /*AllowNonInbounds=*/true);
+  EXPECT_EQ(Stripped, M->getFunction("foo")->getArg(0));
+  EXPECT_EQ(Offset, APInt(DL.getIndexTypeSizeInBits(GEP->getType()), 2));
+}
+
+TEST(InstructionsTest,
+     StripAndAccumulateConstantOffsets_NoLookThroughNonPtrToPtrBitCast) {
+  LLVMContext C;
+  DataLayout DL("e-p:64:64:64-i64:64");
+  std::unique_ptr<Module> M = parseIR(C, R"(
+  define void @foo(b64 %x) {
+    %bc = bitcast b64 %x to ptr
+    %gep = getelementptr inbounds i8, ptr %bc, i64 1
+    ret void
+  })");
+  ASSERT_TRUE(M);
+  BasicBlock &BB = M->getFunction("foo")->getEntryBlock();
+  auto It = BB.begin();
+  Value *BC = &*It++;
+  Value *GEP = &*It++;
+  APInt Offset(DL.getIndexTypeSizeInBits(GEP->getType()), 0);
+  Value *Stripped = GEP->stripAndAccumulateConstantOffsets(
+      DL, Offset, /*AllowNonInbounds=*/true);
+  EXPECT_EQ(Stripped, BC);
+  EXPECT_EQ(Offset, APInt(DL.getIndexTypeSizeInBits(GEP->getType()), 1));
+}
+
 } // end anonymous namespace
