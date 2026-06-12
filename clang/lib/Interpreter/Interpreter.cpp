@@ -153,6 +153,17 @@ IncrementalCompilerBuilder::create(std::string TT,
 
   ClangArgv.insert(ClangArgv.begin(), MainExecutableName.c_str());
 
+  // Compile as position-independent code. This prevents the frontend from
+  // marking external symbols (e.g. C++ type-info such as _ZTIPKc used for
+  // exception handling) as dso_local and emitting direct PC-relative
+  // references. JITLink can place the GOT entry near the JIT'd code, keeping
+  // the relocation in range. Without -fPIC, a direct Delta32 relocation to a
+  // host symbol may be out of range when the JIT memory is mapped more than
+  // 2GB away (as on FreeBSD), breaking tests such as
+  // Interpreter/simple-exception.cpp. Insert before user arguments so it can
+  // still be overridden.
+  ClangArgv.insert(ClangArgv.begin() + 1, "-fPIC");
+
   // Prepending -c to force the driver to do something if no action was
   // specified. By prepending we allow users to override the default
   // action and use other actions in incremental mode.
