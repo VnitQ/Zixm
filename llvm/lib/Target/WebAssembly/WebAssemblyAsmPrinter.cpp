@@ -333,6 +333,22 @@ void WebAssemblyAsmPrinter::emitDecls(const Module &M) {
       emitSymbolType(Sym);
   }
 
+  {
+    StringRef Name = "__funcref_call_table";
+    auto *Sym = static_cast<MCSymbolWasm *>(OutContext.lookupSymbol(Name));
+    if (Sym) {
+      if (!Sym->isFunctionTable())
+        OutContext.reportError(SMLoc(), "symbol is not a wasm funcref table");
+
+      assert(Sym->isWeak());
+      assert(!Sym->isDefined());
+
+      OutStreamer->emitSymbolAttribute(Sym, MCSA_Weak);
+      OutStreamer->emitLabel(Sym);
+      OutStreamer->addBlankLine();
+    }
+  }
+
   DenseSet<MCSymbol *> InvokeSymbols;
   for (const auto &F : M) {
     if (F.isIntrinsic())
