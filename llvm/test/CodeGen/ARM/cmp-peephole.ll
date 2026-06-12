@@ -1718,7 +1718,7 @@ define void @br_on_shift_eq_reg(i32 %a, i32 %b, i32 %c) {
 ; THUMB-NEXT:    push {r7, lr}
 ; THUMB-NEXT:    mov r3, r0
 ; THUMB-NEXT:    asrs r3, r1
-; THUMB-NEXT:    cmp r2, r3
+; THUMB-NEXT:    cmp r3, r2
 ; THUMB-NEXT:    bne .LBB56_2
 ; THUMB-NEXT:  @ %bb.1: @ %true_br
 ; THUMB-NEXT:    bl consume
@@ -1762,7 +1762,7 @@ define void @br_on_shift_ne_reg(i32 %a, i32 %b, i32 %c) {
 ; THUMB-NEXT:    push {r7, lr}
 ; THUMB-NEXT:    mov r3, r0
 ; THUMB-NEXT:    lsls r3, r1
-; THUMB-NEXT:    cmp r2, r3
+; THUMB-NEXT:    cmp r3, r2
 ; THUMB-NEXT:    beq .LBB57_2
 ; THUMB-NEXT:  @ %bb.1: @ %true_br
 ; THUMB-NEXT:    bl consume
