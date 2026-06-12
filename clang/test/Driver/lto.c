@@ -117,6 +117,14 @@
 // CHECK-GISEL:         "-plugin-opt=-global-isel=1"
 // CHECK-DISABLE-GISEL: "-plugin-opt=-global-isel=0"
 
+// RUN: %clang --target=x86_64-unknown-linux-gnu -### %s -flto -fno-slp-vectorize 2> %t
+// RUN: FileCheck --check-prefix=CHECK-NO-SLP < %t %s
+// RUN: %clang --target=x86_64-unknown-linux-gnu -### %s -flto -fslp-vectorize 2> %t
+// RUN: FileCheck --check-prefix=CHECK-SLP < %t %s
+//
+// CHECK-NO-SLP: "-plugin-opt=no-slp-vectorize"
+// CHECK-SLP:    "-plugin-opt=slp-vectorize"
+
 // -flto passes -time-passes when -ftime-report is passed
 // RUN: %clang --target=x86_64-unknown-linux-gnu -### %s -flto -ftime-report 2> %t
 // RUN: FileCheck --check-prefix=CHECK-TIME-REPORT < %t %s

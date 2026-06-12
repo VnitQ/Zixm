@@ -1157,6 +1157,17 @@ void tools::addLTOOptions(const ToolChain &ToolChain, const ArgList &Args,
     CmdArgs.push_back(Args.MakeArgString(Twine(PluginOptPrefix) +
                                          ParallelismOpt + Parallelism));
 
+  // Forward SLP vectorization preference to the LTO backend.
+  if (Arg *A = Args.getLastArg(options::OPT_fslp_vectorize,
+                               options::OPT_fno_slp_vectorize)) {
+    if (A->getOption().matches(options::OPT_fslp_vectorize))
+      CmdArgs.push_back(
+          Args.MakeArgString(Twine(PluginOptPrefix) + "slp-vectorize"));
+    else
+      CmdArgs.push_back(
+          Args.MakeArgString(Twine(PluginOptPrefix) + "no-slp-vectorize"));
+  }
+
   // Pass down GlobalISel options.
   if (Arg *A = Args.getLastArg(options::OPT_fglobal_isel,
                                options::OPT_fno_global_isel)) {

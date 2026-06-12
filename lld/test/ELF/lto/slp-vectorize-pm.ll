@@ -14,10 +14,13 @@
 ; RUN: ld.lld --plugin-opt=debug-pass-manager --plugin-opt=O3 --plugin-opt=save-temps -shared -o %t4.o %t.o 2>&1 | FileCheck %s --check-prefix=CHECK-O3-SLP
 ; RUN: llvm-dis %t.o.4.opt.bc -o - | FileCheck %s --check-prefix=CHECK-O3-LPV
 
+; RUN: ld.lld --plugin-opt=debug-pass-manager --plugin-opt=O2 --no-lto-slp-vectorize -shared -o %t5.o %t.o 2>&1 | FileCheck %s --check-prefix=CHECK-O2-NOSLP
+
 ; CHECK-O0-SLP-NOT: Running pass: SLPVectorizerPass
 ; CHECK-O1-SLP-NOT: Running pass: SLPVectorizerPass
 ; CHECK-O2-SLP: Running pass: SLPVectorizerPass
 ; CHECK-O3-SLP: Running pass: SLPVectorizerPass
+; CHECK-O2-NOSLP-NOT: Running pass: SLPVectorizerPass
 ; CHECK-O0-LPV-NOT: = !{!"llvm.loop.isvectorized", i32 1}
 ; CHECK-O1-LPV-NOT: = !{!"llvm.loop.isvectorized", i32 1}
 ; CHECK-O2-LPV: = !{!"llvm.loop.isvectorized", i32 1}

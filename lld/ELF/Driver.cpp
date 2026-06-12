@@ -1468,6 +1468,8 @@ static void readConfigs(Ctx &ctx, opt::InputArgList &args) {
   ctx.arg.ltoDebugPassManager = args.hasArg(OPT_lto_debug_pass_manager);
   ctx.arg.ltoEmitAsm = args.hasArg(OPT_lto_emit_asm);
   ctx.arg.ltoNewPmPasses = args.getLastArgValue(OPT_lto_newpm_passes);
+  ctx.arg.ltoSLPVectorize =
+      args.hasFlag(OPT_lto_slp_vectorize, OPT_no_lto_slp_vectorize, true);
   ctx.arg.ltoWholeProgramVisibility =
       args.hasFlag(OPT_lto_whole_program_visibility,
                    OPT_no_lto_whole_program_visibility, false);
