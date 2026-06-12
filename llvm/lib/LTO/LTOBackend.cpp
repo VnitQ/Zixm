@@ -621,7 +621,6 @@ static bool splitOptAndCodeGenThin(unsigned task, const Config &C,
                                    bool DoOpt, AddStreamFn IRAddStream,
                                    ArrayRef<StringRef> &BitcodeLibFuncs,
                                    bool IsThinLTO = true) {
-  unsigned ThreadCount = 0;
   const Target *T = &TM->getTarget();
   // Clamp the splitter to the per-task stride budget that getMaxTasks() used to
   // size the client's output table, so the partition count can never exceed it.
