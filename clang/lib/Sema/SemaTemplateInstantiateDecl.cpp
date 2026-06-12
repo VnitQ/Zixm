@@ -1102,10 +1102,10 @@ template<typename DeclT>
 static DeclT *getPreviousDeclForInstantiation(DeclT *D) {
   DeclT *Result = D->getPreviousDecl();
 
-  // If the declaration is within a class, and the previous declaration was
-  // merged from a different definition of that class, then we don't have a
-  // previous declaration for the purpose of template instantiation.
-  if (Result && isa<CXXRecordDecl>(D->getDeclContext()) &&
+  // If the declaration was merged from a different definition of the enclosing
+  // template, then we don't have a previous declaration for the purpose of
+  // template instantiation.
+  if (Result &&
       D->getLexicalDeclContext() != Result->getLexicalDeclContext())
     return nullptr;
 
@@ -7311,3 +7311,73 @@ void Sema::PerformDependentDiagnostics(const DeclContext *Pattern,
     }
   }
 }
+
+static bool isMappedLocalDecl(const Decl *D) {
+  if (const auto *VD = dyn_cast<VarDecl>(D)) {
+    return VD->isLocalVarDecl();
+  }
+  return isa<BindingDecl>(D) || isa<TypedefNameDecl>(D) ||
+         isa<TagDecl>(D) || isa<UsingDecl>(D) || isa<UsingShadowDecl>(D);
+}
+
+static void CollectMappedDecls(const DeclContext *DC,
+                               SmallVectorImpl<const Decl *> &Decls) {
+  for (const Decl *D : DC->decls()) {
+    if (isMappedLocalDecl(D)) {
+      Decls.push_back(D);
+    }
+    if (const auto *ND = dyn_cast<DeclContext>(D)) {
+      if (isa<BlockDecl>(ND) || isa<CapturedDecl>(ND)) {
+        CollectMappedDecls(ND, Decls);
+      }
+    }
+  }
+}
+
+const Decl *Sema::getCanonicalLocalDecl(const Decl *D) {
+  if (!isMappedLocalDecl(D)) {
+    return D;
+  }
+
+  // Find the enclosing function.
+  const DeclContext *DC = D->getDeclContext();
+  const FunctionDecl *FD = nullptr;
+  while (DC) {
+    if (const auto *F = dyn_cast<FunctionDecl>(DC)) {
+      FD = F;
+      break;
+    }
+    DC = DC->getParent();
+  }
+  if (!FD) {
+    return D;
+  }
+
+  const FunctionDecl *DefFD = FD->getDefinition();
+  if (!DefFD || FD == DefFD) {
+    return D;
+  }
+
+  auto &Map = CanonicalLocalDecls[DefFD];
+  if (Map.empty()) {
+    SmallVector<const Decl *, 8> CanonDecls;
+    CollectMappedDecls(DefFD, CanonDecls);
+
+    SmallVector<const Decl *, 8> LocalDecls;
+    CollectMappedDecls(FD, LocalDecls);
+
+    if (CanonDecls.size() == LocalDecls.size()) {
+      for (size_t I = 0; I < LocalDecls.size(); ++I) {
+        Map[LocalDecls[I]] = CanonDecls[I];
+      }
+    }
+  }
+
+  const auto It = Map.find(D);
+  if (It != Map.end()) {
+    return It->second;
+  }
+
+  return D;
+}
+

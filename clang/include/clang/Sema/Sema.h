@@ -13147,6 +13147,15 @@ public:
   /// variables.
   LocalInstantiationScope *CurrentInstantiationScope;
 
+  /// A mapping from canonical function definitions to maps of their local
+  /// declarations to canonical local declarations.
+  llvm::DenseMap<const DeclContext *,
+                 llvm::DenseMap<const Decl *, const Decl *>>
+      CanonicalLocalDecls;
+
+  const Decl *getCanonicalLocalDecl(const Decl *D);
+
+
   typedef llvm::DenseMap<ParmVarDecl *, llvm::TinyPtrVector<ParmVarDecl *>>
       UnparsedDefaultArgInstantiationsMap;
 

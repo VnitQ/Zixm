@@ -3455,15 +3455,44 @@ uint64_t ASTWriter::WriteDeclContextLexicalBlock(ASTContext &Context,
   if (DC->decls_empty())
     return 0;
 
-  // In reduced BMI, we don't care the declarations in functions.
-  if (GeneratingReducedBMI && DC->isFunctionOrMethod())
-    return 0;
+  bool IsTemplatedFunction = false;
+  // In reduced BMI, we don't care the declarations in functions, unless they
+  // are templated functions, because their bodies may contain nested
+  // class/lambda definitions that are canonicalized and need mapping of local
+  // declarations.
+  if (GeneratingReducedBMI && DC->isFunctionOrMethod()) {
+    const DeclContext *ParentFD = DC;
+    while (ParentFD && !isa<FunctionDecl>(ParentFD)) {
+      ParentFD = ParentFD->getParent();
+    }
+    if (const auto *FD = dyn_cast_or_null<FunctionDecl>(ParentFD)) {
+      if (!FD->isTemplated())
+        return 0;
+      IsTemplatedFunction = true;
+    } else {
+      return 0;
+    }
+  }
 
   uint64_t Offset = Stream.GetCurrentBitNo();
   SmallVector<DeclID, 128> KindDeclPairs;
   for (const auto *D : DC->decls()) {
     if (DoneWritingDeclsAndTypes && !wasDeclEmitted(D))
       continue;
+
+    if (IsTemplatedFunction) {
+      // For reduced BMIs, we only need to serialize local declarations that
+      // Sema requires for structural canonicalization of generic lambdas
+      // (see `Sema::isMappedLocalDecl`).
+      if (const auto *VD = dyn_cast<VarDecl>(D)) {
+        if (!VD->isLocalVarDecl())
+          continue;
+      } else if (!isa<BindingDecl>(D) && !isa<TypedefNameDecl>(D) &&
+                 !isa<TagDecl>(D) && !isa<UsingDecl>(D) &&
+                 !isa<UsingShadowDecl>(D)) {
+        continue;
+      }
+    }
 
     // We don't need to write decls with internal linkage into reduced BMI.
     // If such decls gets emitted due to it get used from inline functions,
