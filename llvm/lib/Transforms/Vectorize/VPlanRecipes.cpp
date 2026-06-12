@@ -2981,7 +2981,7 @@ InstructionCost VPScalarIVStepsRecipe::computeCost(ElementCount VF,
 
   // Determine the number of scalar adds we need to generate.
   const unsigned NumLanes =
-      vputils::onlyFirstLaneUsed(this) ? 1 : VF.getKnownMinValue();
+      vputils::onlyFirstLaneUsed(this) ? 1 : VF.getFixedValue();
 
   // If there is no start index the first lane will be free, since
   //   add i32 x, 0 -> i32 x
