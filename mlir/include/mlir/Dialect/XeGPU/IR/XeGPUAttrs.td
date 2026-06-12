@@ -956,6 +956,45 @@ def XeGPU_MemLayoutAttr : XeGPUAttr<"MemLayout", "mem_layout"> {
 
 }
 
+def XeGPU_CoalesceHintAttr : XeGPUAttr<"CoalesceHint", "coalesce_hint"> {
+  let summary = [{Per-op hint stamped by the coalesce-gather-scatter analysis.}];
+
+  let description = [{
+    `CoalesceHintAttr` is a discardable attribute attached by the
+    coalesce-gather-scatter analysis to `xegpu.load` / `xegpu.store` ops
+    whose offsets describe a coalescible access pattern. `factor` is the
+    number of contiguous elements grouped together along the innermost
+    (fastest-changing) dimension of the access.
+
+    The attribute is purely advisory: it records the analysis's decision
+    without committing to a layout. A consumer turns `factor` into a concrete
+    `xegpu.layout` (deriving the `lane_layout` / `lane_data` split from the
+    op's offsets inner extent and the chip's subgroup size) and removes the
+    hint. A consumer that decides not to act on the hint (for example, a
+    propagator that detects a conflict with an anchor-driven layout) should
+    likewise remove the attribute rather than leave it dangling.
+
+    Example:
+    ```mlir
+    %v = xegpu.load %ptr[%offsets], %mask
+            {xegpu.coalesce_hint = #xegpu.coalesce_hint<factor = 4>}
+            : i64, vector<64xindex>, vector<64xi1> -> vector<64xf32>
+    ```
+  }];
+
+  let parameters = (ins "IntegerAttr": $factor);
+
+  let builders = [
+    AttrBuilder<(ins "int64_t":$factor), [{
+      return $_get($_ctxt, IntegerAttr::get(IntegerType::get($_ctxt, 64),
+                                            factor));
+    }]>
+  ];
+
+  let assemblyFormat = "`<` `factor` `=` $factor `>`";
+  let genVerifyDecl = 1;
+}
+
 def AnchorLayoutInterface : OpInterface<"AnchorLayoutInterface"> {
   let cppNamespace = "::mlir::xegpu";
 
