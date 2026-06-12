@@ -34,7 +34,7 @@ define void @loop_contains_store_condition_load_has_single_user(ptr dereferencea
 ; CHECK-NEXT:      WIDEN ir<%data> = load vp<[[VP7]]>, vp<%uncountable.exit.mask>
 ; CHECK-NEXT:      WIDEN ir<%inc> = add nsw ir<%data>, ir<1>
 ; CHECK-NEXT:      vp<[[VP8:%[0-9]+]]> = vector-pointer ir<%st.addr>, ir<1>
-; CHECK-NEXT:      WIDEN store vp<[[VP8]]>, ir<%inc>, vp<%uncountable.exit.mask>
+; CHECK-NEXT:      WIDEN store vp<[[VP7]]>, ir<%inc>, vp<%uncountable.exit.mask>
 ; CHECK-NEXT:      EMIT vp<[[VP9:%[0-9]+]]> = any-of ir<%ee.cond>
 ; CHECK-NEXT:      EMIT vp<%index.next> = add nuw vp<[[VP3]]>, vp<[[VP1]]>
 ; CHECK-NEXT:      EMIT vp<[[VP10:%[0-9]+]]> = icmp eq vp<%index.next>, vp<[[VP2]]>
@@ -123,7 +123,7 @@ define void @loop_contains_store_after_uncountable_exit(ptr dereferenceable(40) 
 ; CHECK-NEXT:      WIDEN ir<%data> = load vp<[[VP7]]>, vp<%uncountable.exit.mask>
 ; CHECK-NEXT:      WIDEN ir<%inc> = add nsw ir<%data>, ir<1>
 ; CHECK-NEXT:      vp<[[VP8:%[0-9]+]]> = vector-pointer ir<%st.addr>, ir<1>
-; CHECK-NEXT:      WIDEN store vp<[[VP8]]>, ir<%inc>, vp<%uncountable.exit.mask>
+; CHECK-NEXT:      WIDEN store vp<[[VP7]]>, ir<%inc>, vp<%uncountable.exit.mask>
 ; CHECK-NEXT:      EMIT vp<[[VP9:%[0-9]+]]> = any-of ir<%ee.cond>
 ; CHECK-NEXT:      EMIT vp<%index.next> = add nuw vp<[[VP3]]>, vp<[[VP1]]>
 ; CHECK-NEXT:      EMIT vp<[[VP10:%[0-9]+]]> = icmp eq vp<%index.next>, vp<[[VP2]]>
@@ -208,7 +208,7 @@ define i16 @uncountable_exit_with_live_out(ptr dereferenceable(40) noalias %arra
 ; CHECK-NEXT:      WIDEN ir<%data> = load vp<[[VP7]]>, vp<%uncountable.exit.mask>
 ; CHECK-NEXT:      WIDEN ir<%inc> = add nsw ir<%data>, ir<1>
 ; CHECK-NEXT:      vp<[[VP8:%[0-9]+]]> = vector-pointer ir<%st.addr>, ir<1>
-; CHECK-NEXT:      WIDEN store vp<[[VP8]]>, ir<%inc>, vp<%uncountable.exit.mask>
+; CHECK-NEXT:      WIDEN store vp<[[VP7]]>, ir<%inc>, vp<%uncountable.exit.mask>
 ; CHECK-NEXT:      EMIT vp<[[VP9:%[0-9]+]]> = any-of ir<%ee.cond>
 ; CHECK-NEXT:      EMIT vp<%index.next> = add nuw vp<[[VP3]]>, vp<[[VP1]]>
 ; CHECK-NEXT:      EMIT vp<[[VP10:%[0-9]+]]> = icmp eq vp<%index.next>, vp<[[VP2]]>

@@ -737,7 +737,7 @@ define void @pred_cfg3(i32 %k, i32 %j) {
 ; CHECK-EMPTY:
 ; CHECK-NEXT:    <xVFxUF> pred.store: {
 ; CHECK-NEXT:      pred.store.entry:
-; CHECK-NEXT:        BRANCH-ON-MASK vp<[[VP11]]>
+; CHECK-NEXT:        BRANCH-ON-MASK vp<[[VP8]]>
 ; CHECK-NEXT:      Successor(s): pred.store.if, pred.store.continue
 ; CHECK-EMPTY:
 ; CHECK-NEXT:      pred.store.if:
