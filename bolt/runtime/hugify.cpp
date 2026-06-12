@@ -59,50 +59,48 @@ static void getKernelVersion(uint32_t *Val) {
   }
 }
 
-/// Check whether the kernel supports THP via corresponding sysfs entry.
-/// thp works only starting from 5.10
-static bool hasPagecacheTHPSupport() {
+/// Check whether the THP enabled via corresponding sysfs entry.
+static bool isThpEnabled() {
   char Buf[64];
+  bool ThpEnabled = false;
 
-  int FD = __open("/sys/kernel/mm/transparent_hugepage/enabled",
-                  0 /* O_RDONLY */, 0);
+  const int FD =
+      __open("/sys/kernel/mm/transparent_hugepage/enabled", O_RDONLY, 0);
   if (FD < 0)
-    return false;
+    return ThpEnabled;
 
   memset(Buf, 0, sizeof(Buf));
   const size_t Res = __read(FD, Buf, sizeof(Buf));
-  if (Res < 0)
-    return false;
+  if (Res > 0 && (strStr(Buf, "[always]") || strStr(Buf, "[madvise]")))
+    ThpEnabled = true;
 
-  if (!strStr(Buf, "[always]") && !strStr(Buf, "[madvise]")) {
-    DEBUG(report("[hugify] THP support is not enabled.\n");)
-    return false;
-  }
+  __close(FD);
 
+  return ThpEnabled;
+}
+
+/// Check whether the THP is supported for pagecache (read-only, non-shmem).
+/// The feature works only starting from 5.4
+static bool hasPagecacheTHPSupport() {
   struct KernelVersionTy {
-    uint32_t major;
-    uint32_t minor;
-    uint32_t release;
-  };
-
-  KernelVersionTy KernelVersion;
+    uint32_t major = 0;
+    uint32_t minor = 0;
+    uint32_t release = 0;
+  } KernelVersion;
 
   getKernelVersion((uint32_t *)&KernelVersion);
-  if (KernelVersion.major >= 6 ||
-      (KernelVersion.major == 5 && KernelVersion.minor >= 10))
-    return true;
 
-  return false;
+  return KernelVersion.major >= 6 ||
+         (KernelVersion.major == 5 && KernelVersion.minor >= 4);
 }
 
 static void hugifyForOldKernel(uint8_t *From, uint8_t *To) {
   const size_t Size = To - From;
 
-  uint8_t *Mem = reinterpret_cast<uint8_t *>(
-      __mmap(0, Size, 0x3 /* PROT_READ | PROT_WRITE */,
-             0x22 /* MAP_PRIVATE | MAP_ANONYMOUS */, -1, 0));
+  void *Mem = __mmap(0, Size, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-  if (Mem == ((void *)-1) /* MAP_FAILED */) {
+  if (isErrValue(Mem)) {
     char Msg[] = "[hugify] could not allocate memory for text move\n";
     reportError(Msg, sizeof(Msg));
   }
@@ -114,19 +112,19 @@ static void hugifyForOldKernel(uint8_t *From, uint8_t *To) {
   // Copy the hot code to a temporary location.
   memcpy(Mem, From, Size);
 
-  __prctl(41 /* PR_SET_THP_DISABLE */, 0, 0, 0, 0);
+  __prctl(PR_SET_THP_DISABLE, 0, 0, 0, 0);
   // Maps out the existing hot code.
-  if (__mmap(reinterpret_cast<uint64_t>(From), Size,
-             0x3 /* PROT_READ | PROT_WRITE */,
-             0x32 /* MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE */, -1,
-             0) == ((void *)-1) /*MAP_FAILED*/) {
+  const void *Addr = __mmap(reinterpret_cast<uint64_t>(From), Size,
+                            PROT_READ | PROT_WRITE | PROT_EXEC,
+                            MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  if (isErrValue(Addr)) {
     char Msg[] =
         "[hugify] failed to mmap memory for large page move terminating\n";
     reportError(Msg, sizeof(Msg));
   }
 
   // Mark the hot code page to be huge page.
-  if (__madvise(From, Size, 14 /* MADV_HUGEPAGE */) == -1) {
+  if (__madvise(From, Size, MADV_HUGEPAGE) < 0) {
     char Msg[] = "[hugify] setting MADV_HUGEPAGE is failed\n";
     reportError(Msg, sizeof(Msg));
   }
@@ -135,7 +133,7 @@ static void hugifyForOldKernel(uint8_t *From, uint8_t *To) {
   memcpy(From, Mem, Size);
 
   // Change permission back to read-only, ignore failure
-  __mprotect(From, Size, 0x5 /* PROT_READ | PROT_EXEC */);
+  __mprotect(From, Size, PROT_READ | PROT_EXEC);
 
   __munmap(Mem, Size);
 }
@@ -154,17 +152,24 @@ extern "C" void __bolt_hugify_self_impl() {
   DEBUG(reportNumber("[hugify] aligned huge page from: ", (uint64_t)From, 16);)
   DEBUG(reportNumber("[hugify] aligned huge page to: ", (uint64_t)To, 16);)
 
-  if (!hasPagecacheTHPSupport()) {
-    DEBUG(report(
-              "[hugify] workaround with memory alignment for kernel < 5.10\n");)
-    hugifyForOldKernel(From, To);
+  // MADV_COLLAPSE (since Linux 6.1) ignores [never] state
+  if (!isThpEnabled()) {
+    DEBUG(report("[hugify] THP support is not enabled.\n");)
     return;
   }
 
-  if (__madvise(From, (To - From), 14 /* MADV_HUGEPAGE */) == -1) {
-    char Msg[] = "[hugify] failed to allocate large page\n";
-    // TODO: allow user to control the failure behavior.
-    reportError(Msg, sizeof(Msg));
+  if (hasPagecacheTHPSupport()) {
+    DEBUG(report("[hugify] THP for pagecache is supported.\n");)
+    if (__madvise(From, (To - From), MADV_HUGEPAGE) < 0) {
+      // TODO: allow user to control the failure behavior.
+      char Msg[] = "[hugify] setting MADV_HUGEPAGE is failed\n";
+      reportError(Msg, sizeof(Msg));
+    }
+
+  } else {
+    DEBUG(report("[hugify] THP for pagecache is not supported. The "
+                 "copy-map-madvise approach is used\n");)
+    hugifyForOldKernel(From, To);
   }
 }
 
