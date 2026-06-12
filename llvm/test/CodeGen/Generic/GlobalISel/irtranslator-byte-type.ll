@@ -646,6 +646,90 @@ define ptr @bitcast_b64_to_p0(b64 %b) {
   ret ptr %r
 }
 
+; <2 x b32> is not an LLVM integer type, so lowering uses G_BITCAST to s64 then
+; G_INTTOPTR (case 2).
+define ptr @irtranslator_bitcast_v2b32_to_ptr(<2 x b32> %v) {
+  ; AARCH64-LABEL: name: irtranslator_bitcast_v2b32_to_ptr
+  ; AARCH64: bb.1 (%ir-block.0):
+  ; AARCH64-NEXT:   liveins: $d0
+  ; AARCH64-NEXT: {{  $}}
+  ; AARCH64-NEXT:   [[V:%[0-9]+]]:_(<2 x i32>) = COPY $d0
+  ; AARCH64-NEXT:   [[I:%[0-9]+]]:_(s64) = G_BITCAST [[V]](<2 x i32>)
+  ; AARCH64-NEXT:   [[P:%[0-9]+]]:_(p0) = G_INTTOPTR [[I]](s64)
+  ; AARCH64-NEXT:   $x0 = COPY [[P]](p0)
+  ; AARCH64-NEXT:   RET_ReallyLR implicit $x0
+  ;
+  ; AMDGPU-LABEL: name: irtranslator_bitcast_v2b32_to_ptr
+  ; AMDGPU: bb.1 (%ir-block.0):
+  ; AMDGPU-NEXT:   liveins: $vgpr0, $vgpr1
+  ; AMDGPU-NEXT: {{  $}}
+  ; AMDGPU-NEXT:   [[E0:%[0-9]+]]:_(s32) = COPY $vgpr0
+  ; AMDGPU-NEXT:   [[E1:%[0-9]+]]:_(s32) = COPY $vgpr1
+  ; AMDGPU-NEXT:   [[V:%[0-9]+]]:_(<2 x s32>) = G_BUILD_VECTOR [[E0]](s32), [[E1]](s32)
+  ; AMDGPU-NEXT:   [[I:%[0-9]+]]:_(s64) = G_BITCAST [[V]](<2 x s32>)
+  ; AMDGPU-NEXT:   [[P:%[0-9]+]]:_(p0) = G_INTTOPTR [[I]](s64)
+  ; AMDGPU-NEXT:   [[U0:%[0-9]+]]:_(s32), [[U1:%[0-9]+]]:_(s32) = G_UNMERGE_VALUES [[P]](p0)
+  ; AMDGPU-NEXT:   $vgpr0 = COPY [[U0]](s32)
+  ; AMDGPU-NEXT:   $vgpr1 = COPY [[U1]](s32)
+  ; AMDGPU-NEXT:   SI_RETURN implicit $vgpr0, implicit $vgpr1
+  ;
+  ; X86-LABEL: name: irtranslator_bitcast_v2b32_to_ptr
+  ; X86: bb.1 (%ir-block.0):
+  ; X86-NEXT:   liveins: $xmm0
+  ; X86-NEXT: {{  $}}
+  ; X86-NEXT:   [[WIDE:%[0-9]+]]:_(<4 x s32>) = COPY $xmm0
+  ; X86-NEXT:   [[V:%[0-9]+]]:_(<2 x s32>), {{%[0-9]+}}:_(<2 x s32>) = G_UNMERGE_VALUES [[WIDE]](<4 x s32>)
+  ; X86-NEXT:   [[I:%[0-9]+]]:_(s64) = G_BITCAST [[V]](<2 x s32>)
+  ; X86-NEXT:   [[P:%[0-9]+]]:_(p0) = G_INTTOPTR [[I]](s64)
+  ; X86-NEXT:   $rax = COPY [[P]](p0)
+  ; X86-NEXT:   RET 0, implicit $rax
+  %p = bitcast <2 x b32> %v to ptr
+  ret ptr %p
+}
+
+; Destination is a vector of bytes, not an LLVM integer type: G_PTRTOINT to
+; s64 then G_BITCAST.
+define <2 x b32> @irtranslator_bitcast_ptr_to_v2b32(ptr %p) {
+  ; AARCH64-LABEL: name: irtranslator_bitcast_ptr_to_v2b32
+  ; AARCH64: bb.1 (%ir-block.0):
+  ; AARCH64-NEXT:   liveins: $x0
+  ; AARCH64-NEXT: {{  $}}
+  ; AARCH64-NEXT:   [[P:%[0-9]+]]:_(p0) = COPY $x0
+  ; AARCH64-NEXT:   [[I:%[0-9]+]]:_(s64) = G_PTRTOINT [[P]](p0)
+  ; AARCH64-NEXT:   [[V:%[0-9]+]]:_(<2 x i32>) = G_BITCAST [[I]](s64)
+  ; AARCH64-NEXT:   $d0 = COPY [[V]](<2 x i32>)
+  ; AARCH64-NEXT:   RET_ReallyLR implicit $d0
+  ;
+  ; AMDGPU-LABEL: name: irtranslator_bitcast_ptr_to_v2b32
+  ; AMDGPU: bb.1 (%ir-block.0):
+  ; AMDGPU-NEXT:   liveins: $vgpr0, $vgpr1
+  ; AMDGPU-NEXT: {{  $}}
+  ; AMDGPU-NEXT:   [[E0:%[0-9]+]]:_(s32) = COPY $vgpr0
+  ; AMDGPU-NEXT:   [[E1:%[0-9]+]]:_(s32) = COPY $vgpr1
+  ; AMDGPU-NEXT:   [[P:%[0-9]+]]:_(p0) = G_MERGE_VALUES [[E0]](s32), [[E1]](s32)
+  ; AMDGPU-NEXT:   [[I:%[0-9]+]]:_(s64) = G_PTRTOINT [[P]](p0)
+  ; AMDGPU-NEXT:   [[V:%[0-9]+]]:_(<2 x s32>) = G_BITCAST [[I]](s64)
+  ; AMDGPU-NEXT:   [[U0:%[0-9]+]]:_(s32), [[U1:%[0-9]+]]:_(s32) = G_UNMERGE_VALUES [[V]](<2 x s32>)
+  ; AMDGPU-NEXT:   $vgpr0 = COPY [[U0]](s32)
+  ; AMDGPU-NEXT:   $vgpr1 = COPY [[U1]](s32)
+  ; AMDGPU-NEXT:   SI_RETURN implicit $vgpr0, implicit $vgpr1
+  ;
+  ; X86-LABEL: name: irtranslator_bitcast_ptr_to_v2b32
+  ; X86: bb.1 (%ir-block.0):
+  ; X86-NEXT:   liveins: $rdi
+  ; X86-NEXT: {{  $}}
+  ; X86-NEXT:   [[P:%[0-9]+]]:_(p0) = COPY $rdi
+  ; X86-NEXT:   [[I:%[0-9]+]]:_(s64) = G_PTRTOINT [[P]](p0)
+  ; X86-NEXT:   [[V:%[0-9]+]]:_(<2 x s32>) = G_BITCAST [[I]](s64)
+  ; X86-NEXT:   [[E0:%[0-9]+]]:_(s32), [[E1:%[0-9]+]]:_(s32) = G_UNMERGE_VALUES [[V]](<2 x s32>)
+  ; X86-NEXT:   [[Z:%[0-9]+]]:_(s32) = G_IMPLICIT_DEF
+  ; X86-NEXT:   [[WIDE:%[0-9]+]]:_(<4 x s32>) = G_BUILD_VECTOR [[E0]](s32), [[E1]](s32), [[Z]](s32), [[Z]](s32)
+  ; X86-NEXT:   $xmm0 = COPY [[WIDE]](<4 x s32>)
+  ; X86-NEXT:   RET 0, implicit $xmm0
+  %v = bitcast ptr %p to <2 x b32>
+  ret <2 x b32> %v
+}
+
 ;;
 ;; The "bytecast" surface: bitcast is the only IR cast that may produce or
 ;; consume a byte type. The cases below correspond to LangRef's

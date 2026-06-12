@@ -1585,6 +1585,8 @@ bool IRTranslator::translateBitCast(const User &U,
                                     MachineIRBuilder &MIRBuilder) {
   Type *SrcTy = U.getOperand(0)->getType();
   Type *DstTy = U.getType();
+  unsigned SrcTyBits = DL->getTypeSizeInBits(SrcTy);
+  unsigned DstTyBits = DL->getTypeSizeInBits(DstTy);
 
   // If we're bitcasting to the source type, we can reuse the source vreg.
   if (getLLTForType(*SrcTy, *DL) == getLLTForType(*DstTy, *DL)) {
@@ -1596,16 +1598,71 @@ bool IRTranslator::translateBitCast(const User &U,
     return translateCopy(U, *U.getOperand(0), MIRBuilder);
   }
 
-  // Only the scalar byte<->ptr crossing is redirected to G_INTTOPTR/G_PTRTOINT,
-  // which is the well-typed MIR shape for that boundary. Vector byte<->ptr
-  // (e.g. <N x b32> -> ptr produced by mixed-type load coalescing) and other
-  // legacy ptr/non-ptr IR bitcasts (AMDGPU iN<->p3 kernarg packing, etc.)
-  // keep their historical G_BITCAST lowering — G_INTTOPTR has no vector-src
-  // -> scalar-ptr form, and downstream passes already handle G_BITCAST.
-  if (DstTy->isPointerTy() && SrcTy->isByteTy())
-    return translateCast(TargetOpcode::G_INTTOPTR, U, MIRBuilder);
-  if (SrcTy->isPointerTy() && DstTy->isByteTy())
-    return translateCast(TargetOpcode::G_PTRTOINT, U, MIRBuilder);
+  // Emit G_INTTOPTR
+  if (!SrcTy->isPointerTy() && DstTy->isPointerTy()) {
+    if (DstTyBits == SrcTyBits) {
+      if (!mayTranslateUserTypes(U))
+        return false;
+
+      uint32_t Flags = 0;
+      if (const Instruction *I = dyn_cast<Instruction>(&U))
+        Flags = MachineInstr::copyFlagsFromInstruction(*I);
+
+      Register SrcReg = getOrCreateVReg(*U.getOperand(0));
+      Register DstReg = getOrCreateVReg(U);
+      MachineRegisterInfo &MRI = *MIRBuilder.getMRI();
+      LLT IntLLT = LLT::scalar(DstTyBits);
+      LLT SrcLLT = MRI.getType(SrcReg);
+
+      // Prefer IR integer check; also accept when the operand is already the
+      // pointer-sized scalar LLT (e.g. i64 value lowered to s64) so we never
+      // emit G_BITCAST sN -> sN, which MachineVerifier rejects.
+      if ((SrcTy->isIntegerTy() &&
+           cast<IntegerType>(SrcTy)->getBitWidth() == DstTyBits) ||
+          SrcLLT == IntLLT) {
+        MIRBuilder.buildInstr(TargetOpcode::G_INTTOPTR, {DstReg}, {SrcReg},
+                              Flags);
+        return true;
+      }
+
+      auto IntVal = MIRBuilder.buildBitcast(IntLLT, SrcReg);
+      MIRBuilder.buildInstr(TargetOpcode::G_INTTOPTR, {DstReg},
+                            {IntVal.getReg(0)}, Flags);
+      return true;
+    }
+  }
+
+  // Emit G_PTRTOINT for the Ptr -> Int case where the source
+  // and destination are equally sized. Otherwise, emit a G_BITCAST.
+  if (SrcTy->isPointerTy() && !DstTy->isPointerTy()) {
+    if (SrcTyBits == DstTyBits) {
+      if (!mayTranslateUserTypes(U))
+        return false;
+
+      uint32_t Flags = 0;
+      if (const Instruction *I = dyn_cast<Instruction>(&U))
+        Flags = MachineInstr::copyFlagsFromInstruction(*I);
+
+      Register SrcReg = getOrCreateVReg(*U.getOperand(0));
+      Register DstReg = getOrCreateVReg(U);
+      MachineRegisterInfo &MRI = *MIRBuilder.getMRI();
+      LLT IntLLT = LLT::scalar(SrcTyBits);
+      LLT DstLLT = MRI.getType(DstReg);
+
+      if ((DstTy->isIntegerTy() &&
+           cast<IntegerType>(DstTy)->getBitWidth() == SrcTyBits) ||
+          DstLLT == IntLLT) {
+        MIRBuilder.buildInstr(TargetOpcode::G_PTRTOINT, {DstReg}, {SrcReg},
+                              Flags);
+        return true;
+      }
+
+      auto IntVal = MIRBuilder.buildPtrToInt(IntLLT, SrcReg);
+      MIRBuilder.buildInstr(TargetOpcode::G_BITCAST, {DstReg},
+                            {IntVal.getReg(0)}, Flags);
+      return true;
+    }
+  }
 
   return translateCast(TargetOpcode::G_BITCAST, U, MIRBuilder);
 }
