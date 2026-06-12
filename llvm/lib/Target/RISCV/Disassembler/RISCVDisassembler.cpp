@@ -217,6 +217,21 @@ static DecodeStatus DecodeVectorRegisterClass(MCInst &Inst, uint32_t RegNo,
   return MCDisassembler::Success;
 }
 
+constexpr auto DecodeVRRegisterClass = DecodeSimpleRegisterClass<RISCV::V0, 32>;
+constexpr auto DecodeVRM2RegisterClass =
+    DecodeVectorRegisterClass<RISCV::VRM2RegClassID, 32, 2>;
+
+constexpr bool PredV0V1Only(uint32_t RegNo) { return RegNo < 2; }
+constexpr bool PredNoV0V1(uint32_t RegNo) { return RegNo >= 2; }
+constexpr bool PredVM2NOV0(uint32_t RegNo) { return RegNo != 0; }
+
+constexpr auto DecodeVRV0V1RegisterClass =
+    DecodeFilteredRegisterClass<DecodeVRRegisterClass, PredV0V1Only>;
+constexpr auto DecodeVRNoV0V1RegisterClass =
+    DecodeFilteredRegisterClass<DecodeVRRegisterClass, PredNoV0V1>;
+constexpr auto DecodeVRM2NoV0RegisterClass =
+    DecodeFilteredRegisterClass<DecodeVRM2RegisterClass, PredVM2NOV0>;
+
 static DecodeStatus DecodeTRM2RegisterClass(MCInst &Inst, uint32_t RegNo,
                                             uint64_t Address,
                                             const MCDisassembler *Decoder) {
@@ -531,7 +546,8 @@ static constexpr FeatureBitset XAndesGroup = {
     RISCV::FeatureVendorXAndesVSIntLoad, RISCV::FeatureVendorXAndesVPackFPH,
     RISCV::FeatureVendorXAndesVDot};
 
-static constexpr FeatureBitset XSMTGroup = {RISCV::FeatureVendorXSMTVDot};
+static constexpr FeatureBitset XSMTGroup = {RISCV::FeatureVendorXSMTVDot,
+                                            RISCV::FeatureVendorXSMTVDotII};
 
 static constexpr FeatureBitset XAIFGroup = {RISCV::FeatureVendorXAIFET};
 
