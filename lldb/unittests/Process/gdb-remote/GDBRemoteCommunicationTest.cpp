@@ -10,6 +10,9 @@
 #include "lldb/Host/ConnectionFileDescriptor.h"
 #include "llvm/Testing/Support/Error.h"
 
+#include <chrono>
+#include <thread>
+
 using namespace lldb_private::process_gdb_remote;
 using namespace lldb_private;
 using namespace lldb;
@@ -73,6 +76,56 @@ TEST_F(GDBRemoteCommunicationTest, ReadPacket) {
     ASSERT_EQ(Test.Payload, response.GetStringRef());
     ASSERT_EQ(PacketResult::Success, server.GetAck());
   }
+}
+
+// Test that async notification packets received while waiting for a response
+// are silently dropped and that we keep looking for the actual response.
+// OpenOCD sends a "%oocd_keepalive:XX#cc" notification during long memory
+// operations; like GDB (since 7.0), LLDB must ignore it rather than mistake it
+// for the response. See https://github.com/llvm/llvm-project/issues/197944.
+TEST_F(GDBRemoteCommunicationTest, ReadPacketIgnoresNotifications) {
+  StringExtractorGDBRemote response;
+
+  // A single notification ahead of the response.
+  ASSERT_TRUE(Write("%oocd_keepalive:00#54$OK#9a"));
+  ASSERT_EQ(PacketResult::Success, client.ReadPacket(response));
+  EXPECT_EQ("OK", response.GetStringRef());
+
+  // Several notifications ahead of the response.
+  ASSERT_TRUE(Write("%oocd_keepalive:01#55%oocd_keepalive:02#56$OK#9a"));
+  ASSERT_EQ(PacketResult::Success, client.ReadPacket(response));
+  EXPECT_EQ("OK", response.GetStringRef());
+
+  // A notification with no response following it is dropped, and the read
+  // fails (times out) rather than returning the notification.
+  ASSERT_TRUE(Write("%oocd_keepalive:03#57"));
+  EXPECT_EQ(PacketResult::ErrorReplyTimeout, client.ReadPacket(response));
+}
+
+// Test the case where the notification and the actual response do NOT arrive
+// together in a single read: the notification is sent first, and the response
+// follows only after the client has already consumed the notification and gone
+// back to waiting. The notification must still be dropped and the client must
+// keep reading until the real response arrives, rather than giving up once the
+// receive buffer briefly drains.
+TEST_F(GDBRemoteCommunicationTest, ReadPacketIgnoresNotificationsAcrossReads) {
+  StringExtractorGDBRemote response;
+
+  // Send the notification on its own. The client should read it, drop it, and
+  // block on the next read with the buffer empty.
+  ASSERT_TRUE(Write("%oocd_keepalive:00#54"));
+
+  // Send the response from another thread after a short delay, so it lands in
+  // a separate read once the client is already waiting again.
+  std::thread responder([this] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    Write("$OK#9a");
+  });
+
+  EXPECT_EQ(PacketResult::Success, client.ReadPacket(response));
+  EXPECT_EQ("OK", response.GetStringRef());
+
+  responder.join();
 }
 
 // Test that packets with incorrect RLE sequences do not cause a crash and
