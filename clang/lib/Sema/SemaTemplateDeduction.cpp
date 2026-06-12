@@ -1902,8 +1902,16 @@ static TemplateDeductionResult DeduceTemplateArgumentsByTypeMatch(
     //     _Atomic T   [extension]
     case Type::Atomic: {
       const auto *PA = P->castAs<AtomicType>(), *AA = A->getAs<AtomicType>();
-      if (!AA)
-        return TemplateDeductionResult::NonDeducedMismatch;
+      if (!AA) {
+        if (!P->getContainedAutoType())
+          return TemplateDeductionResult::NonDeducedMismatch;
+        // If it contains an auto type, we can try to deduce from the value type
+        // of the atomic type.
+        return DeduceTemplateArgumentsByTypeMatch(
+            S, TemplateParams, PA->getValueType(), A, Info, Deduced, TDF,
+            degradeCallPartialOrderingKind(POK),
+            /*DeducedFromArrayBound=*/false, HasDeducedAnyParam);
+      }
       return DeduceTemplateArgumentsByTypeMatch(
           S, TemplateParams, PA->getValueType(), AA->getValueType(), Info,
           Deduced, TDF, degradeCallPartialOrderingKind(POK),
@@ -3742,7 +3750,12 @@ CheckOriginalCallArgDeduction(Sema &S, TemplateDeductionInfo &Info,
   QualType OriginalParamType = OriginalArg.OriginalParamType;
 
   // Check for type equality (top-level cv-qualifiers are ignored).
-  if (Context.hasSameUnqualifiedType(A, DeducedA))
+  // If it's an atomic type, we need to check contained value type as well since
+  // it can be an auto type.
+  if (Context.hasSameUnqualifiedType(A, DeducedA) ||
+      (DeducedA->isAtomicType() &&
+       Context.hasSameUnqualifiedType(
+           A, cast<AtomicType>(DeducedA)->getValueType())))
     return TemplateDeductionResult::Success;
 
   // Strip off references on the argument types; they aren't needed for
