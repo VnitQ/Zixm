@@ -805,3 +805,64 @@ end:
 }
 
 declare i32 @llvm.umin.i32(i32, i32)
+declare i64 @llvm.umin.i64(i64, i64)
+declare i64 @llvm.umax.i64(i64, i64)
+
+define i64 @select_npos_umin(i64 %pos, i64 %len) {
+; CHECK-LABEL: @select_npos_umin(
+; CHECK-NEXT:    [[CLAMPED:%.*]] = call i64 @llvm.umin.i64(i64 [[POS:%.*]], i64 [[LEN:%.*]])
+; CHECK-NEXT:    ret i64 [[CLAMPED]]
+;
+  %is_npos = icmp eq i64 %pos, -1
+  %clamped = call i64 @llvm.umin.i64(i64 %pos, i64 %len)
+  %out = select i1 %is_npos, i64 %len, i64 %clamped
+  ret i64 %out
+}
+
+define i64 @select_not_npos_umin(i64 %pos, i64 %len) {
+; CHECK-LABEL: @select_not_npos_umin(
+; CHECK-NEXT:    [[CLAMPED:%.*]] = call i64 @llvm.umin.i64(i64 [[POS:%.*]], i64 [[LEN:%.*]])
+; CHECK-NEXT:    ret i64 [[CLAMPED]]
+;
+  %is_not_npos = icmp ne i64 %pos, -1
+  %clamped = call i64 @llvm.umin.i64(i64 %pos, i64 %len)
+  %out = select i1 %is_not_npos, i64 %clamped, i64 %len
+  ret i64 %out
+}
+
+define i64 @select_npos_umin_commuted(i64 %pos, i64 %len) {
+; CHECK-LABEL: @select_npos_umin_commuted(
+; CHECK-NEXT:    [[CLAMPED:%.*]] = call i64 @llvm.umin.i64(i64 [[LEN:%.*]], i64 [[POS:%.*]])
+; CHECK-NEXT:    ret i64 [[CLAMPED]]
+;
+  %is_npos = icmp eq i64 %pos, -1
+  %clamped = call i64 @llvm.umin.i64(i64 %len, i64 %pos)
+  %out = select i1 %is_npos, i64 %len, i64 %clamped
+  ret i64 %out
+}
+
+define i64 @select_npos_umax_negative(i64 %pos, i64 %len) {
+; CHECK-LABEL: @select_npos_umax_negative(
+; CHECK-NEXT:    [[IS_NPOS:%.*]] = icmp eq i64 [[POS:%.*]], -1
+; CHECK-NEXT:    [[CLAMPED:%.*]] = call i64 @llvm.umax.i64(i64 [[POS]], i64 [[LEN:%.*]])
+; CHECK-NEXT:    [[OUT:%.*]] = select i1 [[IS_NPOS]], i64 [[LEN]], i64 [[CLAMPED]]
+; CHECK-NEXT:    ret i64 [[OUT]]
+;
+  %is_npos = icmp eq i64 %pos, -1
+  %clamped = call i64 @llvm.umax.i64(i64 %pos, i64 %len)
+  %out = select i1 %is_npos, i64 %len, i64 %clamped
+  ret i64 %out
+}
+
+define i64 @select_npos_wrong_bound_negative(i64 %pos, i64 %len, i64 %other) {
+; CHECK-LABEL: @select_npos_wrong_bound_negative(
+; CHECK-NEXT:    [[IS_NPOS:%.*]] = icmp eq i64 [[POS:%.*]], -1
+; CHECK-NEXT:    [[CLAMPED:%.*]] = call i64 @llvm.umin.i64(i64 [[POS]], i64 [[LEN:%.*]])
+; CHECK-NEXT:    [[OUT:%.*]] = select i1 [[IS_NPOS]], i64 [[OTHER:%.*]], i64 [[CLAMPED]]
+; CHECK-NEXT:    ret i64 [[OUT]]
+;
+  %is_npos = icmp eq i64 %pos, -1
+  %clamped = call i64 @llvm.umin.i64(i64 %pos, i64 %len)
+  %out = select i1 %is_npos, i64 %other, i64 %clamped
+  ret i64 %out
+}

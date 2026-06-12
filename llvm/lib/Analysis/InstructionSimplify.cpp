@@ -4526,6 +4526,29 @@ static Value *simplifyWithOpsReplaced(Value *V,
 
         return ConstantInt::get(I->getType(), 0);
       }
+
+      // umin(-1, x) -> x
+      // umin(x, -1) -> x
+      if (auto *MMI = dyn_cast<MinMaxIntrinsic>(II)) {
+        if (MMI->getIntrinsicID() == Intrinsic::umin) {
+          Value *Result = nullptr;
+          if (match(NewOps[0], m_AllOnes()))
+            Result = NewOps[1];
+          else if (match(NewOps[1], m_AllOnes()))
+            Result = NewOps[0];
+
+          if (Result) {
+            if (II->hasPoisonGeneratingAnnotations()) {
+              if (!DropFlags)
+                return nullptr;
+
+              DropFlags->push_back(II);
+            }
+
+            return Result;
+          }
+        }
+      }
     }
 
     if (isa<GetElementPtrInst>(I)) {
