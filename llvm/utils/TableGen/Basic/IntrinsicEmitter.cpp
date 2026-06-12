@@ -73,6 +73,8 @@ public:
   void EmitAttributes(const CodeGenIntrinsicTable &Ints, raw_ostream &OS);
   void EmitPrettyPrintArguments(const CodeGenIntrinsicTable &Ints,
                                 raw_ostream &OS);
+  void EmitDefaultArgValuesTable(const CodeGenIntrinsicTable &Ints,
+                                 raw_ostream &OS);
   void EmitIntrinsicToBuiltinMap(const CodeGenIntrinsicTable &Ints,
                                  bool IsClang, raw_ostream &OS);
 };
@@ -128,6 +130,9 @@ void IntrinsicEmitter::run(raw_ostream &OS, bool Enums) {
 
     // Emit Pretty Print attribute.
     EmitPrettyPrintArguments(Ints, OS);
+
+    // Emit the default-argument values table and lookup function.
+    EmitDefaultArgValuesTable(Ints, OS);
 
     // Emit code to translate Clang builtins into LLVM intrinsics.
     EmitIntrinsicToBuiltinMap(Ints, true, OS);
@@ -875,6 +880,99 @@ void Intrinsic::printImmArg(ID IID, unsigned ArgIdx, raw_ostream &OS, const Cons
     break;
   }
 })";
+}
+
+void IntrinsicEmitter::EmitDefaultArgValuesTable(
+    const CodeGenIntrinsicTable &Ints, raw_ostream &OS) {
+  // Build the per-intrinsic default-value sequences:
+  //   [Header = (NumDefaults << 32) | FirstDefault, val0, val1, ...]
+  // Each value is the int64_t default for one parameter, stored as a
+  // uint64_t bit pattern (sign is preserved via reinterpret).
+  //
+  // Intrinsics with no defaults share a single sentinel sequence {0},
+  // which decodes to Header = 0 → NumDefaults = 0 → empty defaults.
+  // SequenceToOffsetTable deduplicates identical sequences.
+
+  using Sequence = std::vector<uint64_t>;
+
+  SequenceToOffsetTable<Sequence> Table;
+  std::vector<Sequence> PerIntrinsic(Ints.size());
+
+  // Sentinel "no defaults" sequence. Registered so every intrinsic without
+  // defaults has a valid offset to point at. The actual offset is whatever
+  // SequenceToOffsetTable assigns after suffix-dedup (not necessarily 0).
+  Sequence Sentinel = {0ULL};
+  Table.add(Sentinel);
+
+  for (size_t i = 0; i < Ints.size(); ++i) {
+    const CodeGenIntrinsic &Int = Ints[i];
+    if (Int.ParamDefaultValues.empty()) {
+      PerIntrinsic[i] = Sentinel;
+      continue;
+    }
+
+    // Find the first parameter with a default.
+    unsigned FirstDefault = 0;
+    for (size_t j = 0; j < Int.ParamDefaultValues.size(); ++j) {
+      if (Int.ParamDefaultValues[j].has_value()) {
+        FirstDefault = j;
+        break;
+      }
+    }
+    unsigned NumDefaults =
+        static_cast<unsigned>(Int.ParamDefaultValues.size()) - FirstDefault;
+
+    Sequence Seq;
+    Seq.reserve(NumDefaults + 1);
+    uint64_t Header = (static_cast<uint64_t>(NumDefaults) << 32) | FirstDefault;
+    Seq.push_back(Header);
+    for (size_t j = FirstDefault; j < Int.ParamDefaultValues.size(); ++j) {
+      assert(Int.ParamDefaultValues[j].has_value() &&
+             "Default block must be contiguous");
+      Seq.push_back(static_cast<uint64_t>(*Int.ParamDefaultValues[j]));
+    }
+    Table.add(Seq);
+    PerIntrinsic[i] = std::move(Seq);
+  }
+
+  Table.layout();
+
+  OS << "#ifdef GET_INTRINSIC_DEFAULT_ARG_VALUES\n";
+
+  // Emit the deduplicated flat values table.
+  OS << "static const uint64_t DefaultArgValuesTable[] = {\n";
+  Table.emit(OS, [](raw_ostream &OS, uint64_t Val) {
+    OS << "  0x" << Twine::utohexstr(Val) << "ULL";
+  });
+  OS << "};\n\n";
+
+  // Emit the per-intrinsic offset table. Entry #0 is for the invalid
+  // Intrinsic::not_intrinsic (IID 0) and must point to the sentinel
+  // (which decodes to "no defaults"). Real intrinsics follow.
+  OS << "static const uint32_t DefaultArgValuesTableOffset[] = {\n";
+  OS << "  " << Table.get(Sentinel) << ", // not_intrinsic\n";
+  for (size_t i = 0; i < Ints.size(); ++i)
+    OS << "  " << Table.get(PerIntrinsic[i]) << ",\n";
+  OS << "};\n\n";
+
+  // Emit the lookup function body.
+  OS << R"(
+std::pair<unsigned, ArrayRef<int64_t>>
+Intrinsic::getAllDefaultArgValues(ID IID) {
+  uint32_t Offset = DefaultArgValuesTableOffset[IID];
+  uint64_t Header = DefaultArgValuesTable[Offset];
+  uint32_t FirstDefault = Header & 0xFFFFFFFFu;
+  uint32_t NumDefaults = (Header >> 32) & 0xFFFFFFFFu;
+  if (NumDefaults == 0)
+    return {0, {}};
+  return {FirstDefault,
+          ArrayRef<int64_t>(reinterpret_cast<const int64_t *>(
+                                &DefaultArgValuesTable[Offset + 1]),
+                            NumDefaults)};
+}
+)";
+
+  OS << "#endif // GET_INTRINSIC_DEFAULT_ARG_VALUES\n";
 }
 
 void IntrinsicEmitter::EmitIntrinsicToBuiltinMap(
