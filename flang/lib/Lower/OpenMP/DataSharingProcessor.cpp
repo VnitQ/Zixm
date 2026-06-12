@@ -273,10 +273,21 @@ void DataSharingProcessor::collectSymbolsForPrivatization() {
                                  explicitlyPrivatizedSymbols);
     } else if (const auto &lastPrivateClause =
                    std::get_if<omp::clause::Lastprivate>(&clause.u)) {
-      lastprivateModifierNotSupported(*lastPrivateClause,
-                                      converter.getCurrentLocation());
+      auto &modifier = std::get<
+          std::optional<omp::clause::Lastprivate::LastprivateModifier>>(
+          lastPrivateClause->t);
+
       const ObjectList &objects = std::get<ObjectList>(lastPrivateClause->t);
-      collectOmpObjectListSymbol(objects, explicitlyPrivatizedSymbols);
+      if (modifier) {
+        if (*modifier ==
+            omp::clause::Lastprivate::LastprivateModifier::Conditional) {
+          collectOmpObjectListSymbol(objects, conditionalLastPrivatizedSymbols);
+        } else {
+          llvm_unreachable("unsupported lastprivate modifier");
+        }
+      } else {
+        collectOmpObjectListSymbol(objects, explicitlyPrivatizedSymbols);
+      }
     }
   }
 
