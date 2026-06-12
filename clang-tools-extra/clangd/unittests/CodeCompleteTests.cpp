@@ -4372,6 +4372,7 @@ TEST(AllowImplicitCompletion, All) {
       "foo.^bar",
       "foo->^bar",
       "foo::^bar",
+      "std::vector<std::vector<^>>",
       "  #  include <^foo.h>",
       "#import <foo/^bar.h>",
       "#include_next \"^",
@@ -4384,6 +4385,7 @@ TEST(AllowImplicitCompletion, All) {
       "#include \"foo.h\"^",
       "#error <^",
       "#<^",
+      "a <^b",
   };
   for (const char *Test : Yes) {
     llvm::Annotations A(Test);
