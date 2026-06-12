@@ -4855,6 +4855,13 @@ def OMPAssume : InheritableAttr {
   let Args = [StringArgument<"Assumption">];
 }
 
+def OMPInvariantPredicateBound : StmtAttr {
+  let Spellings = [];
+  let SemaHandler = 0;
+  let Subjects = SubjectList<[Stmt], ErrorDiag>;
+  let Documentation = [InternalOnly];
+}
+
 def InternalLinkage : InheritableAttr {
   let Spellings = [Clang<"internal_linkage">];
   let Subjects = SubjectList<[Var, Function, CXXRecord]>;
