@@ -3407,7 +3407,11 @@ bool isArgPassedInSGPR(const Argument *A) {
            A->hasAttribute(Attribute::ByVal);
   default:
     // TODO: treat i1 as divergent?
-    return A->hasAttribute(Attribute::InReg);
+    // sret/byval pointers are a constant offset from the wave-uniform stack
+    // pointer, so they are uniform and passed in SGPRs (see CC_AMDGPU_Func).
+    return A->hasAttribute(Attribute::InReg) ||
+           A->hasAttribute(Attribute::StructRet) ||
+           A->hasAttribute(Attribute::ByVal);
   }
 }
 
@@ -3433,7 +3437,11 @@ bool isArgPassedInSGPR(const CallBase *CB, unsigned ArgNo) {
     return CB->paramHasAttr(ArgNo, Attribute::InReg) ||
            CB->paramHasAttr(ArgNo, Attribute::ByVal);
   default:
-    return CB->paramHasAttr(ArgNo, Attribute::InReg);
+    // sret/byval pointers are a constant offset from the wave-uniform stack
+    // pointer, so they are uniform and passed in SGPRs (see CC_AMDGPU_Func).
+    return CB->paramHasAttr(ArgNo, Attribute::InReg) ||
+           CB->paramHasAttr(ArgNo, Attribute::StructRet) ||
+           CB->paramHasAttr(ArgNo, Attribute::ByVal);
   }
 }
 
