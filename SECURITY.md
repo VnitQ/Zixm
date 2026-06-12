@@ -12,3 +12,4 @@ valuable to report [as Issues](https://github.com/llvm/llvm-project/issues),
 but aren't always seen as security vulnerabilities. Please see
 [our documentation](https://llvm.org/docs/Security.html#what-is-considered-a-security-issue)
 for a more precise definition of a security issue in this repository.
+🚀
