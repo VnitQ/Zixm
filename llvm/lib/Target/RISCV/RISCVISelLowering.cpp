@@ -1923,7 +1923,7 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
   setTargetDAGCombine({ISD::INTRINSIC_VOID, ISD::INTRINSIC_W_CHAIN,
                        ISD::INTRINSIC_WO_CHAIN, ISD::ADD, ISD::SUB, ISD::MUL,
                        ISD::AND, ISD::OR, ISD::XOR, ISD::SETCC, ISD::SELECT,
-                       ISD::SRA});
+                       ISD::SRA, ISD::SHL});
   setTargetDAGCombine(ISD::SIGN_EXTEND_INREG);
 
   if (Subtarget.hasStdExtFOrZfinx())
@@ -1952,7 +1952,6 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
                          ISD::VP_GATHER,
                          ISD::VP_SCATTER,
                          ISD::SRL,
-                         ISD::SHL,
                          ISD::STORE,
                          ISD::SPLAT_VECTOR,
                          ISD::BUILD_VECTOR,
@@ -21261,6 +21260,31 @@ static SDValue performSHLCombine(SDNode *N,
   if (SDValue V = combineOp_VLToVWOp_VL(N, DCI, Subtarget))
     return V;
 
+  SelectionDAG &DAG = DCI.DAG;
+
+  // Reverse the generic fold: select Cond, 0, Pow2 -> (zext (!Cond)) <<
+  // log2(Pow2) back to select Cond, 0, Pow2, because the select lowering
+  // produces addi -1; andi Pow2 which is preferable to xori 1; slli C.
+  //
+  // After legalization, the zext+xor pattern becomes:
+  //   shl (xor (bool), 1), C
+  if (DCI.isAfterLegalizeDAG()) {
+    using namespace SDPatternMatch;
+    EVT VT = N->getValueType(0);
+    SDValue X;
+    uint64_t ShAmtVal;
+    if (!VT.isVector() &&
+        sd_match(N, m_Shl(m_OneUse(m_Xor(m_Value(X), m_One())),
+                          m_ConstInt(ShAmtVal)))) {
+      SDLoc DL(N);
+      if (DAG.computeKnownBits(X).countMaxActiveBits() <= 1) {
+        APInt Pow2 = APInt::getOneBitSet(VT.getSizeInBits(), ShAmtVal);
+        return DAG.getNode(ISD::SELECT, DL, VT, X, DAG.getConstant(0, DL, VT),
+                           DAG.getConstant(Pow2, DL, VT));
+      }
+    }
+  }
+
   // (shl (sext x), C) -> (vwmulsu x, 1u << C)
   // (shl (zext x), C) -> (vwmulu  x, 1u << C)
 
@@ -21310,7 +21334,6 @@ static SDValue performSHLCombine(SDNode *N,
   if (NarrowBits * 2 != VT.getScalarSizeInBits())
     return SDValue();
 
-  SelectionDAG &DAG = DCI.DAG;
   SDLoc DL(N);
   SDValue Passthru, Mask, VL;
   switch (N->getOpcode()) {
