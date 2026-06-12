@@ -1029,6 +1029,12 @@ Sanitizers
   requires rules to match canonicalized paths (without leading ``./``).
 
 
+- Sanitizer Special Case Lists (``-fsanitize-ignorelist``) and warning
+  suppression mappings (``--warning-suppression-mappings``) now recognize version
+  4 of the Special Case List format (indicated by ``#!special-case-list-v4``).
+  On Windows hosts, path matching is slash-agnostic (both forward slashes (``/``)
+  and backslashes (``\``) match either path separator in both patterns and paths).
+
 Python Binding Changes
 ----------------------
 - Add deprecation warnings to ``CompletionChunk.isKind...`` methods.
