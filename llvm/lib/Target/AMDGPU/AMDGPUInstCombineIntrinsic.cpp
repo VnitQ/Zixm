@@ -405,16 +405,22 @@ bool GCNTTIImpl::canSimplifyLegacyMulToMul(const Instruction &I,
   // cases then we can use a normal multiply instead.
   // TODO: Create and use isKnownFiniteNonZero instead of just matching
   // constants here.
-  if (match(Op0, PatternMatch::m_FiniteNonZero()) ||
-      match(Op1, PatternMatch::m_FiniteNonZero())) {
-    // One operand is not zero or infinity or NaN.
-    return true;
-  }
-
+  bool Op0FiniteNonZero = match(Op0, PatternMatch::m_FiniteNonZero());
+  bool Op1FiniteNonZero = match(Op1, PatternMatch::m_FiniteNonZero());
   SimplifyQuery SQ = IC.getSimplifyQuery().getWithInstruction(&I);
-  if (isKnownNeverInfOrNaN(Op0, SQ) && isKnownNeverInfOrNaN(Op1, SQ)) {
-    // Neither operand is infinity or NaN.
-    return true;
+  if (I.hasNoSignedZeros()) {
+    // With no signed zero (nsz) flag, it's safe to use mul instead of legacy
+    // mul if one of the two operands is not zero or infinity or NaN.
+    if (Op0FiniteNonZero || Op1FiniteNonZero)
+      return true;
+    // Otherwise, we can fold if neither operand is infinity or NaN.
+    if (isKnownNeverInfOrNaN(Op0, SQ) && isKnownNeverInfOrNaN(Op1, SQ))
+      return true;
+  } else {
+    // Without nsz, only fold if both operands are known finite and non-zero so
+    // the legacy zero clause can never fire.
+    if (Op0FiniteNonZero && Op1FiniteNonZero)
+      return true;
   }
   return false;
 }
