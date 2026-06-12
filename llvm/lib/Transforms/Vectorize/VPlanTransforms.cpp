@@ -487,7 +487,7 @@ static bool mergeReplicateRegionsIntoSuccessors(VPlan &Plan) {
       });
 
       // Remove phi recipes that are unused after merging the regions.
-      if (Phi1ToMove.getVPSingleValue()->getNumUsers() == 0) {
+      if (Phi1ToMove.getVPSingleValue()->hasNoUsers()) {
         Phi1ToMove.eraseFromParent();
         continue;
       }
@@ -543,7 +543,7 @@ static VPRegionBlock *createReplicateRegion(VPReplicateRecipe *PredRecipe,
   VPBlockUtils::insertTwoBlocksAfter(Pred, Exiting, Entry);
   VPBlockUtils::connectBlocks(Pred, Exiting);
 
-  if (PredRecipe->getNumUsers() != 0) {
+  if (PredRecipe->hasUsers()) {
     auto *PHIRecipe = new VPPredInstPHIRecipe(RecipeWithoutMask,
                                               RecipeWithoutMask->getDebugLoc());
     Exiting->appendRecipe(PHIRecipe);
@@ -797,8 +797,7 @@ static bool isDeadRecipe(VPRecipeBase &R) {
     return false;
 
   // Recipe is dead if no user keeps the recipe alive.
-  return all_of(R.definedValues(),
-                [](VPValue *V) { return V->getNumUsers() == 0; });
+  return all_of(R.definedValues(), [](VPValue *V) { return V->hasNoUsers(); });
 }
 
 void VPlanTransforms::removeDeadRecipes(VPlan &Plan) {
@@ -889,7 +888,7 @@ static void legalizeAndOptimizeInductions(VPlan &Plan) {
       auto *RepR = dyn_cast<VPReplicateRecipe>(U);
       // Skip recipes that shouldn't be narrowed.
       if (!Def || !isa<VPReplicateRecipe, VPWidenRecipe>(Def) ||
-          Def->getNumUsers() == 0 || !Def->getUnderlyingValue() ||
+          Def->hasNoUsers() || !Def->getUnderlyingValue() ||
           (RepR && (RepR->isSingleScalar() || RepR->isPredicated())))
         continue;
 
@@ -2032,7 +2031,7 @@ static void simplifyBlends(VPlan &Plan) {
         // TODO: Find the most expensive mask that can be deadcoded, or a mask
         // that's used by multiple blends where it can be removed from them all.
         VPValue *Mask = Blend->getMask(I);
-        if (Mask->getNumUsers() == 1 && !match(Mask, m_False())) {
+        if (Mask->hasOneUse() && !match(Mask, m_False())) {
           StartIndex = I;
           break;
         }
@@ -2068,7 +2067,7 @@ static void simplifyBlends(VPlan &Plan) {
         NewBlend->setOperand(0, Inc1);
         NewBlend->setOperand(1, Inc0);
         NewBlend->setOperand(2, NewMask);
-        if (OldMask->getNumUsers() == 0)
+        if (OldMask->hasNoUsers())
           cast<VPInstruction>(OldMask)->eraseFromParent();
       }
     }
@@ -5117,7 +5116,7 @@ void VPlanTransforms::materializeConstantVectorTripCount(
   assert(Plan.hasUF(BestUF) && "BestUF is not available in Plan");
 
   VPValue *TC = Plan.getTripCount();
-  if (TC->getNumUsers() == 0)
+  if (TC->hasNoUsers())
     return;
 
   // Skip cases for which the trip count may be non-trivial to materialize.
@@ -5146,7 +5145,7 @@ void VPlanTransforms::materializeConstantVectorTripCount(
 void VPlanTransforms::materializeBackedgeTakenCount(VPlan &Plan,
                                                     VPBasicBlock *VectorPH) {
   VPValue *BTC = Plan.getOrCreateBackedgeTakenCount();
-  if (BTC->getNumUsers() == 0)
+  if (BTC->hasNoUsers())
     return;
 
   VPBuilder Builder(VectorPH, VectorPH->begin());
@@ -5255,7 +5254,7 @@ void VPlanTransforms::materializeVectorTripCount(
   VPSymbolicValue &VectorTC = Plan.getVectorTripCount();
   // There's nothing to do if there are no users of the vector trip count or its
   // IR value has already been set.
-  if (VectorTC.getNumUsers() == 0 || VectorTC.getUnderlyingValue())
+  if (VectorTC.hasNoUsers() || VectorTC.getUnderlyingValue())
     return;
 
   VPValue *TC = Plan.getTripCount();
@@ -5335,7 +5334,7 @@ void VPlanTransforms::materializeFactors(VPlan &Plan, VPBasicBlock *VectorPH,
   VPValue &VFxUF = Plan.getVFxUF();
   // If there are no users of the runtime VF, compute VFxUF by constant folding
   // the multiplication of VF and UF.
-  if (VF.getNumUsers() == 0) {
+  if (VF.hasNoUsers()) {
     VPValue *RuntimeVFxUF =
         Builder.createElementCount(TCTy, VFEC * Plan.getConcreteUF());
     VFxUF.replaceAllUsesWith(RuntimeVFxUF);
@@ -5490,7 +5489,7 @@ void VPlanTransforms::expandSCEVsToVPInstructions(VPlan &Plan,
   // late expansion.
   for (VPRecipeBase &R : make_early_inc_range(*Entry)) {
     auto *ExpSCEV = dyn_cast<VPExpandSCEVRecipe>(&R);
-    if (!ExpSCEV || ExpSCEV->getNumUsers() == 0)
+    if (!ExpSCEV || ExpSCEV->hasNoUsers())
       continue;
     Builder.setInsertPoint(ExpSCEV);
     VPValue *Expanded = Expander.tryToExpand(ExpSCEV->getSCEV());

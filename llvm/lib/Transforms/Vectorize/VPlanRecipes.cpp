@@ -1159,7 +1159,7 @@ InstructionCost VPRecipeWithIRFlags::getCostForRecipeWithOpcode(
     // For Trunc/FPTrunc, get the context from the only user.
     if (Opcode == Instruction::Trunc || Opcode == Instruction::FPTrunc) {
       auto GetOnlyUser = [](const VPSingleDefRecipe *R) -> VPRecipeBase * {
-        if (R->getNumUsers() == 0 || R->hasMoreThanOneUniqueUser())
+        if (R->hasNoUsers() || R->hasMoreThanOneUniqueUser())
           return nullptr;
         return dyn_cast<VPRecipeBase>(*R->user_begin());
       };
