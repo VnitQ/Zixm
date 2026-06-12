@@ -40,6 +40,7 @@
 #include "lldb/Core/SearchFilter.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Core/StructuredDataImpl.h"
+#include "lldb/Expression/ExpressionVariable.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Interpreter/Interfaces/ScriptedBreakpointInterface.h"
 #include "lldb/Interpreter/Interfaces/ScriptedFrameProviderInterface.h"
@@ -1876,6 +1877,90 @@ lldb::SBSymbolContextList SBTarget::FindGlobalFunctions(const char *name,
     }
   }
   return sb_sc_list;
+}
+
+lldb::SBType
+SBTarget::FindExpressionTypeForLanguage(const char *typename_cstr,
+                                        lldb::LanguageType language) {
+  TargetSP target_sp = GetSP();
+  if (!target_sp)
+    return {};
+
+  if (!typename_cstr || !typename_cstr[0])
+    return {};
+
+  ConstString const_typename(typename_cstr);
+
+  // If the language type was "unknown" search all languages:
+  if (language == lldb::eLanguageTypeUnknown) {
+    LanguageSet expr_languages =
+        Language::GetLanguagesSupportingTypeSystemsForExpressions();
+    for (int bit : expr_languages.bitvector.set_bits()) {
+      auto cur_lang = (LanguageType)bit;
+      PersistentExpressionState *persistent =
+          target_sp->GetPersistentExpressionStateForLanguage(cur_lang);
+      if (persistent) {
+        std::optional<CompilerType> type_op =
+            persistent->GetCompilerTypeFromPersistentDecl(const_typename);
+        if (type_op) {
+          return SBType(*type_op);
+        }
+      }
+    }
+  } else {
+    PersistentExpressionState *persistent =
+        target_sp->GetPersistentExpressionStateForLanguage(language);
+    if (persistent) {
+      std::optional<CompilerType> type_op =
+          persistent->GetCompilerTypeFromPersistentDecl(const_typename);
+      if (type_op && (*type_op)) {
+        return SBType(*type_op);
+      }
+    }
+  }
+  return {};
+}
+
+lldb::SBValue
+SBTarget::FindExpressionVariableForLanguage(const char *varname_cstr,
+                                            lldb::LanguageType language) {
+  TargetSP target_sp = GetSP();
+  if (!target_sp)
+    return {};
+
+  if (!varname_cstr || !varname_cstr[0])
+    return {};
+
+  ConstString const_varname(varname_cstr);
+
+  // If the language type was "unknown" search all languages:
+  if (language == lldb::eLanguageTypeUnknown) {
+    LanguageSet expr_languages =
+        Language::GetLanguagesSupportingTypeSystemsForExpressions();
+    for (int bit : expr_languages.bitvector.set_bits()) {
+      auto cur_lang = (LanguageType)bit;
+      PersistentExpressionState *persistent =
+          target_sp->GetPersistentExpressionStateForLanguage(cur_lang);
+      if (persistent) {
+        lldb::ExpressionVariableSP expr_var_sp =
+            persistent->GetVariable(const_varname);
+        if (expr_var_sp) {
+          return expr_var_sp->GetValueObject();
+        }
+      }
+    }
+  } else {
+    PersistentExpressionState *persistent =
+        target_sp->GetPersistentExpressionStateForLanguage(language);
+    if (persistent) {
+      lldb::ExpressionVariableSP expr_var_sp =
+          persistent->GetVariable(const_varname);
+      if (expr_var_sp) {
+        return expr_var_sp->GetValueObject();
+      }
+    }
+  }
+  return {};
 }
 
 lldb::SBType SBTarget::FindFirstType(const char *typename_cstr) {

@@ -923,6 +923,12 @@ public:
 
   lldb::SBType GetBasicType(lldb::BasicType type);
 
+  lldb::SBType FindExpressionTypeForLanguage(const char *typename_cstr,
+                                             lldb::LanguageType lang);
+
+  lldb::SBValue FindExpressionVariableForLanguage(const char *varname_cstr,
+                                                  lldb::LanguageType lang);
+
   lldb::SBValue CreateValueFromAddress(const char *name, lldb::SBAddress addr,
                                        lldb::SBType type);
 
