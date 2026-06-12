@@ -970,6 +970,21 @@ static bool upgradeArmOrAarch64IntrinsicFunction(bool IsArm, Function *F,
     }
   } else {
     // 'aarch64.*'.
+    if (Name.consume_front("sme.ftmopa.")) {
+      // The FP8 FTMOPA intrinsics were split out from the non-FP8 FTMOPA
+      // intrinsics to model their FPMR dependency.
+      Intrinsic::ID ID =
+          StringSwitch<Intrinsic::ID>(Name)
+              .Case("za16.nxv16i8", Intrinsic::aarch64_sme_fp8_ftmopa_za16)
+              .Case("za32.nxv16i8", Intrinsic::aarch64_sme_fp8_ftmopa_za32)
+              .Default(Intrinsic::not_intrinsic);
+      if (ID != Intrinsic::not_intrinsic) {
+        NewFn = Intrinsic::getOrInsertDeclaration(F->getParent(), ID);
+        return true;
+      }
+      return false; // No other 'aarch64.sme.ftmopa.*'.
+    }
+
     if (Neon) {
       // 'aarch64.neon.*'.
       Intrinsic::ID ID = StringSwitch<Intrinsic::ID>(Name)
