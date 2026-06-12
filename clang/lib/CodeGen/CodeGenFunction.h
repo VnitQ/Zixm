@@ -1154,9 +1154,15 @@ public:
     /// Sets the address of the variable \p LocalVD to be \p TempAddr in
     /// function \p CGF.
     /// \return true if at least one variable was set already, false otherwise.
-    bool setVarAddr(CodeGenFunction &CGF, const VarDecl *LocalVD,
+    bool setVarAddr(CodeGenFunction &CGF, const ValueDecl *LocalVD,
                     Address TempAddr) {
-      LocalVD = LocalVD->getCanonicalDecl();
+      LocalVD = cast<ValueDecl>(LocalVD->getCanonicalDecl());
+
+      // For BindingDecls, also store in OMPPrivatizedBindings for remapped
+      // lookup.
+      if (const auto *BD = dyn_cast<BindingDecl>(LocalVD))
+        CGF.OMPPrivatizedBindings.insert_or_assign(BD, TempAddr);
+
       // Only save it once.
       if (SavedLocals.count(LocalVD))
         return false;
@@ -1217,17 +1223,20 @@ public:
     OMPMapVars MappedVars;
     OMPPrivateScope(const OMPPrivateScope &) = delete;
     void operator=(const OMPPrivateScope &) = delete;
+    llvm::DenseMap<const BindingDecl *, Address> SavedBindings;
 
   public:
     /// Enter a new OpenMP private scope.
-    explicit OMPPrivateScope(CodeGenFunction &CGF) : RunCleanupsScope(CGF) {}
+    explicit OMPPrivateScope(CodeGenFunction &CGF) : RunCleanupsScope(CGF) {
+      SavedBindings = CGF.OMPPrivatizedBindings;
+    }
 
     /// Registers \p LocalVD variable as a private with \p Addr as the address
     /// of the corresponding private variable. \p
     /// PrivateGen is the address of the generated private variable.
     /// \return true if the variable is registered as private, false if it has
     /// been privatized already.
-    bool addPrivate(const VarDecl *LocalVD, Address Addr) {
+    bool addPrivate(const ValueDecl *LocalVD, Address Addr) {
       assert(PerformCleanup && "adding private to dead scope");
       return MappedVars.setVarAddr(CGF, LocalVD, Addr);
     }
@@ -1251,6 +1260,7 @@ public:
     ~OMPPrivateScope() {
       if (PerformCleanup)
         ForceCleanup();
+      CGF.OMPPrivatizedBindings = std::move(SavedBindings);
     }
 
     /// Checks if the global variable is captured in current function.
@@ -1549,6 +1559,11 @@ private:
   /// LocalDeclMap - This keeps track of the LLVM allocas or globals for local C
   /// decls.
   DeclMapTy LocalDeclMap;
+
+  /// Lookup map for privatized BindingDecls.
+  /// Used when BindingDecls are remapped during OpenMP outlining, since the
+  /// remapped BindingDecl has a different pointer than the original.
+  llvm::DenseMap<const BindingDecl *, Address> OMPPrivatizedBindings;
 
   // Keep track of the cleanups for callee-destructed parameters pushed to the
   // cleanup stack so that they can be deactivated later.
@@ -4463,6 +4478,7 @@ public:
   // Note: only available for agg return types
   LValue EmitVAArgExprLValue(const VAArgExpr *E);
   LValue EmitDeclRefLValue(const DeclRefExpr *E);
+  LValue EmitOMPCapturedBindingLValue(const BindingDecl *BD);
   LValue EmitStringLiteralLValue(const StringLiteral *E);
   LValue EmitObjCEncodeExprLValue(const ObjCEncodeExpr *E);
   LValue EmitPredefinedLValue(const PredefinedExpr *E);
