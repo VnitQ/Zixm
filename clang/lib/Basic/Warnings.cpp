@@ -53,7 +53,7 @@ void clang::ProcessWarningOptions(DiagnosticsEngine &Diags,
 
   Diags.setElideType(Opts.ElideType);
   Diags.setPrintTemplateTree(Opts.ShowTemplateTree);
-  Diags.setShowColors(Opts.ShowColors);
+  Diags.setShowColors(Opts.showColors(/*StreamHasColors=*/true));
 
   // Handle -ferror-limit
   if (Opts.ErrorLimit)
