@@ -10,8 +10,30 @@
 #define LLDB_UTILITY_POLICY_H
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cassert>
+#include <sstream>
+#include <thread>
+
+namespace llvm {
+/// Allow std::thread::id to be passed directly to formatv-based logging
+/// macros (LLDB_LOG, etc.). std::thread::id has no raw_ostream operator<<,
+/// so we route through std::stringstream which it does support.
+///
+/// Defined in this header (rather than a .cpp) so that any TU that wants
+/// to log a std::thread::id sees the same specialization, avoiding ODR
+/// hazards.
+template <> struct format_provider<std::thread::id> {
+  static void format(const std::thread::id &id, raw_ostream &os,
+                     StringRef /*style*/) {
+    std::stringstream ss;
+    ss << id;
+    os << ss.str();
+  }
+};
+} // namespace llvm
 
 namespace lldb_private {
 
@@ -54,21 +76,12 @@ struct Policy {
   View view = View::Public;
   Capabilities capabilities;
 
-  static Policy PublicState() { return {}; }
-
-  static Policy PrivateState() {
-    Policy p;
-    p.view = View::Private;
-    p.capabilities.can_load_frame_providers = false;
-    p.capabilities.can_run_frame_recognizers = false;
-    return p;
-  }
-
-  static Policy PublicStateRunningExpression() {
-    Policy p;
-    p.capabilities.can_run_breakpoint_actions = false;
-    return p;
-  }
+  /// Static factories. PublicState is the baseline (returns default
+  /// Policy{}). The transition factories below start from
+  /// PolicyStack::Get().Current() and apply their named change on top.
+  static Policy PublicState();
+  static Policy PrivateState();
+  static Policy PublicStateRunningExpression();
 
   void Dump(Stream &s) const;
 };
@@ -78,6 +91,10 @@ struct Policy {
 /// The stack lives in thread_local storage. Each thread has its own stack,
 /// initialized with a default-constructed base entry that is never popped.
 /// RAII guards (Guard) push and pop policies.
+///
+/// Policies are pushed via named factory methods (PushPrivateState, etc.)
+/// that return an RAII Guard. Direct Push is private to prevent callers
+/// from assembling arbitrary capability combinations.
 ///
 /// For thread pool workers that don't inherit thread_local storage, the
 /// policy must be passed into the lambda and pushed onto the worker
@@ -91,6 +108,48 @@ public:
 
   Policy Current() const;
 
+  void Dump(Stream &s) const;
+
+  /// RAII guard that pops a policy on destruction.
+  ///
+  /// A Guard is bound to the thread that created it: the policy stack lives
+  /// in thread_local storage, so popping from a different thread would
+  /// corrupt that thread's stack. Guards may be moved, but only on the
+  /// owning thread (this is asserted in debug builds; release builds log
+  /// the violation and then perform the underlying Pop, which will likely
+  /// corrupt state).
+  class Guard {
+    friend class PolicyStack;
+
+  public:
+    ~Guard();
+    Guard(Guard &&other);
+    Guard &operator=(Guard &&other);
+
+    Guard(const Guard &) = delete;
+    Guard &operator=(const Guard &) = delete;
+
+  private:
+    Guard() : m_thread_id(std::this_thread::get_id()), m_active(true) {}
+    std::thread::id m_thread_id;
+    bool m_active = false;
+  };
+
+  /// All Push* methods delegate to the named static factories on Policy,
+  /// which already inherit from Current(). So the pushed policy preserves
+  /// existing stack state instead of resetting unrelated fields.
+
+  [[nodiscard]] Guard PushPrivateState() {
+    Push(Policy::PrivateState());
+    return Guard();
+  }
+
+  [[nodiscard]] Guard PushPublicStateRunningExpression() {
+    Push(Policy::PublicStateRunningExpression());
+    return Guard();
+  }
+
+private:
   void Push(Policy policy) { m_stack.push_back(std::move(policy)); }
 
   void Pop() {
@@ -98,19 +157,6 @@ public:
     m_stack.pop_back();
   }
 
-  void Dump(Stream &s) const;
-
-  /// RAII guard that pushes a policy on construction and pops on destruction.
-  class Guard {
-  public:
-    explicit Guard(Policy policy) { Get().Push(std::move(policy)); }
-    ~Guard() { Get().Pop(); }
-
-    Guard(const Guard &) = delete;
-    Guard &operator=(const Guard &) = delete;
-  };
-
-private:
   llvm::SmallVector<Policy> m_stack = {Policy{}};
 };
 
