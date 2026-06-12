@@ -5724,9 +5724,17 @@ struct EnsureImmediateInvocationInDefaultArgs
 
   // Lambda can only have immediate invocations in the default
   // args of their parameters, which is transformed upon calling the closure.
-  // The body is not a subexpression, so we have nothing to do.
+  // The body is not a subexpression, so we do not transform the lambda
+  // itself. However, the closure object is returned without rebuilding it,
+  // so we must redo the effects building a lambda has on the enclosing
+  // context: any CXXBindTemporaryExpr around it has been dropped by
+  // TransformCXXBindTemporaryExpr, and the enclosing context must be
+  // marked as requiring cleanups for the closure's destructor to be run
+  // at the end of the full-expression.
   // FIXME: Immediate calls in capture initializers should be transformed.
-  ExprResult TransformLambdaExpr(LambdaExpr *E) { return E; }
+  ExprResult TransformLambdaExpr(LambdaExpr *E) {
+    return SemaRef.MaybeBindToTemporary(E);
+  }
   ExprResult TransformBlockExpr(BlockExpr *E) { return E; }
 
   // Make sure we don't rebuild the this pointer as it would
