@@ -17310,6 +17310,20 @@ static bool canLowerSRLToRoundingShiftForVT(SDValue Shift, EVT ResVT,
   return true;
 }
 
+static bool isFreeToNegate(SDValue Op) {
+  SDValue ShiftCount = Op;
+  if (auto *BVN = dyn_cast<BuildVectorSDNode>(Op.getNode()))
+    ShiftCount = BVN->getSplatValue();
+
+  if (!ShiftCount)
+    return false;
+  if (ShiftCount.getOpcode() != ISD::SUB)
+    return false;
+
+  SDValue ShiftValue = ShiftCount.getOperand(0);
+  return isNullConstant(ShiftValue) || isZerosVector(ShiftValue.getNode());
+}
+
 SDValue AArch64TargetLowering::LowerVectorSRA_SRL_SHL(SDValue Op,
                                                       SelectionDAG &DAG) const {
   EVT VT = Op.getValueType();
@@ -17360,6 +17374,13 @@ SDValue AArch64TargetLowering::LowerVectorSRA_SRL_SHL(SDValue Op,
       return DAG.getNode(Opc, DL, VT, Op.getOperand(0),
                          DAG.getTargetConstant(Cnt, DL, MVT::i32),
                          Op->getFlags());
+    }
+
+    if (useSVEForFixedLengthVectorVT(VT, /*OverrideNEON=*/true) &&
+        !isFreeToNegate(Op.getOperand(1))) {
+      unsigned Opc = Op.getOpcode() == ISD::SRA ? AArch64ISD::SRA_PRED
+                                                : AArch64ISD::SRL_PRED;
+      return LowerToPredicatedOp(Op, DAG, Opc);
     }
 
     // Right shift register.  Note, there is not a shift right register
