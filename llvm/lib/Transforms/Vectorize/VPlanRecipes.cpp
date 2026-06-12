@@ -1451,6 +1451,7 @@ bool VPInstruction::isVectorToScalar() const {
 bool VPInstruction::isSingleScalar() const {
   switch (getOpcode()) {
   case Instruction::Load:
+  case Instruction::Store:
   case Instruction::PHI:
   case VPInstruction::ExplicitVectorLength:
   case VPInstruction::ResumeForEpilogue:
