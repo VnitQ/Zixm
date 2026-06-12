@@ -5858,6 +5858,12 @@ bool TokenAnnotator::mustBreakBefore(AnnotatedLine &Line,
     return true;
   }
 
+  if (Style.BreakFunctionDeclarationParameters && Line.MightBeFunctionDecl &&
+    !Line.mightBeFunctionDefinition() && Left.MightBeFunctionDeclParen &&
+    Left.ParameterCount > 0) {
+    return true;
+  }
+
   // Ignores the first parameter as this will be handled separately by
   // BreakFunctionDefinitionParameters or AlignAfterOpenBracket.
   if (Style.PackParameters.BinPack == FormatStyle::BPPS_AlwaysOnePerLine &&

@@ -2703,6 +2703,20 @@ struct FormatStyle {
   /// \version 19
   bool BreakFunctionDefinitionParameters;
 
+  /// If ``true``, clang-format will always break before function declaration
+  /// parameters.
+  /// \code
+  ///    true:
+  ///    void functionDeclaration(
+  ///             int A, int B);
+  ///
+  ///    false:
+  ///    void functionDeclaration(int A, int B);
+  ///
+  /// \endcode
+  /// \version 22
+  bool BreakFunctionDeclarationParameters;
+
   /// Break after each annotation on a field in Java files.
   /// \code{.java}
   ///    true:                                  false:
@@ -6126,6 +6140,8 @@ struct FormatStyle {
                R.BreakFunctionDeclarationParameters &&
            BreakFunctionDefinitionParameters ==
                R.BreakFunctionDefinitionParameters &&
+           BreakFunctionDeclarationParameters ==
+               R.BreakFunctionDeclarationParameters &&
            BreakInheritanceList == R.BreakInheritanceList &&
            BreakStringLiterals == R.BreakStringLiterals &&
            BreakTemplateDeclarations == R.BreakTemplateDeclarations &&
