@@ -95,6 +95,8 @@ struct GenericTable {
   std::unique_ptr<SearchIndex> PrimaryKey;
   SmallVector<std::unique_ptr<SearchIndex>, 2> Indices;
 
+  bool AllowSparseTable;
+
   const GenericField *getFieldByName(StringRef Name) const {
     for (const auto &Field : Fields) {
       if (Name == Field.Name)
@@ -575,25 +577,70 @@ void SearchableTableEmitter::emitGenericTable(const GenericTable &Table,
 
   emitIfdef((Twine("GET_") + Table.PreprocessorGuard + "_IMPL").str(), OS);
 
+  SmallVector<const Record *, 0> SparseEntries;
+  ArrayRef<const Record *> Entries;
+  unsigned DirectLookupSlots = 0;
+  if (Table.AllowSparseTable) {
+    const auto *KeyBits = cast<BitsRecTy>(Table.PrimaryKey->Fields[0].RecType);
+    DirectLookupSlots = 1u << KeyBits->getNumBits();
+    SparseEntries.resize(DirectLookupSlots);
+    StringRef KeyFieldName = Table.PrimaryKey->Fields[0].Name;
+    for (const Record *Entry : Table.Entries) {
+      uint64_t Key = static_cast<uint64_t>(getInt(Entry, KeyFieldName));
+      assert(Key < DirectLookupSlots && "key exceeds table size");
+      if (SparseEntries[Key])
+        PrintFatalError(Entry, Twine("In table '") + Table.Name +
+                                   "', duplicate primary key value " +
+                                   Twine(Key));
+      SparseEntries[Key] = Entry;
+    }
+    Entries = SparseEntries;
+  } else {
+    Entries = Table.Entries;
+  }
+
   // The primary data table contains all the fields defined for this map.
   OS << "constexpr " << Table.CppTypeName << " " << Table.Name << "[] = {\n";
-  for (const auto &[Idx, Entry] : enumerate(Table.Entries)) {
+  for (const auto &[Idx, Entry] : enumerate(Entries)) {
     OS << "  { ";
-
     ListSeparator LS;
-    for (const auto &Field : Table.Fields)
-      OS << LS
-         << primaryRepresentation(Table.Locs[0], Field,
-                                  Entry->getValueInit(Field.Name));
-
+    if (Entry) {
+      for (const auto &Field : Table.Fields)
+        OS << LS
+           << primaryRepresentation(Table.Locs[0], Field,
+                                    Entry->getValueInit(Field.Name));
+    } else if (Table.AllowSparseTable) {
+      // For empty rows emit a sentinel value as a key, so we can return null
+      // during lookup. Value is constructed such that LookupKey != KeyField.
+      for (const auto &Field : Table.Fields) {
+        OS << LS;
+        if (Field.Name == Table.PrimaryKey->Fields[0].Name)
+          OS << "0x" << utohexstr((DirectLookupSlots - 1) ^ Idx);
+        else
+          OS << "{}";
+      }
+    }
     OS << " }, // " << Idx << "\n";
   }
   OS << " };\n";
 
-  // Indexes are sorted "{ Thing, PrimaryIdx }" arrays, so that a binary
-  // search can be performed by "Thing".
-  if (Table.PrimaryKey)
+  if (Table.AllowSparseTable) {
+    OS << "\n";
+    emitLookupDeclaration(Table, *Table.PrimaryKey, OS);
+    OS << " {\n";
+    const GenericField &Field = Table.PrimaryKey->Fields[0];
+    OS << "  if (" << Field.Name << " >= " << DirectLookupSlots << ")\n";
+    OS << "    return nullptr;\n";
+    OS << "  const auto *Entry = &" << Table.Name << "[" << Field.Name
+       << "];\n";
+    OS << "  return Entry->" << Field.Name << " == " << Field.Name
+       << " ? Entry : nullptr;\n";
+    OS << "}\n";
+  } else if (Table.PrimaryKey) {
+    // Indexes are sorted "{ Thing, PrimaryIdx }" arrays, so that a binary
+    // search can be performed by "Thing".
     emitLookupFunction(Table, *Table.PrimaryKey, /*IsPrimary=*/true, OS);
+  }
   for (const auto &Index : Table.Indices)
     emitLookupFunction(Table, *Index, /*IsPrimary=*/false, OS);
 
@@ -736,6 +783,34 @@ void SearchableTableEmitter::collectTableEntries(
   });
 }
 
+static bool canUseSparseTable(const Record *TableRec,
+                              const std::unique_ptr<GenericTable> &Table) {
+  if (TableRec->getValueAsBit("DisallowSparseTable"))
+    return false;
+
+  // Sparse tables are only supported with a single primary key.
+  if (Table->PrimaryKey->Fields.size() != 1)
+    return false;
+
+  const auto *KeyBits =
+      dyn_cast<BitsRecTy>(Table->PrimaryKey->Fields[0].RecType);
+
+  // Sparse tables only support `bits` key.
+  if (!KeyBits)
+    return false;
+
+  // Sparse tables are not compatible with PrimaryKeyReturnRange.
+  if (TableRec->getValueAsBit("PrimaryKeyReturnRange"))
+    return false;
+
+  // Only support tables up to 4k in size.
+  constexpr unsigned MaxKeyBits = 12;
+  if (KeyBits->getNumBits() > MaxKeyBits)
+    return false;
+
+  return true;
+}
+
 void SearchableTableEmitter::run(raw_ostream &OS) {
   // Emit tables in a deterministic order to avoid needless rebuilds.
   SmallVector<std::unique_ptr<GenericTable>, 4> Tables;
@@ -839,6 +914,8 @@ void SearchableTableEmitter::run(raw_ostream &OS) {
                         [&](const Record *LHS, const Record *RHS) {
                           return compareBy(LHS, RHS, *Table->PrimaryKey);
                         });
+
+      Table->AllowSparseTable = canUseSparseTable(TableRec, Table);
     }
 
     TableMap.try_emplace(TableRec, Table.get());
@@ -860,6 +937,9 @@ void SearchableTableEmitter::run(raw_ostream &OS) {
         Table, IndexRec->getValue("Key"), IndexRec->getName(),
         IndexRec->getValueAsListOfStrings("Key"),
         IndexRec->getValueAsBit("EarlyOut"), /*ReturnRange*/ false));
+
+    // Sparse tables with secondary search indices are not supported.
+    Table.AllowSparseTable = false;
   }
 
   // Translate legacy tables.
