@@ -509,3 +509,6 @@ static NSString* const kGlobal = @"";
   (void)self.nd[@""]; // no warning
 }
 @end
+
+extern id mergeQualsVar; // expected-note {{previous declaration is here}}
+extern __weak id mergeQualsVar; // expected-error {{redeclaration of 'mergeQualsVar' with a different type}}
