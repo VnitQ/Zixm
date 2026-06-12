@@ -115,12 +115,6 @@ static DecodeStatus DecodeGPRX1RegisterClass(MCInst &Inst,
   return MCDisassembler::Success;
 }
 
-static DecodeStatus DecodeSP_XRegisterClass(MCInst &Inst,
-                                            const MCDisassembler *Decoder) {
-  Inst.addOperand(MCOperand::createReg(RISCV::X2));
-  return MCDisassembler::Success;
-}
-
 static DecodeStatus DecodeSP_XRegisterClass(MCInst &Inst, uint64_t RegNo,
                                             uint32_t Address,
                                             const MCDisassembler *Decoder) {
