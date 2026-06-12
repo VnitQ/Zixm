@@ -3053,6 +3053,7 @@ private:
   bool CheckInvalidBuiltinCountedByRef(const Expr *E,
                                        BuiltinCountedByRefKind K);
   bool BuiltinCountedByRef(CallExpr *TheCall);
+  bool BuiltinStdEmbed(CallExpr *TheCall);
 
   // Matrix builtin handling.
   ExprResult BuiltinMatrixTranspose(CallExpr *TheCall, ExprResult CallResult);

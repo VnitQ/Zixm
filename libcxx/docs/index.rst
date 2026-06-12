@@ -49,6 +49,7 @@ Getting Started with libc++
    Status/Cxx20
    Status/Cxx23
    Status/Cxx2c
+   Status/Cxx2d
    Status/Format
    Status/Parallelism
 
@@ -184,6 +185,7 @@ this release is described in the pages below:
 * :ref:`C++20 - In Progress <cxx20-status>`
 * :ref:`C++23 - In Progress <cxx23-status>`
 * :ref:`C++2c - In Progress <cxx2c-status>`
+* :ref:`C++2d - In Progress <cxx2d-status>`
 * :ref:`C++ Feature Test Macro Status <feature-status>`
 
 
