@@ -1550,6 +1550,38 @@ static bool hasDeferredCharacterLength(const Fortran::semantics::Symbol &sym) {
          type->characterTypeSpec().length().isDeferred();
 }
 
+static mlir::Value
+findOverriddenExprValue(const Fortran::lower::ExprToValueMap &map,
+                        const Fortran::lower::SomeExpr &expr) {
+  if (auto match = map.find(&expr); match != map.end())
+    return match->second;
+
+  // The map uses pointer identity, but the some expressions
+  // (e.g. a(2)) may appear at multiple AST nodes with different addresses.
+  // Fall back to structural comparison via ArrayRef::operator==.
+  std::optional<Fortran::evaluate::DataRef> exprDataRef =
+      Fortran::evaluate::ExtractDataRef(expr);
+  if (!exprDataRef)
+    return {};
+  const Fortran::evaluate::ArrayRef *exprArrayRef =
+      std::get_if<Fortran::evaluate::ArrayRef>(&exprDataRef->u);
+  if (!exprArrayRef)
+    return {};
+
+  for (auto [key, value] : map) {
+    std::optional<Fortran::evaluate::DataRef> keyDataRef =
+        Fortran::evaluate::ExtractDataRef(*key);
+    if (!keyDataRef)
+      continue;
+    const Fortran::evaluate::ArrayRef *keyArrayRef =
+        std::get_if<Fortran::evaluate::ArrayRef>(&keyDataRef->u);
+    if (keyArrayRef && Fortran::lower::isEqual(keyArrayRef, exprArrayRef))
+      return value;
+  }
+
+  return {};
+}
+
 /// Lower Expr to HLFIR.
 class HlfirBuilder {
 public:
@@ -1563,12 +1595,12 @@ public:
     if (const Fortran::lower::ExprToValueMap *map =
             getConverter().getExprOverrides()) {
       if constexpr (std::is_same_v<T, Fortran::evaluate::SomeType>) {
-        if (auto match = map->find(&expr); match != map->end())
-          return hlfir::EntityWithAttributes{match->second};
+        if (mlir::Value value = findOverriddenExprValue(*map, expr))
+          return hlfir::EntityWithAttributes{value};
       } else {
         Fortran::lower::SomeExpr someExpr = toEvExpr(expr);
-        if (auto match = map->find(&someExpr); match != map->end())
-          return hlfir::EntityWithAttributes{match->second};
+        if (mlir::Value value = findOverriddenExprValue(*map, someExpr))
+          return hlfir::EntityWithAttributes{value};
       }
     }
     return Fortran::common::visit([&](const auto &x) { return gen(x); },
