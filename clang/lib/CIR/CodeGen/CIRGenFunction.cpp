@@ -1387,7 +1387,21 @@ void CIRGenFunction::emitNullInitialization(mlir::Location loc, Address destPtr,
   // TODO: there are other patterns besides zero that we can usefully memset,
   // like -1, which happens to be the pattern used by member-pointers.
   if (!cgm.getTypes().isZeroInitializable(ty)) {
-    cgm.errorNYI(loc, "type is not zero initializable");
+    // Classic codegen handles non-zero-init VLAs here via emitNonZeroVLAInit.
+    // In CIR, getTypeSizeInChars returns 0 for VLAs, so they are caught by
+    // the errorNYI above.
+    //
+    // Guard: emitNullConstant calls errorNYI for virtual bases and returns {},
+    // which would crash builder.getConstant; report the NYI here instead.
+    if (const auto *rd = ty->getAsCXXRecordDecl(); rd && rd->getNumVBases()) {
+      cgm.errorNYI(loc,
+                   "emitNullInitialization: non-zero-init type with virtual "
+                   "bases");
+      return;
+    }
+    mlir::Value nullVal = cgm.emitNullConstant(ty, loc);
+    builder.createStore(loc, nullVal, destPtr);
+    return;
   }
 
   // In LLVM Codegen: otherwise, just memset the whole thing to zero using
