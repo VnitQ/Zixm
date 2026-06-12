@@ -124,9 +124,9 @@ GenericKernelTy::getKernelLaunchEnvironment(
       KernelArgs.DynCGroupMem == 0)
     return reinterpret_cast<KernelLaunchEnvironmentTy *>(~0);
 
-  auto AllocOrErr = GenericDevice.dataAlloc(sizeof(KernelLaunchEnvironmentTy),
-                                            /*HostPtr=*/nullptr,
-                                            TargetAllocTy::TARGET_ALLOC_DEVICE);
+  auto AllocOrErr = GenericDevice.dataAlloc(
+      sizeof(KernelLaunchEnvironmentTy),
+      /*HostPtr=*/nullptr, TargetAllocTy::TARGET_ALLOC_DEVICE, /*Alignment=*/0);
   if (!AllocOrErr)
     return AllocOrErr.takeError();
 
@@ -148,7 +148,8 @@ GenericKernelTy::getKernelLaunchEnvironment(
     auto AllocOrErr = GenericDevice.dataAlloc(
         KernelEnvironment.Configuration.ReductionDataSize *
             KernelEnvironment.Configuration.ReductionBufferLength,
-        /*HostPtr=*/nullptr, TargetAllocTy::TARGET_ALLOC_DEVICE);
+        /*HostPtr=*/nullptr, TargetAllocTy::TARGET_ALLOC_DEVICE,
+        /*Alignment=*/0);
     if (!AllocOrErr)
       return AllocOrErr.takeError();
     LocalKLE.ReductionBuffer = *AllocOrErr;
@@ -226,7 +227,8 @@ GenericKernelTy::prepareBlockMemory(GenericDeviceTy &GenericDevice,
       // Get global memory as fallback.
       auto AllocOrErr = GenericDevice.dataAlloc(
           NumBlocks * DynBlockMemSize,
-          /*HostPtr=*/nullptr, TargetAllocTy::TARGET_ALLOC_DEVICE);
+          /*HostPtr=*/nullptr, TargetAllocTy::TARGET_ALLOC_DEVICE,
+          /*Alignment=*/0);
       if (!AllocOrErr)
         return AllocOrErr.takeError();
       DynFallbackPtr = *AllocOrErr;
@@ -977,9 +979,11 @@ Error GenericDeviceTy::getDeviceMemorySize(uint64_t &DSize) {
 }
 
 Expected<void *> GenericDeviceTy::dataAlloc(int64_t Size, void *HostPtr,
-                                            TargetAllocTy Kind) {
+                                            TargetAllocTy Kind,
+                                            size_t Alignment) {
   void *Alloc = nullptr;
 
+  // TODO Check alignment.
   if (RecordReplay && RecordReplay->isRecordingOrReplaying())
     return RecordReplay->allocate(Size);
 
@@ -987,7 +991,7 @@ Expected<void *> GenericDeviceTy::dataAlloc(int64_t Size, void *HostPtr,
   case TARGET_ALLOC_DEFAULT:
   case TARGET_ALLOC_DEVICE:
     if (MemoryManager) {
-      auto AllocOrErr = MemoryManager->allocate(Size, HostPtr);
+      auto AllocOrErr = MemoryManager->allocate(Size, HostPtr, Alignment);
       if (!AllocOrErr)
         return AllocOrErr.takeError();
       Alloc = *AllocOrErr;
@@ -999,7 +1003,7 @@ Expected<void *> GenericDeviceTy::dataAlloc(int64_t Size, void *HostPtr,
     [[fallthrough]];
   case TARGET_ALLOC_HOST:
   case TARGET_ALLOC_SHARED: {
-    auto AllocOrErr = allocate(Size, HostPtr, Kind);
+    auto AllocOrErr = allocate(Size, HostPtr, Kind, Alignment);
     if (!AllocOrErr)
       return AllocOrErr.takeError();
     Alloc = *AllocOrErr;
@@ -1536,8 +1540,8 @@ int32_t GenericPluginTy::load_binary(int32_t DeviceId,
 
 void *GenericPluginTy::data_alloc(int32_t DeviceId, int64_t Size, void *HostPtr,
                                   int32_t Kind) {
-  auto AllocOrErr =
-      getDevice(DeviceId).dataAlloc(Size, HostPtr, (TargetAllocTy)Kind);
+  auto AllocOrErr = getDevice(DeviceId).dataAlloc(
+      Size, HostPtr, (TargetAllocTy)Kind, /*Alignment=*/0);
   if (!AllocOrErr) {
     auto Err = AllocOrErr.takeError();
     REPORT() << "Failure to allocate device memory: "
