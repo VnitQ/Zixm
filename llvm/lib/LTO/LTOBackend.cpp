@@ -45,6 +45,9 @@
 #include "llvm/Transforms/IPO/WholeProgramDevirt.h"
 #include "llvm/Transforms/Utils/FunctionImportUtils.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
+#include "llvm/Transforms/Utils/SplitModuleCG.h"
+#include <filesystem>
+#include <limits>
 #include <optional>
 
 using namespace llvm;
@@ -80,8 +83,60 @@ static cl::list<std::string>
                              "path matches this for -save-temps options"),
                     cl::CommaSeparated, cl::Hidden);
 
+static cl::opt<unsigned> ThinLTOSplitModuleSizeThreshold(
+    "thinlto-split-module-size-threshold", cl::Hidden, cl::init(500),
+    cl::desc("Control the amount of whether split in thinlto backend"
+             "accroding to the size of a module."));
+
+static cl::opt<float> ThinLTOSplitModuleSizeRateThreshold(
+    "thinlto-split-module-size-rate-threshold", cl::Hidden, cl::init(0.5),
+    cl::desc("Whether to split in thinlto backend based on the ratio of "
+             "(callgraph size)/(module size)"));
+
+static cl::opt<unsigned> LTOSplitPartitions(
+    "thinlto-split-partitions", cl::Hidden, cl::init(0),
+    cl::desc("Control split to how many partitions in thinlto backend."));
+
+static cl::opt<bool> LTOSplitByCG("lto-split-by-callgraph", cl::init(false),
+			   cl::desc("Enable split module in thinlto backend."));
+
 namespace llvm {
 extern cl::opt<bool> NoPGOWarnMismatch;
+}
+
+bool lto::isThinLTOSplitEnabled() { return LTOSplitByCG; }
+
+unsigned lto::getThinLTOSplitMaxPartitions() {
+  if (!LTOSplitByCG)
+    return 1;
+  // LTOSplitPartitions==0 means "decide per module from the call graph",
+  // so there is no static upper bound the client can rely on.
+  return LTOSplitPartitions;
+}
+
+static unsigned getThinLTOOutputTask(const Config &C, unsigned LogicalTask,
+                                     unsigned PartitionId) {
+  if (!C.UseExpandedThinLTOSplitTaskIds)
+    return C.AcceptsMultipleOutputsPerTask ? PartitionId : LogicalTask;
+
+  if (C.ThinLTOSplitTaskIdStride == 0)
+    report_fatal_error(
+        "ThinLTO split codegen expanded task ids require a non-zero stride.");
+  if (PartitionId >= C.ThinLTOSplitTaskIdStride)
+    report_fatal_error(
+        "ThinLTO split codegen produced more partitions than the task id "
+        "stride allows.");
+
+  uint64_t PhysicalTask =
+      uint64_t(LogicalTask) * C.ThinLTOSplitTaskIdStride + PartitionId;
+  if (PhysicalTask > std::numeric_limits<unsigned>::max())
+    report_fatal_error("ThinLTO split codegen task id overflow.");
+  return unsigned(PhysicalTask);
+}
+
+static unsigned getThinLTOSingleOutputTask(const Config &C,
+                                           unsigned LogicalTask) {
+  return getThinLTOOutputTask(C, LogicalTask, /*PartitionId=*/0);
 }
 
 [[noreturn]] static void reportOpenError(StringRef Path, Twine Msg) {
@@ -124,12 +179,19 @@ Error Config::addSaveTemps(std::string OutputFileName, bool UseInputModulePath,
       if (LinkerHook && !LinkerHook(Task, M))
         return false;
 
+      auto extract_filename = [](const std::string &path) -> std::string {
+        std::filesystem::path fs_path(path);
+        return fs_path.filename().string();
+      };
+
       std::string PathPrefix;
       // If this is the combined module (not a ThinLTO backend compile) or the
       // user hasn't requested using the input module's path, emit to a file
       // named from the provided OutputFileName with the Task ID appended.
       if (M.getModuleIdentifier() == "ld-temp.o" || !UseInputModulePath) {
         PathPrefix = OutputFileName;
+        if (LTOSplitByCG)
+          PathPrefix += extract_filename(M.getSourceFileName()) + ".";
         if (Task != (unsigned)-1)
           PathPrefix += utostr(Task) + ".";
       } else
@@ -458,6 +520,17 @@ static void codegen(const Config &Conf, TargetMachine *TM,
     DwoFile = Conf.DwoDir;
     sys::path::append(DwoFile, std::to_string(Task) + ".dwo");
     TM->Options.MCOptions.SplitDwarfFile = std::string(DwoFile);
+  } else if (!Conf.SplitDwarfOutputStem.empty()) {
+    DwoFile = (Twine(Conf.SplitDwarfOutputStem) + ".thinlto-split." +
+               Twine(Task) + ".dwo").str();
+    // Ensure the parent directory exists (same directory as the .o output).
+    SmallString<128> DwoParent(sys::path::parent_path(DwoFile));
+    if (!DwoParent.empty()) {
+      if (auto EC = llvm::sys::fs::create_directories(DwoParent))
+        report_fatal_error(Twine("Failed to create directory ") + DwoParent +
+                           ": " + EC.message());
+    }
+    TM->Options.MCOptions.SplitDwarfFile = std::string(DwoFile);
   } else
     TM->Options.MCOptions.SplitDwarfFile = Conf.SplitDwarfFile;
 
@@ -511,6 +584,110 @@ static void codegen(const Config &Conf, TargetMachine *TM,
 
   if (Error Err = Stream->commit())
     report_fatal_error(std::move(Err));
+}
+
+static unsigned calFunctionSize(const llvm::Function &F) {
+  unsigned size = 0;
+  for (const auto &BB : F)
+    size += std::distance(BB.begin(), BB.end());
+  return size;
+}
+
+static unsigned calModuleSize(const llvm::Module &M) {
+  unsigned size = 0;
+  for (const auto &F : M)
+    size += calFunctionSize(F);
+  return size;
+}
+
+static bool canDoSplitModule(const llvm::Module &M) {
+  if (calModuleSize(M) < ThinLTOSplitModuleSizeThreshold)
+    return false;
+  return true;
+}
+
+static bool HasLargeCG(Module &Mod, const ModuleSummaryIndex &CombinedIndex) {
+  // TODO: Check whether there has large callgraphs. When multiple callgraphs
+  // are split, thinlto parallel compilation can bring benefits.
+  return true;
+}
+
+static bool splitOptAndCodeGenThin(unsigned task, const Config &C,
+                                   TargetMachine *TM, AddStreamFn AddStream,
+                                   unsigned ParallelCodeGenParallelismLevel,
+                                   Module &Mod,
+                                   const ModuleSummaryIndex &CombinedIndex,
+                                   const std::vector<uint8_t> &CmdArgs,
+                                   bool DoOpt, AddStreamFn IRAddStream,
+                                   ArrayRef<StringRef> &BitcodeLibFuncs,
+                                   bool IsThinLTO = true) {
+  const Target *T = &TM->getTarget();
+  // Clamp the splitter to the per-task stride budget that getMaxTasks() used to
+  // size the client's output table, so the partition count can never exceed it.
+  // Needed for the "auto" case (no -thinlto-split-partitions), where the
+  // splitter would otherwise pick one partition per call-graph root.
+  unsigned PartitionLimit = ParallelCodeGenParallelismLevel;
+  if (IsThinLTO &&
+      C.UseExpandedThinLTOSplitTaskIds && C.ThinLTOSplitTaskIdStride != 0 &&
+      (PartitionLimit == 0 || PartitionLimit > C.ThinLTOSplitTaskIdStride))
+    PartitionLimit = C.ThinLTOSplitTaskIdStride;
+
+  SplitModuleCG SplitModuleCG(Mod, CombinedIndex, PartitionLimit);
+  unsigned PartitionCount = SplitModuleCG.getPartitionNum();
+  if (IsThinLTO && !C.AcceptsMultipleOutputsPerTask && PartitionCount > 1)
+    report_fatal_error(
+        "The current LTO client does not support ThinLTO split codegen.");
+  if (IsThinLTO && C.UseExpandedThinLTOSplitTaskIds) {
+    if (C.ThinLTOSplitTaskIdStride == 0)
+      report_fatal_error(
+          "ThinLTO split codegen expanded task ids require a non-zero stride.");
+    if (PartitionCount > C.ThinLTOSplitTaskIdStride)
+      report_fatal_error(
+          "ThinLTO split codegen produced more partitions than the task id "
+          "stride allows.");
+  }
+  ParallelCodeGenParallelismLevel = PartitionCount;
+
+  const auto HandleModulePartition = [&](std::unique_ptr<Module> MPart,
+                                         unsigned PartitionId) {
+    unsigned PartitionTask = IsThinLTO ?
+        getThinLTOOutputTask(C, task, PartitionId) : PartitionId;
+    std::unique_ptr<TargetMachine> ThreadTM = createTargetMachine(C, T, *MPart);
+
+    if (DoOpt) {
+      if (!opt(C, ThreadTM.get(), PartitionTask, *MPart, /*IsThinLTO=*/true,
+               /*ExportSummary=*/nullptr, /*ImportSummary=*/&CombinedIndex,
+               CmdArgs, BitcodeLibFuncs)) {
+        report_fatal_error("Failed to gen opt for split mod in thread.");
+      }
+
+      // Save the current module before the first codegen round.
+      // Note that the second codegen round runs only `codegen()` without
+      // running `opt()`. We're not reaching here as it's bailed out earlier
+      // with `CodeGenOnly` which has been set in `SecondRoundThinBackend`.
+      if (IRAddStream)
+        cgdata::saveModuleForTwoRounds(*MPart, PartitionTask,
+                                       IRAddStream);
+    }
+
+    if (IsThinLTO) {
+      // Rename the GlobalValues whose internal is changed to external. That's
+      // can avoid duplicate symbols int ThinLTO.
+      auto PromotedRenames = SplitModuleCG.getPromotedRenames();
+      for (auto &GV : MPart->global_values()) {
+        if (auto It = PromotedRenames.find(GV.getName());
+            It != PromotedRenames.end()) {
+          GV.setName(It->second);
+        }
+      }
+    }
+
+    codegen(C, ThreadTM.get(), AddStream, PartitionTask, *MPart, CombinedIndex);
+  };
+
+  SplitModuleCG.SplitModule(HandleModulePartition, C);
+
+  return true;
 }
 
 static void splitCodeGen(const Config &C, TargetMachine *TM,
@@ -614,6 +791,11 @@ Error lto::backend(const Config &C, AddStreamFn AddStream,
 
   if (ParallelCodeGenParallelismLevel == 1) {
     codegen(C, TM.get(), AddStream, 0, Mod, CombinedIndex);
+  } else if (LTOSplitByCG) {
+    splitOptAndCodeGenThin(/*Task*/0, C, TM.get(), AddStream,
+                           ParallelCodeGenParallelismLevel, Mod, CombinedIndex,
+                           /*CmdArgs*/ std::vector<uint8_t>(), /*DoOpt*/false,
+                            AddStreamFn(), BitcodeLibFuncs, false);
   } else {
     splitCodeGen(C, TM.get(), AddStream, ParallelCodeGenParallelismLevel, Mod,
                  CombinedIndex);
@@ -671,11 +853,29 @@ Error lto::thinBackend(const Config &Conf, unsigned Task, AddStreamFn AddStream,
   // the module, if applicable.
   Mod.setPartialSampleProfileRatio(CombinedIndex);
 
+  bool ProfitableToSplit = true;
+  if (LTOSplitByCG) {
+    if (!canDoSplitModule(Mod) || !HasLargeCG(Mod, CombinedIndex)) {
+      ProfitableToSplit = false;
+      LLVM_DEBUG(dbgs() << "warning: thinlto split not enable for module: "
+                        << Mod.getName());
+    } else {
+      LLVM_DEBUG(dbgs() << "thinlto: split codegen for module: "
+                        << Mod.getName());
+    }
+  }
+
   LLVM_DEBUG(dbgs() << "Running ThinLTO\n");
   if (CodeGenOnly) {
-    // If CodeGenOnly is set, we only perform code generation and skip
-    // optimization. This value may differ from Conf.CodeGenOnly.
-    codegen(Conf, TM.get(), AddStream, Task, Mod, CombinedIndex);
+    if (LTOSplitByCG && ProfitableToSplit)
+      splitOptAndCodeGenThin(Task, Conf, TM.get(), AddStream,
+                             LTOSplitPartitions, Mod, CombinedIndex,
+                             CmdArgs, false, IRAddStream, BitcodeLibFuncs);
+    else
+      // If CodeGenOnly is set, we only perform code generation and skip
+      // optimization. This value may differ from Conf.CodeGenOnly.
+      codegen(Conf, TM.get(), AddStream, getThinLTOSingleOutputTask(Conf, Task),
+              Mod, CombinedIndex);
     return finalizeOptimizationRemarks(std::move(DiagnosticOutputFile));
   }
 
@@ -685,20 +885,28 @@ Error lto::thinBackend(const Config &Conf, unsigned Task, AddStreamFn AddStream,
   auto OptimizeAndCodegen =
       [&](Module &Mod, TargetMachine *TM,
           LLVMRemarkFileHandle DiagnosticOutputFile) {
-        // Perform optimization and code generation for ThinLTO.
-        if (!opt(Conf, TM, Task, Mod, /*IsThinLTO=*/true,
-                 /*ExportSummary=*/nullptr, /*ImportSummary=*/&CombinedIndex,
-                 CmdArgs, BitcodeLibFuncs))
-          return finalizeOptimizationRemarks(std::move(DiagnosticOutputFile));
+        if (LTOSplitByCG && ProfitableToSplit) {
+          if (!splitOptAndCodeGenThin(
+                  Task, Conf, TM, AddStream, LTOSplitPartitions, Mod,
+                  CombinedIndex, CmdArgs, true, IRAddStream, BitcodeLibFuncs))
+            return finalizeOptimizationRemarks(std::move(DiagnosticOutputFile));
+        } else {
+          // Perform optimization and code generation for ThinLTO.
+          if (!opt(Conf, TM, Task, Mod, /*IsThinLTO=*/true,
+                  /*ExportSummary=*/nullptr, /*ImportSummary=*/&CombinedIndex,
+                  CmdArgs, BitcodeLibFuncs))
+            return finalizeOptimizationRemarks(std::move(DiagnosticOutputFile));
 
-        // Save the current module before the first codegen round.
-        // Note that the second codegen round runs only `codegen()` without
-        // running `opt()`. We're not reaching here as it's bailed out earlier
-        // with `CodeGenOnly` which has been set in `SecondRoundThinBackend`.
-        if (IRAddStream)
-          cgdata::saveModuleForTwoRounds(Mod, Task, IRAddStream);
+          // Save the current module before the first codegen round.
+          // Note that the second codegen round runs only `codegen()` without
+          // running `opt()`. We're not reaching here as it's bailed out earlier
+          // with `CodeGenOnly` which has been set in `SecondRoundThinBackend`.
+          if (IRAddStream)
+            cgdata::saveModuleForTwoRounds(Mod, Task, IRAddStream);
 
-        codegen(Conf, TM, AddStream, Task, Mod, CombinedIndex);
+          codegen(Conf, TM, AddStream, getThinLTOSingleOutputTask(Conf, Task),
+                  Mod, CombinedIndex);
+        }
         return finalizeOptimizationRemarks(std::move(DiagnosticOutputFile));
       };
 
