@@ -10,6 +10,7 @@
 #include "clang/AST/Type.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
+#include "clang/CIR/MissingFeatures.h"
 
 #include <cassert>
 
@@ -294,6 +295,16 @@ mlir::Type CIRGenTypes::convertRecordDeclType(const clang::RecordDecl *rd) {
 mlir::Type CIRGenTypes::convertType(QualType type) {
   type = astContext.getCanonicalType(type);
   const Type *ty = type.getTypePtr();
+
+  if (astContext.getLangOpts().CUDAIsDevice) {
+    if (type->isCUDADeviceBuiltinSurfaceType()) {
+      if (mlir::Type ty =
+              cgm.getTargetCIRGenInfo().getCUDADeviceBuiltinSurfaceDeviceType())
+        return ty;
+    } else if (type->isCUDADeviceBuiltinTextureType()) {
+      assert(!cir::MissingFeatures::cudaTextureType());
+    }
+  }
 
   // Process record types before the type cache lookup.
   if (const auto *recordType = dyn_cast<RecordType>(type))
