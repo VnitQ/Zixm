@@ -3251,6 +3251,10 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     DeducedIsTrailingReturnType = true;
   }
 
+  SourceRange AutoRange = D.getDeclSpec().getTypeSpecTypeLoc();
+  if (D.getName().getKind() == UnqualifiedIdKind::IK_ConversionFunctionId)
+    AutoRange = D.getName().getSourceRange();
+
   // C++11 [dcl.spec.auto]p5: reject 'auto' if it is not in an allowed context.
   if (Deduced) {
     AutoType *Auto = dyn_cast<AutoType>(Deduced);
@@ -3391,8 +3395,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     case DeclaratorContext::FunctionalCast:
       if (isa<DeducedTemplateSpecializationType>(Deduced))
         break;
-      if (SemaRef.getLangOpts().CPlusPlus23 && IsCXXAutoType &&
-          !Auto->isDecltypeAuto())
+      if (IsCXXAutoType && !Auto->isDecltypeAuto())
         break; // auto(x)
       [[fallthrough]];
     case DeclaratorContext::TypeName:
