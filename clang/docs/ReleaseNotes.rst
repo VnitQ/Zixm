@@ -901,6 +901,19 @@ CUDA/HIP Language Changes
 
 - The new offloading driver is now the default for HIP. Use
   `--no-oflfoad-new-driver` to return to the old behavior.
+- Added IR-level profile-guided optimization (PGO) support for HIP
+  device code on AMD GPUs. ``-fprofile-generate`` now instruments both
+  host and device; running the instrumented binary writes host and
+  per-GPU-architecture device raw profiles, which are merged separately
+  with ``llvm-profdata`` and fed back via ``-Xarch_host`` /
+  ``-Xarch_<gpu-arch>`` ``-fprofile-use=``. See :doc:`HIPSupport` for
+  the full workflow.
+- Added source-based code coverage support for HIP device code on AMD
+  GPUs. ``-fprofile-instr-generate -fcoverage-mapping`` now instruments
+  device code; running the instrumented binary writes per-GPU
+  architecture raw profiles that can be merged with ``llvm-profdata``
+  and reported by ``llvm-cov`` against the extracted device code
+  object. See :doc:`HIPSupport` for the full workflow.
 
 CUDA Support
 ^^^^^^^^^^^^
