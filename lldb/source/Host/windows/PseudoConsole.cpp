@@ -189,6 +189,8 @@ void PseudoConsole::Close() {
   if (m_conpty_handle != INVALID_HANDLE_VALUE)
     kernel32.ClosePseudoConsole(m_conpty_handle);
   m_conpty_handle = INVALID_HANDLE_VALUE;
+  if (m_mode == Mode::Pipe && m_conpty_output != INVALID_HANDLE_VALUE)
+    CancelIoEx(m_conpty_output, nullptr);
   SetStopping(false);
   m_cv.notify_all();
 }

@@ -186,6 +186,8 @@ public:
     m_stdio_window_size.rows = rows;
   }
 
+  STDIOWindowSize GetSTDIOWindowSize() const { return m_stdio_window_size; }
+
 protected:
   FileSpec m_working_dir;
   std::string m_plugin_name;
