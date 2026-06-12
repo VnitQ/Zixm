@@ -612,7 +612,7 @@ void X86AvoidSFBImpl::breakBlockedCopies(
   }
   unsigned Size3 = (LdDispImm + getRegSizeInBytes(LoadInst)) - LdDisp1;
   buildCopies(Size3, LoadInst, LdDisp1, StoreInst, StDisp1, LMMOffset,
-              LMMOffset);
+              SMMOffset);
 }
 
 static bool hasSameBaseOpValue(MachineInstr *LoadInst,
