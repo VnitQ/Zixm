@@ -134,7 +134,8 @@ AbstractSparseForwardDataFlowAnalysis::visitOperation(Operation *op) {
   // The results of a region branch operation are determined by control-flow.
   if (auto branch = dyn_cast<RegionBranchOpInterface>(op)) {
     visitRegionSuccessors(getProgramPointAfter(branch), branch,
-                          RegionSuccessor::parent(), resultLattices);
+                          RegionSuccessor(branch.getOperation()),
+                          resultLattices);
     return success();
   }
 
@@ -316,11 +317,10 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
         if (!inputs.empty())
           firstIndex = cast<OpResult>(inputs.front()).getResultNumber();
         SmallVector<Value> nonSuccessorInputs =
-            branch.getNonSuccessorInputs(RegionSuccessor::parent());
+            branch.getNonSuccessorInputs(successor);
         SmallVector<AbstractSparseLattice *> nonSuccessorInputLattices =
             llvm::map_to_vector(nonSuccessorInputs, valueToLattices);
-        visitNonControlFlowArgumentsImpl(branch, RegionSuccessor::parent(),
-                                         nonSuccessorInputs,
+        visitNonControlFlowArgumentsImpl(branch, successor, nonSuccessorInputs,
                                          nonSuccessorInputLattices);
       } else {
         if (!inputs.empty())
@@ -619,7 +619,7 @@ void AbstractSparseBackwardDataFlowAnalysis::visitRegionSuccessors(
   SmallVector<Attribute> operands(op->getNumOperands(), nullptr);
   branch.getEntrySuccessorRegions(operands, successors);
   for (RegionSuccessor &successor : successors) {
-    if (successor.isParent())
+    if (successor.isOperation())
       continue;
     auto valueToArgument = [](Value value) {
       return cast<BlockArgument>(value);
@@ -647,14 +647,30 @@ void AbstractSparseBackwardDataFlowAnalysis::
   // non-contiguous in the presence of multiple successors.
   BitVector unaccounted(terminator->getNumOperands(), true);
 
-  RegionBranchSuccessorMapping mapping;
-  branch.getSuccessorOperandInputMapping(mapping,
-                                         RegionBranchPoint(terminator));
-  for (const auto &[operand, inputs] : mapping) {
-    for (Value input : inputs) {
-      meet(getLatticeElement(operand->get()),
+  // For propagating breaks, the immediate parent is transparent. Resolve the
+  // concrete successor list together with the RegionBranchOpInterface that owns
+  // the corresponding successor inputs.
+  SmallVector<RegionSuccessor> successors;
+  RegionBranchOpInterface effectiveBranch =
+      resolveTerminatorSuccessors(terminator, successors);
+  if (!effectiveBranch) {
+    effectiveBranch = branch;
+    branch.getSuccessorRegions(RegionBranchPoint(terminator), successors);
+  }
+
+  for (RegionSuccessor successor : successors) {
+    if (successor.isPropagating())
+      continue;
+    OperandRange operands = effectiveBranch.getSuccessorOperands(
+        RegionBranchPoint(terminator), successor);
+    ValueRange inputs = effectiveBranch.getSuccessorInputs(successor);
+    assert(operands.size() == inputs.size() &&
+           "expected the same number of operands and inputs");
+    MutableArrayRef<OpOperand> opOperands(operands.getBase(), operands.size());
+    for (const auto &[operand, input] : llvm::zip_equal(opOperands, inputs)) {
+      meet(getLatticeElement(operand.get()),
            *getLatticeElementFor(getProgramPointAfter(terminator), input));
-      unaccounted.reset(operand->getOperandNumber());
+      unaccounted.reset(operand.getOperandNumber());
     }
   }
 

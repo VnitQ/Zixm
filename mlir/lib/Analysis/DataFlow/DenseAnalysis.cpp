@@ -633,13 +633,26 @@ void AbstractDenseBackwardDataFlowAnalysis::visitRegionBranchOperation(
   // entry block of each possible successor region, or the next operation when
   // the branch is a successor of itself.
   SmallVector<RegionSuccessor> successors;
-  branch.getSuccessorRegions(branchPoint, successors);
+  RegionBranchOpInterface effectiveBranch = branch;
+  if (!branchPoint.isParent()) {
+    // For terminator branch points, resolve propagating breaks.
+    auto terminator = branchPoint.getTerminatorPredecessorOrNull();
+    effectiveBranch = resolveTerminatorSuccessors(terminator, successors);
+    if (!effectiveBranch)
+      return;
+  } else {
+    branch.getSuccessorRegions(branchPoint, successors);
+  }
   LDBG() << "  Processing " << successors.size() << " successor regions";
   for (const RegionSuccessor &successor : successors) {
     const AbstractDenseLattice *after;
-    if (successor.isParent() || successor.getSuccessor()->empty()) {
-      LDBG() << "    Successor is parent or empty region";
-      after = getLatticeFor(point, getProgramPointAfter(branch));
+    if (successor.isOperation()) {
+      LDBG() << "    Successor is operation";
+      after = getLatticeFor(point,
+                            getProgramPointAfter(successor.getSuccessorOp()));
+    } else if (successor.getSuccessor()->empty()) {
+      LDBG() << "    Successor is empty region";
+      after = getLatticeFor(point, getProgramPointAfter(effectiveBranch));
     } else {
       Region *successorRegion = successor.getSuccessor();
       assert(!successorRegion->empty() && "unexpected empty successor region");
@@ -658,7 +671,7 @@ void AbstractDenseBackwardDataFlowAnalysis::visitRegionBranchOperation(
     }
     LDBG() << "    After state: " << *after;
 
-    visitRegionBranchControlFlowTransfer(branch, branchPoint, successor, *after,
-                                         before);
+    visitRegionBranchControlFlowTransfer(effectiveBranch, branchPoint,
+                                         successor, *after, before);
   }
 }

@@ -13,6 +13,7 @@
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/RegionKindInterface.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/Support/DebugLog.h"
@@ -76,14 +77,14 @@ detail::getBranchSuccessorArgument(const SuccessorOperands &operands,
 LogicalResult
 detail::verifyBranchSuccessorOperands(Operation *op, unsigned succNo,
                                       const SuccessorOperands &operands) {
-  LDBG() << "Verifying branch successor operands for successor #" << succNo
-         << " in operation " << op->getName();
+  LDBG(3) << "Verifying branch successor operands for successor #" << succNo
+          << " in operation " << op->getName();
 
   // Check the count.
   unsigned operandCount = operands.size();
   Block *destBB = op->getSuccessor(succNo);
-  LDBG() << "Branch has " << operandCount << " operands, target block has "
-         << destBB->getNumArguments() << " arguments";
+  LDBG(3) << "Branch has " << operandCount << " operands, target block has "
+          << destBB->getNumArguments() << " arguments";
 
   if (operandCount != destBB->getNumArguments())
     return op->emitError() << "branch has " << operandCount
@@ -92,22 +93,22 @@ detail::verifyBranchSuccessorOperands(Operation *op, unsigned succNo,
                            << destBB->getNumArguments();
 
   // Check the types.
-  LDBG() << "Checking type compatibility for "
-         << (operandCount - operands.getProducedOperandCount())
-         << " forwarded operands";
+  LDBG(3) << "Checking type compatibility for "
+          << (operandCount - operands.getProducedOperandCount())
+          << " forwarded operands";
   for (unsigned i = operands.getProducedOperandCount(); i != operandCount;
        ++i) {
     Type operandType = operands[i].getType();
     Type argType = destBB->getArgument(i).getType();
-    LDBG() << "Checking type compatibility: operand type " << operandType
-           << " vs argument type " << argType;
+    LDBG(3) << "Checking type compatibility: operand type " << operandType
+            << " vs argument type " << argType;
 
     if (!cast<BranchOpInterface>(op).areTypesCompatible(operandType, argType))
       return op->emitError() << "type mismatch for bb argument #" << i
                              << " of successor #" << succNo;
   }
 
-  LDBG() << "Branch successor operand verification successful";
+  LDBG(3) << "Branch successor operand verification successful";
   return success();
 }
 
@@ -168,6 +169,9 @@ LogicalResult detail::verifyRegionBranchOpInterface(Operation *op) {
     SmallVector<RegionSuccessor> successors;
     regionInterface.getSuccessorRegions(branchPoint, successors);
     for (const RegionSuccessor &successor : successors) {
+      // Skip propagating-break sentinels — they are resolved by the ancestor.
+      if (successor.isPropagating())
+        continue;
       // Helper function that print the region branch point and the region
       // successor.
       auto emitRegionEdgeError = [&]() {
@@ -187,7 +191,7 @@ LogicalResult detail::verifyRegionBranchOpInterface(Operation *op) {
         if (Region *region = successor.getSuccessor()) {
           diag << "Region #" << region->getRegionNumber();
         } else {
-          diag << "parent";
+          diag << "Operation " << successor.getSuccessorOp()->getName();
         }
         return diag;
       };
@@ -246,7 +250,6 @@ static bool traverseRegionGraph(Region *begin,
   SmallVector<Region *> worklist;
   auto enqueueAllSuccessors = [&](Region *region) {
     LDBG() << "Enqueuing successors for region #" << region->getRegionNumber();
-    SmallVector<Attribute> operandAttributes(op->getNumOperands());
     for (Block &block : *region) {
       if (block.empty())
         continue;
@@ -255,18 +258,17 @@ static bool traverseRegionGraph(Region *begin,
       if (!terminator)
         continue;
       SmallVector<RegionSuccessor> successors;
-      operandAttributes.resize(terminator->getNumOperands());
-      terminator.getSuccessorRegions(operandAttributes, successors);
+      resolveTerminatorSuccessors(terminator, successors);
       LDBG() << "Found " << successors.size()
              << " successors from terminator in block";
       for (RegionSuccessor successor : successors) {
-        if (!successor.isParent()) {
+        if (successor.isRegion()) {
           worklist.push_back(successor.getSuccessor());
           LDBG() << "Added region #"
                  << successor.getSuccessor()->getRegionNumber()
                  << " to worklist";
         } else {
-          LDBG() << "Skipping parent successor";
+          LDBG() << "Skipping operation successor";
         }
       }
     }
@@ -410,7 +412,7 @@ bool RegionBranchOpInterface::hasLoop() {
   LDBG() << "Found " << entryRegions.size() << " entry regions";
 
   for (RegionSuccessor successor : entryRegions) {
-    if (!successor.isParent()) {
+    if (successor.isRegion()) {
       LDBG() << "Checking entry region #"
              << successor.getSuccessor()->getRegionNumber() << " for loops";
 
@@ -428,7 +430,7 @@ bool RegionBranchOpInterface::hasLoop() {
         return true;
       }
     } else {
-      LDBG() << "Skipping parent successor";
+      LDBG() << "Skipping operation successor";
     }
   }
 
@@ -447,19 +449,47 @@ RegionBranchOpInterface::getSuccessorOperands(RegionBranchPoint src,
 SmallVector<Value>
 RegionBranchOpInterface::getNonSuccessorInputs(RegionSuccessor successor) {
   SmallVector<Value> results = llvm::to_vector(
-      successor.isParent()
-          ? ValueRange(getOperation()->getResults())
+      successor.isOperation()
+          ? ValueRange(successor.getSuccessorOp()->getResults())
           : ValueRange(successor.getSuccessor()->getArguments()));
   ValueRange successorInputs = getSuccessorInputs(successor);
   if (!successorInputs.empty()) {
     unsigned inputBegin =
-        successor.isParent()
+        successor.isOperation()
             ? cast<OpResult>(successorInputs.front()).getResultNumber()
             : cast<BlockArgument>(successorInputs.front()).getArgNumber();
     results.erase(results.begin() + inputBegin,
                   results.begin() + inputBegin + successorInputs.size());
   }
   return results;
+}
+
+RegionBranchOpInterface mlir::resolveTerminatorSuccessors(
+    RegionBranchTerminatorOpInterface terminator,
+    SmallVectorImpl<RegionSuccessor> &successors) {
+  auto branch = dyn_cast<RegionBranchOpInterface>(terminator->getParentOp());
+  if (!branch)
+    return nullptr;
+  // If the terminator targets an ancestor rather than its immediate parent, the
+  // immediate parent is transparent (it would emit a
+  // `RegionSuccessor::propagating()` sentinel) and the effective branch is the
+  // addressed receiver. A terminator with multiple potential targets requires
+  // a multi-branch successor model, so leave it attached to the immediate
+  // parent here instead of pretending there is one resolved branch.
+  SmallVector<HasBreakingControlFlowOpInterface> targets =
+      findPotentialBreakTargets(terminator);
+  if (targets.size() == 1 && targets.front() &&
+      targets.front().getOperation() != branch.getOperation()) {
+    auto targetBranch =
+        dyn_cast<RegionBranchOpInterface>(targets.front().getOperation());
+    if (!targetBranch)
+      return nullptr;
+    targetBranch.getSuccessorRegions(RegionBranchPoint(terminator), successors);
+    return targetBranch;
+  }
+
+  branch.getSuccessorRegions(RegionBranchPoint(terminator), successors);
+  return branch;
 }
 
 static MutableArrayRef<OpOperand> operandsToOpOperands(OperandRange &operands) {
@@ -473,6 +503,9 @@ getSuccessorOperandInputMapping(RegionBranchOpInterface branchOp,
   SmallVector<RegionSuccessor> successors;
   branchOp.getSuccessorRegions(src, successors);
   for (RegionSuccessor dst : successors) {
+    // Skip propagating-break sentinels — they don't map to this op's inputs.
+    if (dst.isPropagating())
+      continue;
     OperandRange operands = branchOp.getSuccessorOperands(src, dst);
     assert(operands.size() == branchOp.getSuccessorInputs(dst).size() &&
            "expected the same number of operands and inputs");
@@ -524,6 +557,62 @@ RegionBranchOpInterface::getAllRegionBranchPoints() {
         branchPoints.push_back(RegionBranchPoint(terminator));
     }
   }
+
+  Operation *op = getOperation();
+  if (!op->hasTrait<OpTrait::PropagateControlFlowBreak>() &&
+      !isa<HasBreakingControlFlowOpInterface>(op))
+    return branchPoints;
+
+  // The loop above only records terminators that are immediate branch points of
+  // this op: terminators ending blocks directly contained in one of this op's
+  // regions. Breaking control flow adds another class of branch points. A
+  // nested RegionBranchOpInterface that defines PropagateControlFlowBreak can
+  // contain a breaking terminator whose addressed receiver is this op or one of
+  // this op's ancestors. Even though the terminator is not directly contained
+  // in this op's region, it can still create a control-flow edge that leaves or
+  // propagates through this op.
+  //
+  // For example, consider:
+  //
+  //   scf.loop token(%outer) {
+  //     scf.loop token(%inner) {
+  //       scf.if %cond {
+  //         scf.break [%outer]
+  //       }
+  //       scf.continue [%inner]
+  //     }
+  //     scf.continue [%outer]
+  //   }
+  //
+  // When enumerating branch points for the inner loop, its direct body
+  // terminator is only `scf.continue [%inner]`. The `scf.break [%outer]` is
+  // hidden behind the immediately nested `scf.if`, but the inner loop must
+  // still expose a possible edge for that break: the break request propagates
+  // through `scf.if`, then through the inner loop, and is ultimately handled by
+  // the outer loop. Without adding the nested break as a branch point of the
+  // inner loop, generic RegionBranchOpInterface verification and data-flow
+  // consumers only see the continue edge and miss the propagated exit edge.
+  //
+  // This is intentionally broader than collectAllNestedPredecessors(op). That
+  // helper collects only terminators that directly target `op`, which is enough
+  // for a receiver to find incoming breaks but insufficient for an intermediate
+  // PropagateControlFlowBreak op: an escaping terminator targets an ancestor,
+  // not the intermediate op it propagates through.
+  // visitNestedBreakingControlFlowOps reports both nested terminators that
+  // target `op` and those that target an ancestor of `op`, which is exactly the
+  // set that may affect this op's RegionBranchOpInterface edges.
+  visitNestedBreakingControlFlowOps(
+      op, [&](Operation *nestedTerminator, int nestedLevel) {
+        // Immediate region terminators are already covered above. Deeper
+        // terminators may add a propagated control-flow edge through this op.
+        if (nestedLevel <= 1)
+          return;
+        auto terminator =
+            dyn_cast<RegionBranchTerminatorOpInterface>(nestedTerminator);
+        if (!terminator)
+          return;
+        branchPoints.push_back(RegionBranchPoint(terminator));
+      });
   return branchPoints;
 }
 
@@ -1103,19 +1192,20 @@ getSuccessorRegionsWithAttrs(RegionBranchOpInterface op,
 /// Find the single acyclic path through the given region branch op. Return an
 /// empty vector if no such path or multiple such paths exist.
 ///
-/// Example: "scf.if %true" has a single path: parent => then_region => parent
+/// Example: "scf.if %true" has a single path:
+///          parent => then_region => op
 ///
 /// Example: "scf.if ???" has multiple paths:
-///          (1) parent => then_region => parent
-///          (2) parent => else_region => parent
+///          (1) parent => then_region => op
+///          (2) parent => else_region => op
 ///
 /// Example: "scf.while with scf.condition(%false)" has a single path:
-///          parent => before_region => parent
+///          parent => before_region => op
 ///
-/// Example: "scf.for with 0 iterations" has a single path: parent => parent
+/// Example: "scf.for with 0 iterations" has a single path: parent => op
 ///
-/// Note: Each path starts and ends with "parent". The "parent" at the beginning
-/// of the path is omitted from the result.
+/// Note: Each path starts from the op. The initial parent branch point is
+/// omitted from the result.
 ///
 /// Note: This function also returns an "empty" path when a region with multiple
 /// blocks was found.
@@ -1134,9 +1224,13 @@ computeSingleAcyclicRegionBranchPath(RegionBranchOpInterface op) {
       // through the region branch op.
       return {};
     }
+    if (successors.front().isPropagating()) {
+      // Propagating break — can't inline through this op.
+      return {};
+    }
     path.push_back(successors.front());
-    if (successors.front().isParent()) {
-      // Found path that ends with "parent".
+    if (successors.front().isOperation()) {
+      // Found path that ends after an operation.
       return path;
     }
     Region *region = successors.front().getSuccessor();
@@ -1238,20 +1332,20 @@ struct InlineRegionBranchOp : public RewritePattern {
       unsigned firstSuccessorInputIdx = 0;
       if (!successorInputs.empty())
         firstSuccessorInputIdx =
-            nextSuccessor.isParent()
+            nextSuccessor.isOperation()
                 ? cast<OpResult>(successorInputs.front()).getResultNumber()
                 : cast<BlockArgument>(successorInputs.front()).getArgNumber();
       // Query the total number of block arguments / op results.
       unsigned numValues =
-          nextSuccessor.isParent()
-              ? op->getNumResults()
+          nextSuccessor.isOperation()
+              ? nextSuccessor.getSuccessorOp()->getNumResults()
               : nextSuccessor.getSuccessor()->getNumArguments();
       // Compute replacement values for all block arguments / op results.
       SmallVector<Value> replacements;
       // Helper function to get the i-th block argument / op result.
       auto getValue = [&](unsigned idx) {
-        return nextSuccessor.isParent()
-                   ? Value(op->getResult(idx))
+        return nextSuccessor.isOperation()
+                   ? Value(nextSuccessor.getSuccessorOp()->getResult(idx))
                    : Value(nextSuccessor.getSuccessor()->getArgument(idx));
       };
       // Compute replacement values for all non-successor-input values that
@@ -1267,9 +1361,12 @@ struct InlineRegionBranchOp : public RewritePattern {
       for (unsigned i = replacements.size(); i < numValues; ++i)
         replacements.push_back(
             replBuilderFn(rewriter, op->getLoc(), getValue(i)));
-      if (nextSuccessor.isParent()) {
-        // The path ends with "parent". Replace the region branch op with the
+      if (nextSuccessor.isOperation()) {
+        // The path ends after the region branch op. Replace it with the
         // computed replacement values.
+        if (nextSuccessor.getSuccessorOp() != op)
+          return rewriter.notifyMatchFailure(
+              op, "path ends after a different operation");
         assert(remainingPath.empty() && "expected that the path ended");
         rewriter.replaceOp(op, replacements);
         return success();
@@ -1287,7 +1384,7 @@ struct InlineRegionBranchOp : public RewritePattern {
       rewriter.eraseOp(terminator);
     }
 
-    llvm_unreachable("expected that paths ends with parent");
+    llvm_unreachable("expected that path ends with an operation");
   }
 
   NonSuccessorInputReplacementBuilderFn replBuilderFn;

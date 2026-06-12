@@ -509,25 +509,42 @@ void DeadCodeAnalysis::visitRegionTerminator(Operation *op,
   if (!operands)
     return;
 
-  SmallVector<RegionSuccessor> successors;
   auto terminator = dyn_cast<RegionBranchTerminatorOpInterface>(op);
   if (!terminator)
     return;
+
+  SmallVector<RegionSuccessor> successors;
+  // Use operand-aware resolution to prune dead successors via constant folding
+  // (e.g. a scf.while condition known to be false).
   terminator.getSuccessorRegions(*operands, successors);
-  visitRegionBranchEdges(branch, op, successors);
+
+  // For propagating breaks, the immediate parent is transparent — resolve to
+  // the actual HasBreakingControlFlowOp ancestor.
+  RegionBranchOpInterface effectiveBranch = branch;
+  if (successors.size() == 1 && successors[0].isPropagating()) {
+    successors.clear();
+    // A terminator with operand-sensitive pruning can return concrete
+    // successors directly; the propagating sentinel means the target op owns
+    // the edge.
+    effectiveBranch = resolveTerminatorSuccessors(terminator, successors);
+    if (!effectiveBranch)
+      return;
+  }
+  visitRegionBranchEdges(effectiveBranch, op, successors);
 }
 
 void DeadCodeAnalysis::visitRegionBranchEdges(
     RegionBranchOpInterface regionBranchOp, Operation *predecessorOp,
     const SmallVector<RegionSuccessor> &successors) {
   for (const RegionSuccessor &successor : successors) {
-    // The successor can be either an entry block or the parent operation.
+    // The successor can be either an entry block or an operation to resume
+    // after.
     // Skip empty regions — they have no entry block to mark executable.
-    if (!successor.isParent() && successor.getSuccessor()->empty())
+    if (successor.isRegion() && successor.getSuccessor()->empty())
       continue;
     ProgramPoint *point =
-        successor.isParent()
-            ? getProgramPointAfter(regionBranchOp)
+        successor.isOperation()
+            ? getProgramPointAfter(successor.getSuccessorOp())
             : getProgramPointBefore(&successor.getSuccessor()->front());
 
     // Mark the entry block as executable.
@@ -535,7 +552,7 @@ void DeadCodeAnalysis::visitRegionBranchEdges(
     propagateIfChanged(state, state->setToLive());
     LDBG() << "Marked region successor live: " << *point;
 
-    // Add the parent op as a predecessor.
+    // Add the region branch predecessor.
     auto *predecessors = getOrCreate<PredecessorState>(point);
     propagateIfChanged(
         predecessors,
