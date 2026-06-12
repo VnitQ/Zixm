@@ -283,39 +283,45 @@ for.end:
 define void @interleave(ptr noalias %dst, ptr noalias %src, i64 %n) #0 {
 ; CHECK-NOTF-LABEL: @interleave(
 ; CHECK-NOTF:       vector.body:
-; CHECK-NOTF:         %[[LOAD:.*]] = load <8 x float>, ptr
-; CHECK-NOTF:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
-; CHECK-NOTF:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
+; CHECK-NOTF:         %[[LOAD:.*]] = load <vscale x 8 x float>, ptr
+; CHECK-NOTF:         %{{.*}} = call { <vscale x 4 x float>, <vscale x 4 x float> } @llvm.vector.deinterleave2.nxv8f32(<vscale x 8 x float> %[[LOAD]])
+; CHECK-NOTF:         %{{.*}} = call <vscale x 12 x float> @llvm.vector.interleave3.nxv12f32
+; CHECK-NOTF:         store <vscale x 12 x float>
 
 ; CHECK-TF-LABEL: @interleave(
 ; CHECK-TF:       vector.body:
-; CHECK-TF:         %[[LOAD:.*]] = load <8 x float>, ptr
-; CHECK-TF:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
-; CHECK-TF:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
+; CHECK-TF:         %[[LOAD:.*]] = load <vscale x 8 x float>, ptr
+; CHECK-TF:         %{{.*}} = call { <vscale x 4 x float>, <vscale x 4 x float> } @llvm.vector.deinterleave2.nxv8f32(<vscale x 8 x float> %[[LOAD]])
+; CHECK-TF:         %{{.*}} = call <vscale x 12 x float> @llvm.vector.interleave3.nxv12f32
+; CHECK-TF:         store <vscale x 12 x float>
 
 ; CHECK-TF-NORED-LABEL: @interleave(
 ; CHECK-TF-NORED:       vector.body:
-; CHECK-TF-NORED:         %[[LOAD:.*]] = load <8 x float>, ptr
-; CHECK-TF-NORED:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
-; CHECK-TF-NORED:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
+; CHECK-TF-NORED:         %[[LOAD:.*]] = load <vscale x 8 x float>, ptr
+; CHECK-TF-NORED:         %{{.*}} = call { <vscale x 4 x float>, <vscale x 4 x float> } @llvm.vector.deinterleave2.nxv8f32(<vscale x 8 x float> %[[LOAD]])
+; CHECK-TF-NORED:         %{{.*}} = call <vscale x 12 x float> @llvm.vector.interleave3.nxv12f32
+; CHECK-TF-NORED:         store <vscale x 12 x float>
 
 ; CHECK-TF-NOREC-LABEL: @interleave(
 ; CHECK-TF-NOREC:       vector.body:
-; CHECK-TF-NOREC:         %[[LOAD:.*]] = load <8 x float>, ptr
-; CHECK-TF-NOREC:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
-; CHECK-TF-NOREC:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
+; CHECK-TF-NOREC:         %[[LOAD:.*]] = load <vscale x 8 x float>, ptr
+; CHECK-TF-NOREC:         %{{.*}} = call { <vscale x 4 x float>, <vscale x 4 x float> } @llvm.vector.deinterleave2.nxv8f32(<vscale x 8 x float> %[[LOAD]])
+; CHECK-TF-NOREC:         %{{.*}} = call <vscale x 12 x float> @llvm.vector.interleave3.nxv12f32
+; CHECK-TF-NOREC:         store <vscale x 12 x float>
 
 ; CHECK-TF-NOREV-LABEL: @interleave(
 ; CHECK-TF-NOREV:       vector.body:
-; CHECK-TF-NOREV:         %[[LOAD:.*]] = load <8 x float>, ptr
-; CHECK-TF-NOREV:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
-; CHECK-TF-NOREV:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
+; CHECK-TF-NOREV:         %[[LOAD:.*]] = load <vscale x 8 x float>, ptr
+; CHECK-TF-NOREV:         %{{.*}} = call { <vscale x 4 x float>, <vscale x 4 x float> } @llvm.vector.deinterleave2.nxv8f32(<vscale x 8 x float> %[[LOAD]])
+; CHECK-TF-NOREV:         %{{.*}} = call <vscale x 12 x float> @llvm.vector.interleave3.nxv12f32
+; CHECK-TF-NOREV:         store <vscale x 12 x float>
 
 ; CHECK-NEOVERSE-V1-LABEL: @interleave(
 ; CHECK-NEOVERSE-V1:       vector.body:
-; CHECK-NEOVERSE-V1:         %[[LOAD:.*]] = load <8 x float>, ptr
-; CHECK-NEOVERSE-V1:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
-; CHECK-NEOVERSE-V1:         %{{.*}} = shufflevector <8 x float> %[[LOAD]], <8 x float> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
+; CHECK-NEOVERSE-V1:         %[[LOAD:.*]] = load <vscale x 8 x float>, ptr
+; CHECK-NEOVERSE-V1:         %{{.*}} = call { <vscale x 4 x float>, <vscale x 4 x float> } @llvm.vector.deinterleave2.nxv8f32(<vscale x 8 x float> %[[LOAD]])
+; CHECK-NEOVERSE-V1:         %{{.*}} = call <vscale x 12 x float> @llvm.vector.interleave3.nxv12f32
+; CHECK-NEOVERSE-V1:         store <vscale x 12 x float>
 
 entry:
   br label %for.body
