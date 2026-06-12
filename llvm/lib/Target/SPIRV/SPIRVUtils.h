@@ -14,6 +14,9 @@
 #define LLVM_LIB_TARGET_SPIRV_SPIRVUTILS_H
 
 #include "MCTargetDesc/SPIRVBaseInfo.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/IR/Dominators.h"
@@ -23,8 +26,6 @@
 #include <queue>
 #include <set>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 
 #include "SPIRVTypeInst.h"
 
@@ -72,7 +73,7 @@ class PartialOrderingVisitor {
   DomTreeBuilder::BBDomTree DT;
   LoopInfo LI;
 
-  std::unordered_set<BasicBlock *> Queued = {};
+  SmallPtrSet<BasicBlock *, 0> Queued = {};
   std::queue<BasicBlock *> ToVisit = {};
 
   struct OrderInfo {
@@ -80,12 +81,12 @@ class PartialOrderingVisitor {
     size_t TraversalIndex;
   };
 
-  using BlockToOrderInfoMap = std::unordered_map<BasicBlock *, OrderInfo>;
+  using BlockToOrderInfoMap = DenseMap<BasicBlock *, OrderInfo>;
   BlockToOrderInfoMap BlockToOrder;
   std::vector<BasicBlock *> Order = {};
 
   // Get all basic-blocks reachable from Start.
-  std::unordered_set<BasicBlock *> getReachableFrom(BasicBlock *Start);
+  SmallPtrSet<BasicBlock *, 0> getReachableFrom(BasicBlock *Start);
 
   // Internal function used to determine the partial ordering.
   // Visits |BB| with the current rank being |Rank|.
@@ -567,7 +568,7 @@ bool isNestedPointer(const Type *Ty);
 enum FPDecorationId { NONE, RTE, RTZ, RTP, RTN, SAT };
 
 inline FPDecorationId demangledPostfixToDecorationId(const std::string &S) {
-  static std::unordered_map<std::string, FPDecorationId> Mapping = {
+  static const StringMap<FPDecorationId> Mapping = {
       {"rte", FPDecorationId::RTE},
       {"rtz", FPDecorationId::RTZ},
       {"rtp", FPDecorationId::RTP},
