@@ -813,9 +813,15 @@ def XSeqPairsClass   : RegisterClass<"AArch64", [untyped], 64,
                                      (add XSeqPairs)>{
   let Size = 128;
 }
+def SyspPairsClass   : RegisterClass<"AArch64", [untyped], 64,
+                                     (add XSeqPairs, [XZR, XZR])>{
+  let Size = 128;
+  let isAllocatable = 0;
+}
 
 
-let RenderMethod = "addRegOperands", ParserMethod="tryParseGPRSeqPair" in {
+let RenderMethod = "addRegOperands",
+    ParserMethod="tryParseConsecutiveGPRSeqPair<false>" in {
   def WSeqPairsAsmOperandClass : AsmOperandClass { let Name = "WSeqPair"; }
   def XSeqPairsAsmOperandClass : AsmOperandClass { let Name = "XSeqPair"; }
 }
@@ -833,14 +839,14 @@ def MrrsMssrPairClassOperand :
     RegisterOperand<XSeqPairsClass, "printGPRSeqPairsClassOperand<64>"> {
   let ParserMatchClass = XSeqPairsAsmOperandClass;
 }
-def SyspXzrPairOperandMatcherClass : AsmOperandClass {
-  let Name = "SyspXzrPair";
-  let RenderMethod = "addSyspXzrPairOperand";
-  let ParserMethod = "tryParseSyspXzrPair";
+def SyspPairOperandMatcherClass : AsmOperandClass {
+  let Name = "SyspPair";
+  let RenderMethod = "addRegOperands";
+  let ParserMethod = "tryParseConsecutiveGPRSeqPair<true>";
 }
-def SyspXzrPairOperand :
-    RegisterOperand<GPR64, "printSyspXzrPair"> { // needed to allow alias with XZR operand
-  let ParserMatchClass = SyspXzrPairOperandMatcherClass;
+def SyspPairOperand :
+    RegisterOperand<SyspPairsClass, "printGPRSeqPairsClassOperand<64>"> {
+  let ParserMatchClass = SyspPairOperandMatcherClass;
 }
 
 
