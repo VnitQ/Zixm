@@ -19,6 +19,7 @@
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -97,9 +98,46 @@ static bool areEquivalentExpr(const Expr *Left, const Expr *Right) {
       return false;
     return cast<DependentScopeDeclRefExpr>(Left)->getQualifier() ==
            cast<DependentScopeDeclRefExpr>(Right)->getQualifier();
-  case Stmt::DeclRefExprClass:
-    return cast<DeclRefExpr>(Left)->getDecl() ==
-           cast<DeclRefExpr>(Right)->getDecl();
+  case Stmt::DeclRefExprClass: {
+    const auto *L = cast<DeclRefExpr>(Left);
+    const auto *R = cast<DeclRefExpr>(Right);
+
+    if (L->getDecl() != R->getDecl() || L->getFoundDecl() != R->getFoundDecl())
+      return false;
+
+    // Compare the printed representations of the qualifiers and template
+    // arguments. String comparison is required because non-dependent template
+    // specializations are not reliably uniqued in the AST.
+    const PrintingPolicy &Policy =
+        L->getDecl()->getASTContext().getPrintingPolicy();
+
+    if (L->hasQualifier() != R->hasQualifier())
+      return false;
+    if (L->hasQualifier()) {
+      std::string LQual, RQual;
+      llvm::raw_string_ostream LOS(LQual), ROS(RQual);
+      L->getQualifier().print(LOS, Policy);
+      R->getQualifier().print(ROS, Policy);
+      if (LQual != RQual)
+        return false;
+    }
+
+    if (L->hasExplicitTemplateArgs() != R->hasExplicitTemplateArgs())
+      return false;
+    if (L->hasExplicitTemplateArgs()) {
+      if (L->getNumTemplateArgs() != R->getNumTemplateArgs())
+        return false;
+      for (unsigned I = 0, E = L->getNumTemplateArgs(); I != E; ++I) {
+        std::string LArg, RArg;
+        llvm::raw_string_ostream LOS(LArg), ROS(RArg);
+        L->getTemplateArgs()[I].getArgument().print(Policy, LOS, true);
+        R->getTemplateArgs()[I].getArgument().print(Policy, ROS, true);
+        if (LArg != RArg)
+          return false;
+      }
+    }
+    return true;
+  }
   case Stmt::MemberExprClass:
     return cast<MemberExpr>(Left)->getMemberDecl() ==
            cast<MemberExpr>(Right)->getMemberDecl();
