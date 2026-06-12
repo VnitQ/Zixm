@@ -51,6 +51,7 @@ struct OpenACCRoutineConstruct;
 
 namespace semantics {
 class OpenACCRoutineInfo;
+class Scope;
 class SemanticsContext;
 class Symbol;
 } // namespace semantics
@@ -89,6 +90,14 @@ void genOpenACCRoutineConstruct(
 void declareExternalAccModuleDeclareActionRecipes(
     AbstractConverter &, fir::FirOpBuilder &,
     const Fortran::semantics::Symbol &);
+
+/// Declare a private func.func for every `acc routine` bind(name) target not
+/// otherwise declared in this program unit. A target is declared only when its
+/// decorated procedure has a func.func. \p scope defaults to the global scope.
+void materializeOpenACCRoutineBindTargets(
+    AbstractConverter &, Fortran::semantics::SemanticsContext &,
+    const Fortran::semantics::Scope *scope = nullptr);
+
 void attachDeclarePostAllocAction(AbstractConverter &, fir::FirOpBuilder &,
                                   const Fortran::semantics::Symbol &);
 void attachDeclarePreDeallocAction(AbstractConverter &, fir::FirOpBuilder &,

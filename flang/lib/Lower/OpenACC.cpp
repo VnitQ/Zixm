@@ -13,7 +13,9 @@
 #include "flang/Lower/OpenACC.h"
 
 #include "flang/Common/idioms.h"
+#include "flang/Evaluate/call.h"
 #include "flang/Lower/Bridge.h"
+#include "flang/Lower/CallInterface.h"
 #include "flang/Lower/ConvertType.h"
 #include "flang/Lower/ConvertVariable.h"
 #include "flang/Lower/DirectivesCommon.h"
@@ -4533,6 +4535,70 @@ void Fortran::lower::genOpenACCRoutineConstruct(
       bindStrNames, bindIdNameDeviceTypes, bindStrNameDeviceTypes,
       gangDeviceTypes, gangDimValues, gangDimDeviceTypes, seqDeviceTypes,
       workerDeviceTypes, vectorDeviceTypes);
+}
+
+void Fortran::lower::materializeOpenACCRoutineBindTargets(
+    Fortran::lower::AbstractConverter &converter,
+    Fortran::semantics::SemanticsContext &semaCtx,
+    const Fortran::semantics::Scope *scope) {
+  const Fortran::semantics::Scope &root =
+      scope ? *scope : semaCtx.globalScope();
+
+  // Recurse into child scopes first (modules, subprograms, etc.).
+  for (const Fortran::semantics::Scope &child : root.children())
+    materializeOpenACCRoutineBindTargets(converter, semaCtx, &child);
+
+  mlir::ModuleOp module = converter.getModuleOp();
+  mlir::SymbolTable *symbolTable = converter.getMLIRSymbolTable();
+
+  // Declare a single bind(name) target. A bind("string") target is a raw asm
+  // name used verbatim -- no Fortran-symbol resolution or name mangling --
+  // whereas a bind(symbol) target is mangled; a func.func is declared for both.
+  auto declareBindTarget =
+      [&](const Fortran::semantics::OpenACCRoutineDeviceTypeInfo &dti) {
+        const std::variant<std::string, Fortran::semantics::SymbolRef> *bind =
+            dti.bindName();
+        if (!bind)
+          return;
+        if (const auto *bindSym =
+                std::get_if<Fortran::semantics::SymbolRef>(bind)) {
+          // bind(identifier): declared with external-procedure mangling,
+          // matching the bind reference.
+          Fortran::evaluate::ProcedureDesignator proc(*bindSym);
+          (void)Fortran::lower::getOrDeclareFunction(proc, converter);
+        } else if (const auto *bindStr = std::get_if<std::string>(bind)) {
+          // bind("string"): the literal is its own external name, declared
+          // verbatim.
+          (void)Fortran::lower::getOrDeclareNamedFunction(*bindStr, converter);
+        }
+      };
+
+  for (const auto &it : root) {
+    const Fortran::semantics::Symbol &ultimate = it.second->GetUltimate();
+    const std::vector<Fortran::semantics::OpenACCRoutineInfo> *infos = nullptr;
+    if (const auto *d =
+            ultimate.detailsIf<Fortran::semantics::SubprogramDetails>())
+      infos = &d->openACCRoutineInfos();
+    else if (const auto *d =
+                 ultimate.detailsIf<Fortran::semantics::ProcEntityDetails>())
+      infos = &d->openACCRoutineInfos();
+    if (!infos || infos->empty())
+      continue;
+
+    // An acc.routine bind reference is emitted only when the decorated
+    // procedure was lowered to a func.func; gate on that so a never-lowered
+    // procedure produces no spurious declaration.
+    if (!fir::FirOpBuilder::getNamedFunction(module, symbolTable,
+                                             converter.mangleName(ultimate)))
+      continue;
+
+    for (const Fortran::semantics::OpenACCRoutineInfo &info : *infos) {
+      declareBindTarget(info); // device-independent bind
+      for (const Fortran::semantics::OpenACCRoutineDeviceTypeInfo &dti :
+           info.deviceTypeInfos())
+        declareBindTarget(dti);
+    }
+  }
 }
 
 static void

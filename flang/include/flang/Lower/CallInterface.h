@@ -477,6 +477,14 @@ mlir::func::FuncOp
 getOrDeclareFunction(const Fortran::evaluate::ProcedureDesignator &,
                      Fortran::lower::AbstractConverter &);
 
+/// Declare or find the mlir::func::FuncOp for an external procedure named
+/// verbatim by \p name (not mangled). Declare it with \p type, or () -> () when
+/// \p type is null.
+mlir::func::FuncOp
+getOrDeclareNamedFunction(llvm::StringRef name,
+                          Fortran::lower::AbstractConverter &,
+                          mlir::FunctionType type = {});
+
 /// Return the type of an argument that is a dummy procedure. This may be an
 /// mlir::FunctionType, but it can also be a more elaborate type based on the
 /// function type (like a tuple<function type, length type> for character
