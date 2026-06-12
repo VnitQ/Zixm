@@ -1264,18 +1264,7 @@ bool Parser::ParseParenExprOrCondition(StmtResult *InitStmt,
   T.consumeOpen();
   SourceLocation Start = Tok.getLocation();
 
-  if (getLangOpts().CPlusPlus) {
-    Cond = ParseCXXCondition(InitStmt, Loc, CK, false);
-  } else {
-    ExprResult CondExpr = ParseExpression();
-
-    // If required, convert to a boolean value.
-    if (CondExpr.isInvalid())
-      Cond = Sema::ConditionError();
-    else
-      Cond = Actions.ActOnCondition(getCurScope(), Loc, CondExpr.get(), CK,
-                                    /*MissingOK=*/false);
-  }
+  Cond = ParseCondition(InitStmt, Loc, CK, false);
 
   // If the parser was confused by the condition and we don't have a ')', try to
   // recover by skipping ahead to a semi and bailing out.  If condexp is
@@ -1295,6 +1284,29 @@ bool Parser::ParseParenExprOrCondition(StmtResult *InitStmt,
     if (!CondExpr.isInvalid())
       Cond = Actions.ActOnCondition(getCurScope(), Loc, CondExpr.get(), CK,
                                     /*MissingOK=*/false);
+  }
+
+  if (!getLangOpts().CPlusPlus) {
+    if (InitStmt != nullptr && InitStmt->isUsable()) {
+      // Handle the 2 clauses of declaration: (clause1; clause2). We need to
+      // allow NullStmt because that’s what we end up with if we have an empty
+      // attribute-specifier-sequence, which is valid: if ([[]]; true).
+      if (!isa<DeclStmt, AttributedStmt, NullStmt>(InitStmt->get()))
+        // C2y only permits declaration in the first clause of an if condition.
+        Diag(InitStmt->get()->getBeginLoc(),
+             diag::err_c2y_first_condition_clause_is_not_declaration)
+            << InitStmt->get()->getSourceRange();
+
+      if (Cond.get().first != nullptr)
+        // C2y only permits expression in the second clause of an if condition.
+        Diag(Cond.get().first->getBeginLoc(), diag::err_expected_expression)
+            << Cond.get().first->getSourceRange();
+    } else if (Cond.get().first != nullptr)
+      // Handle: if (int decl = 0) {}.
+      Diag(Cond.get().first->getBeginLoc(),
+           getLangOpts().C2y ? diag::warn_c2y_compat_decl_statement
+                             : diag::ext_c2y_decl_statement)
+          << (CK == Sema::ConditionKind::Switch);
   }
 
   // Either the condition is valid or the rparen is present.
@@ -2100,7 +2112,7 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc,
         ColonProtectionRAIIObject ColonProtection(*this, MightBeForRangeStmt);
         SourceLocation SecondPartStart = Tok.getLocation();
         Sema::ConditionKind CK = Sema::ConditionKind::Boolean;
-        SecondPart = ParseCXXCondition(
+        SecondPart = ParseCondition(
             /*InitStmt=*/nullptr, ForLoc, CK,
             // FIXME: recovery if we don't see another semi!
             /*MissingOK=*/true, MightBeForRangeStmt ? &ForRangeInfo : nullptr);
