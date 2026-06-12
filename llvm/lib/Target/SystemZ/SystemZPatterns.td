@@ -41,16 +41,56 @@ multiclass ZXB<SDPatternOperator operator, RegisterOperand cls,
 // of the second operand.
 class RMWI<SDPatternOperator load, SDPatternOperator operator,
            SDPatternOperator store, AddressingMode mode,
-           PatFrag imm, Instruction insn>
+           ImmLeaf imm, Instruction insn>
   : Pat<(store (operator (load mode:$addr), imm:$src), mode:$addr),
         (insn mode:$addr, (UIMM8 imm:$src))>;
 
+// Helpers for the ComplexPattern offset variants.
+// 16-bit truncation operations variant (offset 1).
+class RMWIOffset16<SDPatternOperator load, SDPatternOperator operator,
+                   ComplexPattern mode, PatFrag imm, Instruction insn>
+  : Pat<(truncstorei16 (i32 (operator (i32 (load mode:$addr)), imm:$src)),
+                       mode:$addr),
+        (insn mode:$addr, (UIMM8 $src))>;
+
+// 32-bit operations variant (offsets 3).
+class RMWIOffset32<SDPatternOperator load, SDPatternOperator operator,
+                   SDPatternOperator store, ComplexPattern mode,
+                   PatFrag imm, Instruction insn>
+  : Pat<(store (i32 (operator (i32 (load mode:$addr)), imm:$src)), mode:$addr),
+        (insn mode:$addr, (UIMM8 $src))>;
+
+// 64-bit operations variant (offset 7).
+class RMWIOffset64<SDPatternOperator load, SDPatternOperator operator,
+                   SDPatternOperator store, ComplexPattern mode,
+                   PatFrag imm, Instruction insn>
+  : Pat<(store (i64 (operator (i64 (load mode:$addr)), imm:$src)), mode:$addr),
+        (insn mode:$addr, (UIMM8 $src))>;
+
 // Record that INSN performs binary operation OPERATION on a byte
 // memory location.  IMM is the type of the second operand.
-multiclass RMWIByte<SDPatternOperator operator, AddressingMode mode,
-                    Instruction insn> {
-  def : RMWI<z_anyextloadi8, operator, truncstorei8, mode, imm32, insn>;
-  def : RMWI<z_anyextloadi8, operator, truncstorei8, mode, imm64, insn>;
+multiclass RMWIByte<SDPatternOperator operator, Instruction insn12,
+                    Instruction insn20, PatFrag imm16Leaf,
+                    PatFrag imm32Leaf, PatFrag imm64Leaf> {
+  // Base register-displacement pairs.
+  def : RMWI<z_anyextloadi8, operator, truncstorei8, bdaddr12pair,
+             imm32, insn12>;
+  def : RMWI<z_anyextloadi8, operator, truncstorei8, bdaddr12pair,
+             imm64, insn12>;
+  def : RMWI<z_anyextloadi8, operator, truncstorei8, bdaddr20pair,
+             imm32, insn20>;
+  def : RMWI<z_anyextloadi8, operator, truncstorei8, bdaddr20pair,
+             imm64, insn20>;
+
+  // 12-bit instruction offset variants.
+  def : RMWIOffset16<anyextloadi16, operator, bdaddr12off1, imm16Leaf, insn12>;
+  def : RMWIOffset32<load, operator, store, bdaddr12off3, imm32Leaf, insn12>;
+  def : RMWIOffset64<load, operator, store, bdaddr12off7, imm64Leaf, insn12>;
+
+  // 20-bit instruction offset variants.
+  def : RMWIOffset16<anyextloadi16, operator, bdaddr20off1, imm16Leaf, insn20>;
+  def : RMWIOffset32<load, operator, store, bdaddr20off3, imm32Leaf, insn20>;
+  def : RMWIOffset64<load, operator, store, bdaddr20off7, imm64Leaf, insn20>;
 }
 
 // Record that INSN performs insertion TYPE into a register of class CLS.
