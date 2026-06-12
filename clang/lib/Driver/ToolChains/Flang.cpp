@@ -282,6 +282,14 @@ void Flang::addLTOOptions(const ArgList &Args, ArgStringList &CmdArgs) const {
     CmdArgs.push_back("-flto=full");
   else if (LTOMode == LTOK_Thin)
     CmdArgs.push_back("-flto=thin");
+
+  if (Arg *splitLTOArg = Args.getLastArg(options::OPT_fsplit_lto_unit,
+                                         options::OPT_fno_split_lto_unit)) {
+    if (splitLTOArg->getOption().matches(options::OPT_fsplit_lto_unit)) {
+      CmdArgs.push_back("-fsplit-lto-unit");
+    }
+  }
+
   Args.addAllArgs(CmdArgs, {options::OPT_ffat_lto_objects,
                             options::OPT_fno_fat_lto_objects});
 }
