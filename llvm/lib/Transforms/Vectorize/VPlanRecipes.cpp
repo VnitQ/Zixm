@@ -2960,6 +2960,39 @@ void VPDerivedIVRecipe::printRecipe(raw_ostream &O, const Twine &Indent,
 }
 #endif
 
+InstructionCost VPScalarIVStepsRecipe::computeCost(ElementCount VF,
+                                                   VPCostContext &Ctx) const {
+  // TODO: Add costs for floating point.
+  Type *BaseIVTy = getOperand(0)->getScalarType();
+  if (!BaseIVTy->isIntegerTy())
+    return 0;
+
+  // TODO: Add support for predicated regions. Requires scaling the cost by the
+  // probability of entering the block.
+  if (getRegion() && getRegion()->isReplicator())
+    return 0;
+
+  // Typically the operations are:
+  //   1. Add the start index to each lane value.
+  //   2. Multiply the start index by the step.
+  //   3. Add the scaled start index to base IV.
+  // Any code generated for 1 and 2 should be loop invariant and therefore
+  // hoisted out of the loop. We only need to add on the cost of 3.
+
+  // Determine the number of scalar adds we need to generate.
+  const unsigned NumLanes =
+      vputils::onlyFirstLaneUsed(this) ? 1 : VF.getFixedValue();
+
+  // If there is no start index the first lane will be free, since
+  //   add i32 x, 0 -> i32 x
+  // However, the start index is only well defined after the unroll
+  // transformation that sets it. For now just assume it is 0, which means
+  // (NumLanes - 1) add operations.
+  const unsigned NumAdds = NumLanes - 1;
+  return NumAdds * Ctx.TTI.getArithmeticInstrCost(Instruction::Add, BaseIVTy,
+                                                  Ctx.CostKind);
+}
+
 void VPScalarIVStepsRecipe::execute(VPTransformState &State) {
   // Fast-math-flags propagate from the original induction instruction.
   IRBuilder<>::FastMathFlagGuard FMFG(State.Builder);
