@@ -532,6 +532,15 @@ class SPIRVLegalizePointerCastImpl {
         continue;
       }
 
+      // A raw atomicrmw or cmpxchg consumes the pointer directly, so the ptrcast
+      // ahead of it is spurious; bypass it like spv_gep to avoid the unreachable
+      // below.
+      if (isa<AtomicRMWInst>(User) || isa<AtomicCmpXchgInst>(User)) {
+        GR->replaceAllUsesWith(CastedOperand, OriginalOperand,
+                               /* DeleteOld= */ false);
+        continue;
+      }
+
       if (IntrinsicInst *Intrin = dyn_cast<IntrinsicInst>(User)) {
         if (Intrin->getIntrinsicID() == Intrinsic::spv_assign_ptr_type) {
           DeadInstructions.push_back(Intrin);
@@ -539,6 +548,14 @@ class SPIRVLegalizePointerCastImpl {
         }
 
         if (Intrin->getIntrinsicID() == Intrinsic::spv_gep) {
+          GR->replaceAllUsesWith(CastedOperand, OriginalOperand,
+                                 /* DeleteOld= */ false);
+          continue;
+        }
+
+        // A cmpxchg consumes the pointer directly, so bypass the spurious
+        // ptrcast like spv_gep.
+        if (Intrin->getIntrinsicID() == Intrinsic::spv_cmpxchg) {
           GR->replaceAllUsesWith(CastedOperand, OriginalOperand,
                                  /* DeleteOld= */ false);
           continue;
