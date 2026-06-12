@@ -3927,70 +3927,24 @@ bool VectorCombine::foldShuffleFromReductions(Instruction &I) {
   return MadeChanges;
 }
 
-/// For a given chain of patterns of the following form:
+/// Try to fold a chain of shuffles and ops feeding extractelement(..., 0)
+/// into llvm.vector.reduce.*, by tracking which lanes contribute to the
+/// extracted lane and reducing the widest vector whose lanes each contribute
+/// once.
 ///
-/// ```
-///   %1 = shufflevector <n x ty1> %0, <n x ty1> poison <n x ty2> mask
+/// For example:
 ///
-///   %2 = tail call <n x ty1> llvm.<umin/umax/smin/smax>(<n x ty1> %0, <n x
-///   ty1> %1)
-///     OR
-///   %2 = add/mul/or/and/xor <n x ty1> %0, %1
+///   %lo = shufflevector <4 x i32> %a, poison, <2 x i32> <i32 0, i32 1>
+///   %hi = shufflevector <4 x i32> %a, poison, <2 x i32> <i32 2, i32 3>
+///   %s  = add <2 x i32> %lo, %hi
+///   %sh = shufflevector <2 x i32> %s, poison, <2 x i32> <i32 1, i32 poison>
+///   %r  = add <2 x i32> %s, %sh
+///   %e  = extractelement <2 x i32> %r, i64 0
 ///
-///   %3 = shufflevector <n x ty1> %2, <n x ty1> poison <n x ty2> mask
-///   ...
-///   ...
-///   %(i - 1) = tail call <n x ty1> llvm.<umin/umax/smin/smax>(<n x ty1> %(i -
-///   3), <n x ty1> %(i - 2)
-///     OR
-///   %(i - 1) = add/mul/or/and/xor <n x ty1> %(i - 3), %(i - 2)
+/// transforms to:
 ///
-///   %(i) = extractelement <n x ty1> %(i - 1), 0
-/// ```
-///
-/// Where:
-///    `mask` follows a partition pattern:
-///
-/// Ex:
-///    [n = 8, p = poison]
-///
-///    4 5 6 7 | p p p p
-///    2 3 | p p p p p p
-///    1 | p p p p p p p
-///
-///    For powers of 2, there's a consistent pattern, but for other cases
-///    the parity of the current half value at each step decides the
-///    next partition half (see `ExpectedParityMask` for more logical details
-///    in generalising this).
-///
-/// Ex:
-///    [n = 6]
-///
-///    3 4 5 | p p p
-///    1 2 | p p p p
-///    1 | p p p p p
+///   %e = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> %a)
 bool VectorCombine::foldShuffleChainsToReduce(Instruction &I) {
-  // Going bottom-up for the pattern.
-  std::queue<Value *> InstWorklist;
-  InstructionCost OrigCost = 0;
-
-  // Common instruction operation after each shuffle op.
-  std::optional<unsigned int> CommonCallOp = std::nullopt;
-  std::optional<Instruction::BinaryOps> CommonBinOp = std::nullopt;
-
-  // For floating-point reductions, track FMF intersection across all binops.
-  FastMathFlags CommonFMF;
-  bool IsFloatReduction = false;
-
-  bool IsFirstCallOrBinInst = true;
-  bool ShouldBeCallOrBinInst = true;
-
-  // This stores the last used instructions for shuffle/common op.
-  //
-  // PrevVecV[0] / PrevVecV[1] store the last two simultaneous
-  // instructions from either shuffle/common op.
-  SmallVector<Value *, 2> PrevVecV(2, nullptr);
-
   Value *VecOpEE;
   if (!match(&I, m_ExtractElt(m_Value(VecOpEE), m_Zero())))
     return false;
@@ -3999,213 +3953,255 @@ bool VectorCombine::foldShuffleChainsToReduce(Instruction &I) {
   if (!FVT)
     return false;
 
-  int64_t VecSize = FVT->getNumElements();
-  if (VecSize < 2)
+  if (FVT->getNumElements() < 2)
     return false;
 
-  // Number of levels would be ~log2(n), considering we always partition
-  // by half for this fold pattern.
-  unsigned int NumLevels = Log2_64_Ceil(VecSize), VisitedCnt = 0;
-  int64_t ShuffleMaskHalf = 1, ExpectedParityMask = 0;
+  std::optional<Instruction::BinaryOps> CommonBinOp;
+  std::optional<Intrinsic::ID> CommonCallOp;
 
-  // This is how we generalise for all element sizes.
-  // At each step, if vector size is odd, we need non-poison
-  // values to cover the dominant half so we don't miss out on any element.
-  //
-  // This mask will help us retrieve this as we go from bottom to top:
-  //
-  // Mask Set -> N = N * 2 - 1
-  // Mask Unset -> N = N * 2
-  for (int Cur = VecSize, Mask = NumLevels - 1; Cur > 1;
-       Cur = (Cur + 1) / 2, --Mask) {
-    if (Cur & 1)
-      ExpectedParityMask |= (1ll << Mask);
+  if (auto *BO = dyn_cast<BinaryOperator>(VecOpEE)) {
+    if (!getReductionForBinop(BO->getOpcode()))
+      return false;
+    CommonBinOp = BO->getOpcode();
+  } else if (auto *MMI = dyn_cast<MinMaxIntrinsic>(VecOpEE)) {
+    CommonCallOp = MMI->getIntrinsicID();
+  } else {
+    return false;
   }
 
-  InstWorklist.push(VecOpEE);
+  // For floating-point reductions, track FMF intersection across all binops.
+  FastMathFlags CommonFMF;
+  bool IsFloatReduction = false;
 
-  bool IsPartialReduction = false;
-  bool HasLaneDuplication = false;
+  auto IsChainNode = [&](Value *V) {
+    if (auto *BO = dyn_cast<BinaryOperator>(V))
+      return CommonBinOp && BO->getOpcode() == *CommonBinOp;
+    if (auto *MMI = dyn_cast<MinMaxIntrinsic>(V))
+      return CommonCallOp && MMI->getIntrinsicID() == *CommonCallOp;
+    if (auto *SVI = dyn_cast<ShuffleVectorInst>(V))
+      return isa<PoisonValue>(SVI->getOperand(1));
+    return false;
+  };
 
-  while (!InstWorklist.empty()) {
-    Value *CI = InstWorklist.front();
-    InstWorklist.pop();
+  // Walk VecOpEE bottom-up. Chain nodes are single-source shuffles and
+  // matching-opcode binops/intrinsics. Anything else is a leaf source.
+  constexpr unsigned MaxChainNodes = 32;
+  SmallVector<Value *, 16> ChainPostorder;
+  SmallPtrSet<Value *, 16> Visited;
+  SmallPtrSet<Value *, 16> KeptChain;
+  SmallVector<Value *, 2> Sources;
+  DenseMap<Value *, unsigned> SrcSizes;
 
-    if (auto *II = dyn_cast<IntrinsicInst>(CI)) {
-      if (!ShouldBeCallOrBinInst)
-        return false;
-
-      if (!IsFirstCallOrBinInst && any_of(PrevVecV, equal_to(nullptr)))
-        return false;
-
-      // For the first found call/bin op, the vector has to come from the
-      // extract element op.
-      if (II != (IsFirstCallOrBinInst ? VecOpEE : PrevVecV[0]))
-        return false;
-      IsFirstCallOrBinInst = false;
-
-      if (!CommonCallOp)
-        CommonCallOp = II->getIntrinsicID();
-      if (II->getIntrinsicID() != *CommonCallOp)
-        return false;
-
-      switch (II->getIntrinsicID()) {
-      case Intrinsic::umin:
-      case Intrinsic::umax:
-      case Intrinsic::smin:
-      case Intrinsic::smax: {
-        auto *Op0 = II->getOperand(0);
-        auto *Op1 = II->getOperand(1);
-        PrevVecV[0] = Op0;
-        PrevVecV[1] = Op1;
-        break;
-      }
-      default:
-        return false;
-      }
-      ShouldBeCallOrBinInst ^= 1;
-
-      IntrinsicCostAttributes ICA(
-          *CommonCallOp, II->getType(),
-          {PrevVecV[0]->getType(), PrevVecV[1]->getType()});
-      OrigCost += TTI.getIntrinsicInstrCost(ICA, CostKind);
-
-      // We may need a swap here since it can be (a, b) or (b, a)
-      // and accordingly change as we go up.
-      if (!isa<ShuffleVectorInst>(PrevVecV[1]))
-        std::swap(PrevVecV[0], PrevVecV[1]);
-      InstWorklist.push(PrevVecV[1]);
-      InstWorklist.push(PrevVecV[0]);
-    } else if (auto *BinOp = dyn_cast<BinaryOperator>(CI)) {
-      // Similar logic for bin ops.
-
-      if (!ShouldBeCallOrBinInst)
-        return false;
-
-      if (!IsFirstCallOrBinInst && any_of(PrevVecV, equal_to(nullptr)))
-        return false;
-
-      if (BinOp != (IsFirstCallOrBinInst ? VecOpEE : PrevVecV[0]))
-        return false;
-      IsFirstCallOrBinInst = false;
-
-      if (!CommonBinOp)
-        CommonBinOp = BinOp->getOpcode();
-
-      if (BinOp->getOpcode() != *CommonBinOp)
-        return false;
-
-      switch (*CommonBinOp) {
-      case BinaryOperator::Add:
-      case BinaryOperator::Mul:
-      case BinaryOperator::Or:
-      case BinaryOperator::And:
-      case BinaryOperator::Xor:
-      case BinaryOperator::FAdd:
-      case BinaryOperator::FMul: {
-        auto *Op0 = BinOp->getOperand(0);
-        auto *Op1 = BinOp->getOperand(1);
-        PrevVecV[0] = Op0;
-        PrevVecV[1] = Op1;
-        break;
-      }
-      default:
-        return false;
-      }
-
-      // For FP reductions, require reassoc on every binop and collect FMF.
-      if (*CommonBinOp == Instruction::FAdd ||
-          *CommonBinOp == Instruction::FMul) {
-        if (!BinOp->hasAllowReassoc())
-          return false;
-        if (!IsFloatReduction) {
-          CommonFMF = BinOp->getFastMathFlags();
-          IsFloatReduction = true;
-        } else {
-          CommonFMF &= BinOp->getFastMathFlags();
-        }
-      }
-
-      ShouldBeCallOrBinInst ^= 1;
-
-      OrigCost +=
-          TTI.getArithmeticInstrCost(*CommonBinOp, BinOp->getType(), CostKind);
-
-      if (!isa<ShuffleVectorInst>(PrevVecV[1]))
-        std::swap(PrevVecV[0], PrevVecV[1]);
-      InstWorklist.push(PrevVecV[1]);
-      InstWorklist.push(PrevVecV[0]);
-    } else if (auto *SVInst = dyn_cast<ShuffleVectorInst>(CI)) {
-      // We shouldn't have any null values in the previous vectors,
-      // is so, there was a mismatch in pattern.
-      if (ShouldBeCallOrBinInst || any_of(PrevVecV, equal_to(nullptr)))
-        return false;
-
-      if (SVInst != PrevVecV[1])
-        return false;
-
-      ArrayRef<int> CurMask;
-      if (!match(SVInst, m_Shuffle(m_Specific(PrevVecV[0]), m_Poison(),
-                                   m_Mask(CurMask))))
-        return false;
-
-      // Subtract the parity mask when checking the condition.
-      for (int Mask = 0, MaskSize = CurMask.size(); Mask != MaskSize; ++Mask) {
-        if (Mask < ShuffleMaskHalf &&
-            CurMask[Mask] != ShuffleMaskHalf + Mask - (ExpectedParityMask & 1))
-          return false;
-        if (Mask >= ShuffleMaskHalf && CurMask[Mask] != -1)
-          return false;
-      }
-
-      // Update mask values.
-      ShuffleMaskHalf *= 2;
-      ShuffleMaskHalf -= (ExpectedParityMask & 1);
-      HasLaneDuplication |= (ExpectedParityMask & 1) != 0;
-      ExpectedParityMask >>= 1;
-
-      OrigCost += TTI.getShuffleCost(TargetTransformInfo::SK_PermuteSingleSrc,
-                                     SVInst->getType(), SVInst->getType(),
-                                     CurMask, CostKind);
-
-      VisitedCnt += 1;
-      if (!ExpectedParityMask && VisitedCnt == NumLevels)
-        break;
-
-      ShouldBeCallOrBinInst ^= 1;
-    } else {
-      // Check if this is a partial reduction - the chain ended because
-      // the source vector is not a recognized op/shuffle.
-      // Reject non-power-of-2 vectors because parity-based masks cause
-      // lane duplication in the reduction tree, making the partial result
-      // not a simple subvector reduction.
-      if (ShouldBeCallOrBinInst && VisitedCnt >= 1 && CI == PrevVecV[0] &&
-          isPowerOf2_64(VecSize)) {
-        IsPartialReduction = true;
-        break;
-      }
+  auto AddSource = [&](Value *V) -> bool {
+    auto *VT = dyn_cast<FixedVectorType>(V->getType());
+    if (!VT)
       return false;
+    if (SrcSizes.insert({V, VT->getNumElements()}).second)
+      Sources.push_back(V);
+    return true;
+  };
+
+  struct StackEntry {
+    Value *V;
+    unsigned ChildIdx;
+  };
+  SmallVector<StackEntry, 16> Stack;
+
+  auto Enqueue = [&](Value *V) -> bool {
+    if (Visited.size() >= MaxChainNodes)
+      return false;
+    if (!Visited.insert(V).second)
+      return true;
+    if (!IsChainNode(V))
+      return AddSource(V);
+    Stack.push_back({V, 0});
+    return true;
+  };
+
+  // VecOpEE is a chain node so push directly.
+  Visited.insert(VecOpEE);
+  Stack.push_back({VecOpEE, 0});
+
+  while (!Stack.empty()) {
+    auto &Top = Stack.back();
+    Value *V = Top.V;
+
+    // Chain shuffles always have poison as op1, so only op0 matters.
+    unsigned NumOps = isa<ShuffleVectorInst>(V) ? 1 : 2;
+    if (Top.ChildIdx < NumOps) {
+      Value *Child = cast<User>(V)->getOperand(Top.ChildIdx++);
+      if (!Enqueue(Child))
+        return false;
+    } else {
+      // Demote any binop/intrinsic whose operands are not themselves chain
+      // nodes. Walking past would re-derive the value from its operands,
+      // leaving the original alive if anything downstream still uses it.
+      bool Keep = isa<ShuffleVectorInst>(V);
+      if (!Keep) {
+        auto *U = cast<User>(V);
+        Keep = KeptChain.contains(U->getOperand(0)) ||
+               KeptChain.contains(U->getOperand(1));
+      }
+      if (Keep) {
+        KeptChain.insert(V);
+        ChainPostorder.push_back(V);
+      } else if (!AddSource(V)) {
+        return false;
+      }
+      Stack.pop_back();
     }
   }
 
-  // Full reduction pattern should end with a shuffle op.
-  // Partial reduction ends when the source vector is reached.
-  if (ShouldBeCallOrBinInst && !IsPartialReduction)
+  // No chain nodes (e.g. extract(binop(x, y), 0)). Rebuilding would just
+  // recreate the original extract and refold forever when extraction is free.
+  if (ChainPostorder.empty())
     return false;
 
-  // If the parity masks duplicated any lane, the fold only preserves semantics
-  // for idempotent ops.
-  if (HasLaneDuplication && CommonBinOp &&
-      !Instruction::isIdempotent(*CommonBinOp))
+  bool IsIdempotent =
+      CommonCallOp || (CommonBinOp && Instruction::isIdempotent(*CommonBinOp));
+
+  // For FP reductions, require reassoc on every binop and collect FMF.
+  for (Value *V : ChainPostorder) {
+    auto *BinOp = dyn_cast<BinaryOperator>(V);
+    if (!BinOp || !BinOp->getType()->isFPOrFPVectorTy())
+      continue;
+    if (!BinOp->hasAllowReassoc())
+      return false;
+    if (!IsFloatReduction) {
+      CommonFMF = BinOp->getFastMathFlags();
+      IsFloatReduction = true;
+    } else {
+      CommonFMF &= BinOp->getFastMathFlags();
+    }
+  }
+
+  // Top-down demanded elements. How many times does each lane of each chain
+  // value feed the extracted lane 0? Reverse postorder visits every use before
+  // its value. A binop forwards its demand to both operands and a shuffle
+  // follows its mask back to the source lane.
+  DenseMap<Value *, SmallVector<unsigned, 16>> Demand;
+  auto DemandOf = [&](Value *V) -> SmallVector<unsigned, 16> & {
+    auto &D = Demand[V];
+    if (D.empty())
+      D.assign(cast<FixedVectorType>(V->getType())->getNumElements(), 0);
+    return D;
+  };
+  DemandOf(VecOpEE)[0] = 1;
+  for (Value *V : reverse(ChainPostorder)) {
+    SmallVector<unsigned, 16> DV = Demand.lookup(V);
+    if (DV.empty())
+      continue;
+    if (auto *SVI = dyn_cast<ShuffleVectorInst>(V)) {
+      ArrayRef<int> Mask = SVI->getShuffleMask();
+      auto &DS = DemandOf(SVI->getOperand(0));
+      for (unsigned i = 0, e = Mask.size(); i != e; ++i)
+        if (Mask[i] >= 0 && (unsigned)Mask[i] < DS.size())
+          DS[Mask[i]] += DV[i];
+    } else {
+      auto *U = cast<User>(V);
+      for (Value *Op : {U->getOperand(0), U->getOperand(1)}) {
+        auto &DOp = DemandOf(Op);
+        for (unsigned i = 0, e = DV.size(); i != e && i < DOp.size(); ++i)
+          DOp[i] += DV[i];
+      }
+    }
+  }
+
+  // A vector is cleanly reducible if no demanded lane is counted more than once
+  // (idempotent ops tolerate duplicates).
+  auto Clean = [&](ArrayRef<unsigned> D) {
+    bool Any = false;
+    for (unsigned C : D) {
+      if (!C)
+        continue;
+      Any = true;
+      if (C > 1 && !IsIdempotent)
+        return false;
+    }
+    return Any;
+  };
+  auto LaneMask = [](ArrayRef<unsigned> D, unsigned N) {
+    APInt E(N, 0);
+    for (unsigned i = 0, e = D.size(); i != e; ++i)
+      if (D[i])
+        E.setBit(i);
+    return E;
+  };
+
+  struct Partial {
+    Value *Src;
+    APInt Elts;
+    unsigned SrcSize;
+  };
+  // Reduce the leaf sources when they are cleanly demanded, otherwise the
+  // deepest intermediate whose lanes all feed the result.
+  SmallVector<Partial, 2> Partials;
+  bool SourcesClean = true;
+  for (Value *Src : Sources) {
+    SmallVector<unsigned, 16> D = Demand.lookup(Src);
+    if (!Clean(D)) {
+      if (any_of(D, [](unsigned C) { return C; }))
+        SourcesClean = false;
+      continue;
+    }
+    Partials.push_back({Src, LaneMask(D, SrcSizes[Src]), SrcSizes[Src]});
+  }
+  // Reducing V replaces the entire chain, so every contribution to the result
+  // must flow through V. Reject if anything above V reads outside the chain.
+  auto CoversChain = [&](Value *V) {
+    SmallVector<Value *, 8> Worklist(1, VecOpEE);
+    SmallPtrSet<Value *, 8> Seen;
+    Seen.insert(VecOpEE);
+    while (!Worklist.empty()) {
+      auto *U = cast<Instruction>(Worklist.pop_back_val());
+      unsigned NumOps = isa<ShuffleVectorInst>(U) ? 1 : 2;
+      for (unsigned I = 0; I != NumOps; ++I) {
+        Value *Op = U->getOperand(I);
+        if (Op == V || !Seen.insert(Op).second)
+          continue;
+        if (!KeptChain.contains(Op))
+          return false;
+        Worklist.push_back(Op);
+      }
+    }
+    return true;
+  };
+
+  // Every lane feeds the result exactly once unless the op is idempotent.
+  auto EveryLaneOnce = [&](ArrayRef<unsigned> D) {
+    return !D.empty() && all_of(D, [&](unsigned C) {
+      return C >= 1 && (IsIdempotent || C == 1);
+    });
+  };
+
+  // Find the deepest intermediate where every lane feeds the result exactly
+  // once (idempotent ops tolerate duplicates) and that covers the whole chain.
+  Value *FullInter = nullptr;
+  for (Value *V : ChainPostorder) {
+    if (!isa<BinaryOperator>(V))
+      continue;
+    if (!EveryLaneOnce(Demand.lookup(V)) || !CoversChain(V))
+      continue;
+    FullInter = V;
+    break;
+  }
+
+  // Multi-source chains also take the intermediate, since one reduce replaces
+  // the per-source reduces.
+  if (FullInter && (!SourcesClean || Partials.size() != 1)) {
+    unsigned N = cast<FixedVectorType>(FullInter->getType())->getNumElements();
+    Partials.clear();
+    Partials.push_back({FullInter, APInt::getAllOnes(N), N});
+  } else if (!SourcesClean) {
+    return false;
+  }
+  if (Partials.empty())
     return false;
 
-  assert(VecSize != -1 && "Expected Match for Vector Size");
-
-  Value *FinalVecV = PrevVecV[0];
-  if (!FinalVecV)
+  // A real reduction combines >1 lane of some source. Multiple single-lane
+  // would loop.
+  if (none_of(Partials, [](const Partial &P) { return P.Elts.popcount() > 1; }))
     return false;
-
-  auto *FinalVecVTy = cast<FixedVectorType>(FinalVecV->getType());
 
   Intrinsic::ID ReducedOp =
       (CommonCallOp ? getMinMaxReductionIntrinsicID(*CommonCallOp)
@@ -4213,51 +4209,109 @@ bool VectorCombine::foldShuffleChainsToReduce(Instruction &I) {
   if (!ReducedOp)
     return false;
 
+  InstructionCost OrigCost = 0;
+  for (Value *V : ChainPostorder)
+    OrigCost += TTI.getInstructionCost(cast<Instruction>(V), CostKind);
+
+  // Each source contributes a gather+reduce, or an extractelement for a
+  // single-lane partial. Scalar ops then combine the partials.
+  Type *ElTy = FVT->getElementType();
   InstructionCost NewCost = 0;
-  FixedVectorType *ReduceVecTy = FinalVecVTy;
-  SmallVector<int> ExtractMask;
-
-  if (IsPartialReduction) {
-    unsigned SubVecSize = ShuffleMaskHalf;
-    ReduceVecTy = FixedVectorType::get(FVT->getElementType(), SubVecSize);
-    ExtractMask.resize(SubVecSize);
-    std::iota(ExtractMask.begin(), ExtractMask.end(), 0);
-    NewCost += TTI.getShuffleCost(TargetTransformInfo::SK_ExtractSubvector,
-                                  ReduceVecTy, FinalVecVTy, ExtractMask,
-                                  CostKind, 0, ReduceVecTy);
+  for (const Partial &P : Partials) {
+    auto *SrcVT = cast<FixedVectorType>(P.Src->getType());
+    unsigned Pop = P.Elts.popcount();
+    if (Pop == 1) {
+      unsigned Idx = P.Elts.countTrailingZeros();
+      NewCost += TTI.getVectorInstrCost(Instruction::ExtractElement, SrcVT,
+                                        CostKind, Idx);
+      continue;
+    }
+    bool IsFullSrc = Pop == P.SrcSize;
+    FixedVectorType *RVT = IsFullSrc ? SrcVT : FixedVectorType::get(ElTy, Pop);
+    if (!IsFullSrc) {
+      SmallVector<int> Mask;
+      Mask.reserve(Pop);
+      for (unsigned i = 0; i < P.SrcSize; ++i)
+        if (P.Elts[i])
+          Mask.push_back(i);
+      // A contiguous run of bits (anywhere, not just the low prefix) is an
+      // extract subvector. Pass its offset so TTI can model targets that
+      // lower upper-half extracts cheaply.
+      unsigned SubIdx = 0, SubLen;
+      auto Kind = P.Elts.isShiftedMask(SubIdx, SubLen)
+                      ? TargetTransformInfo::SK_ExtractSubvector
+                      : TargetTransformInfo::SK_PermuteSingleSrc;
+      NewCost +=
+          TTI.getShuffleCost(Kind, RVT, SrcVT, Mask, CostKind, SubIdx, RVT);
+    }
+    IntrinsicCostAttributes ICA(ReducedOp, ElTy,
+                                IsFloatReduction
+                                    ? SmallVector<Type *, 2>{ElTy, RVT}
+                                    : SmallVector<Type *, 2>{RVT},
+                                IsFloatReduction ? CommonFMF : FastMathFlags());
+    NewCost += TTI.getIntrinsicInstrCost(ICA, CostKind);
   }
-
-  IntrinsicCostAttributes ICA(
-      ReducedOp, ReduceVecTy->getElementType(),
-      IsFloatReduction
-          ? SmallVector<Type *, 2>{ReduceVecTy->getElementType(), ReduceVecTy}
-          : SmallVector<Type *, 2>{ReduceVecTy},
-      IsFloatReduction ? CommonFMF : FastMathFlags());
-  NewCost += TTI.getIntrinsicInstrCost(ICA, CostKind);
+  for (unsigned i = 1; i < Partials.size(); ++i) {
+    if (CommonBinOp) {
+      NewCost += TTI.getArithmeticInstrCost(*CommonBinOp, ElTy, CostKind);
+    } else {
+      IntrinsicCostAttributes ICA(*CommonCallOp, ElTy, {ElTy, ElTy});
+      NewCost += TTI.getIntrinsicInstrCost(ICA, CostKind);
+    }
+  }
 
   LLVM_DEBUG(dbgs() << "Found reduction shuffle chain: " << I << "\n OldCost : "
                     << OrigCost << " vs NewCost: " << NewCost << "\n");
 
+  if (!OrigCost.isValid() || !NewCost.isValid())
+    return false;
+
   if (VecOpEE->hasOneUse() ? (NewCost > OrigCost) : (NewCost >= OrigCost))
     return false;
 
-  Value *ReduceInput = FinalVecV;
-  if (IsPartialReduction)
-    ReduceInput = Builder.CreateShuffleVector(FinalVecV, ExtractMask);
-
-  CallInst *ReducedResult;
-  if (IsFloatReduction) {
-    Value *Identity = ConstantExpr::getBinOpIdentity(
-        *CommonBinOp, ReduceVecTy->getElementType(), /*AllowRHSConstant=*/false,
-        CommonFMF.noSignedZeros());
-    ReducedResult = Builder.CreateIntrinsic(ReducedOp, {ReduceVecTy},
-                                            {Identity, ReduceInput});
-    ReducedResult->setFastMathFlags(CommonFMF);
-  } else {
-    ReducedResult =
-        Builder.CreateIntrinsic(ReducedOp, {ReduceVecTy}, {ReduceInput});
+  SmallVector<Value *, 2> PartialResults;
+  for (const Partial &P : Partials) {
+    unsigned Pop = P.Elts.popcount();
+    // A single-lane partial is just the source lane. No reduce needed.
+    if (Pop == 1) {
+      unsigned Idx = P.Elts.countTrailingZeros();
+      PartialResults.push_back(Builder.CreateExtractElement(P.Src, Idx));
+      continue;
+    }
+    Value *ReduceInput = P.Src;
+    if (Pop != P.SrcSize) {
+      SmallVector<int> Mask;
+      Mask.reserve(Pop);
+      for (unsigned i = 0; i < P.SrcSize; ++i)
+        if (P.Elts[i])
+          Mask.push_back(i);
+      ReduceInput = Builder.CreateShuffleVector(P.Src, Mask);
+    }
+    if (IsFloatReduction) {
+      Value *Identity = ConstantExpr::getBinOpIdentity(
+          *CommonBinOp, ElTy, /*AllowRHSConstant=*/false,
+          CommonFMF.noSignedZeros());
+      auto *Rdx = Builder.CreateIntrinsic(ReducedOp, {ReduceInput->getType()},
+                                          {Identity, ReduceInput});
+      Rdx->setFastMathFlags(CommonFMF);
+      PartialResults.push_back(Rdx);
+    } else {
+      PartialResults.push_back(Builder.CreateIntrinsic(
+          ReducedOp, {ReduceInput->getType()}, {ReduceInput}));
+    }
   }
-  replaceValue(I, *ReducedResult);
+  Value *Result = PartialResults[0];
+  for (unsigned i = 1; i < PartialResults.size(); ++i) {
+    if (CommonBinOp) {
+      Result = Builder.CreateBinOp(*CommonBinOp, Result, PartialResults[i]);
+      if (IsFloatReduction)
+        if (auto *RI = dyn_cast<Instruction>(Result))
+          RI->setFastMathFlags(CommonFMF);
+    } else
+      Result = Builder.CreateIntrinsic(*CommonCallOp, {ElTy},
+                                       {Result, PartialResults[i]});
+  }
+  replaceValue(I, *Result);
 
   return true;
 }
