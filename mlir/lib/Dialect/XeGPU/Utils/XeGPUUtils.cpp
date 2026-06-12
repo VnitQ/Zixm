@@ -537,16 +537,28 @@ void xegpu::doSCFStructuralTypeConversionWithTensorType(
       return WalkResult::advance();
     });
 
-    // using yieldOp as anchor to update the result type of its ParentOp
-    op->walk([](scf::YieldOp yieldOp) {
-      Operation *parentOp = yieldOp->getParentOp();
-      for (OpResult r : parentOp->getOpResults()) {
-        unsigned idx = r.getResultNumber();
-        Type resultTy = r.getType();
-        Type yieldTy = yieldOp.getResults()[idx].getType();
-        if (isa<RankedTensorType>(resultTy) && yieldTy != resultTy)
-          r.setType(yieldTy);
+    auto updateTensorResultTypes = [](ResultRange results, ValueRange values) {
+      for (auto [result, value] : llvm::zip_equal(results, values)) {
+        Type resultTy = result.getType();
+        Type valueTy = value.getType();
+        if (isa<RankedTensorType>(resultTy) && valueTy != resultTy)
+          result.setType(valueTy);
       }
+    };
+
+    // For scf.while, parent op results correspond to scf.condition operands,
+    // not to the after-region scf.yield operands.
+    op->walk([&](scf::ConditionOp conditionOp) {
+      auto whileOp = cast<scf::WhileOp>(conditionOp->getParentOp());
+      updateTensorResultTypes(whileOp->getOpResults(), conditionOp.getArgs());
+    });
+
+    // using yieldOp as anchor to update the result type of its ParentOp
+    op->walk([&](scf::YieldOp yieldOp) {
+      Operation *parentOp = yieldOp->getParentOp();
+      if (isa<scf::WhileOp>(parentOp))
+        return;
+      updateTensorResultTypes(parentOp->getOpResults(), yieldOp.getResults());
     });
   }
 
